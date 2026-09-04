@@ -47,6 +47,7 @@ impl DiscordClient {
         freq_hz: u64,
         pass_time_str: &str,
         image_path: Option<&Path>,
+        next_pass_info: Option<&str>,
     ) -> Result<()> {
         if !self.config.enabled {
             return Ok(());
@@ -65,27 +66,38 @@ impl DiscordClient {
         let freq_mhz = freq_hz as f64 / 1_000_000.0;
         let content_text = format!("🛰️ **{}** の受信・デコードが完了したのだ！宇宙からの雲画像をお届けするのだ！", sat_name);
 
+        // Discord Embed フィールドの動的構築
+        let mut fields = vec![
+            serde_json::json!({
+                "name": "最大仰角 / 方角",
+                "value": format!("{:.1}° ({})", max_elev, direction),
+                "inline": true
+            }),
+            serde_json::json!({
+                "name": "受信周波数",
+                "value": format!("{:.4} MHz", freq_mhz),
+                "inline": true
+            }),
+            serde_json::json!({
+                "name": "通過時間 (JST)",
+                "value": pass_time_str,
+                "inline": false
+            }),
+        ];
+
+        if let Some(next_info) = next_pass_info {
+            fields.push(serde_json::json!({
+                "name": "⏰ 次の通過予定",
+                "value": next_info,
+                "inline": false
+            }));
+        }
+
         // Discord Embed オブジェクトの構築
         let embed = serde_json::json!({
             "title": format!("{} 気象衛星 雲画像デコード完了", sat_name),
             "color": 3447003, // エレガントな宇宙ブルー (#3498DB)
-            "fields": [
-                {
-                    "name": "最大仰角 / 方角",
-                    "value": format!("{:.1}° ({})", max_elev, direction),
-                    "inline": true
-                },
-                {
-                    "name": "受信周波数",
-                    "value": format!("{:.4} MHz", freq_mhz),
-                    "inline": true
-                },
-                {
-                    "name": "通過時間 (JST)",
-                    "value": pass_time_str,
-                    "inline": false
-                }
-            ],
+            "fields": fields,
             "image": {
                 "url": "attachment://image.png"
             },
