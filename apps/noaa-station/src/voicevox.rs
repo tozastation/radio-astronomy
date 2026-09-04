@@ -134,25 +134,60 @@ impl VoicevoxClient {
         // Go では全ての Goroutine が自動的にOSスレッドを融通しますが、Tokioの非同期ループ内で
         // `Command::status()` のような「同期的で重いOSプロセス呼び出し」を行うと非同期ワーカースレッドが
         // 占有（ブロック）されてしまいます。
-        // `spawn_blocking` はブロッキング専用の別スレッドプールに処理を委譲するための構文です。
-        // `move ||` は外側の変数 `tmp_wav_clone` の所有権をクロージャ内に移動（move）することを明示します。
+        // 【言語対比】`tokio::task::spawn_blocking`:
+        // 重い同期コマンド実行（ffplay等の外部プロセス）をブロッキング専用スレッドプールに委譲。
         tokio::task::spawn_blocking(move || {
-            let status = Command::new("aplay")
-                .arg("-q")
-                .arg(&tmp_wav_clone)
-                .status()
-                .or_else(|_| {
-                    Command::new("ffplay")
-                        .args(["-nodisp", "-autoexit", "-loglevel", "quiet"])
-                        .arg(&tmp_wav_clone)
-                        .status()
-                });
-            if let Err(e) = status {
-                warn!("音声プレイヤー (aplay/ffplay) の実行に失敗しました: {}", e);
-            }
+            play_audio_file(&tmp_wav_clone);
         })
         .await?;
 
         Ok(())
     }
+}
+
+/// 音声WAVファイルを複数のプレイヤー候補で順次再生試行する
+/// 【SRE的堅牢性】
+/// 1. `ffplay` (WSLg / PulseAudio に完全対応・最優先)
+/// 2. `paplay` (PulseAudio 専用クライアント)
+/// 3. `aplay` (Linux ALSA 直接出力)
+/// 4. `powershell.exe` (WSL2からWindowsホスト側のSoundPlayerを呼び出す究極のフォールバック)
+fn play_audio_file(path: &std::path::Path) {
+    // 1. ffplay (WSLg / PulseAudio)
+    if let Ok(status) = Command::new("ffplay")
+        .args(["-nodisp", "-autoexit", "-loglevel", "quiet"])
+        .arg(path)
+        .status()
+    {
+        if status.success() {
+            return;
+        }
+    }
+
+    // 2. paplay (PulseAudio)
+    if let Ok(status) = Command::new("paplay").arg(path).status() {
+        if status.success() {
+            return;
+        }
+    }
+
+    // 3. aplay (ALSA)
+    if let Ok(status) = Command::new("aplay").arg("-q").arg(path).status() {
+        if status.success() {
+            return;
+        }
+    }
+
+    // 4. Windows 側 PowerShell SoundPlayer へのフォールバック (WSL2環境)
+    if let Ok(win_path_out) = Command::new("wslpath").arg("-w").arg(path).output() {
+        if win_path_out.status.success() {
+            let win_path = String::from_utf8_lossy(&win_path_out.stdout).trim().to_string();
+            let ps_script = format!("(New-Object Media.SoundPlayer '{}').PlaySync()", win_path);
+            let _ = Command::new("powershell.exe")
+                .args(["-NoProfile", "-Command", &ps_script])
+                .status();
+            return;
+        }
+    }
+
+    warn!("音声プレイヤー (ffplay/paplay/aplay/powershell) による再生に失敗しました");
 }
