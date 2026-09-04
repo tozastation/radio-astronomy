@@ -22,6 +22,41 @@ pub struct Config {
     pub scheduler: SchedulerConfig,
     pub voicevox: VoicevoxConfig,
     pub storage: StorageConfig,
+    #[serde(default)]
+    pub sdr: SdrConfig,
+}
+
+fn default_gain() -> f64 {
+    45.0 // 宇宙からの微弱信号用に 45.0 dB の高利得をデフォルト化
+}
+
+fn default_sample_rate() -> u32 {
+    60000 // 60kSPS (APTの信号帯域約34kHzを完全にカバー)
+}
+
+fn default_ppm_error() -> i32 {
+    0
+}
+
+/// RTL-SDR チューナーの受信設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct SdrConfig {
+    #[serde(default = "default_gain")]
+    pub gain: f64,               // チューナー利得 (dB単位: 例 45.0)
+    #[serde(default = "default_sample_rate")]
+    pub sample_rate: u32,        // SDRサンプリングレート (Hz: デフォルト 60000)
+    #[serde(default = "default_ppm_error")]
+    pub ppm_error: i32,          // 水晶発振器の周波数偏差補正 (PPM: 通常 0)
+}
+
+impl Default for SdrConfig {
+    fn default() -> Self {
+        Self {
+            gain: default_gain(),
+            sample_rate: default_sample_rate(),
+            ppm_error: default_ppm_error(),
+        }
+    }
 }
 
 /// 観測地点（地上アンテナ設置場所）の座標
