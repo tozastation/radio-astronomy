@@ -12,9 +12,14 @@ pub struct VoicevoxClient {
 
 impl VoicevoxClient {
     pub fn new(config: VoicevoxConfig) -> Self {
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
             config,
-            http_client: Client::new(),
+            http_client,
         }
     }
 
