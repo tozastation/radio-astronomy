@@ -1,0 +1,19 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Data and artifacts
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Environment / IDE
+.env
+.idea/
+.vscode/
+*.swp
