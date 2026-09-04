@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{FixedOffset, Utc};
-use noaa_station::config::Config;
-use noaa_station::orbit::{azimuth_to_direction, OrbitPredictor, SatelliteInfo, SatellitePass, SignalType};
+use ground_station::config::Config;
+use ground_station::orbit::{azimuth_to_direction, OrbitPredictor, SatelliteInfo, SatellitePass, SignalType};
 use reqwest::Client;
 use std::collections::HashMap;
 

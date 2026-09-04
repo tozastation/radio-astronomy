@@ -1,5 +1,5 @@
-use noaa_station::config::VoicevoxConfig;
-use noaa_station::voicevox::VoicevoxClient;
+use ground_station::config::VoicevoxConfig;
+use ground_station::voicevox::VoicevoxClient;
 
 #[test]
 fn test_voicevox_url_generation() {

@@ -1,4 +1,4 @@
-use noaa_station::config::Config;
+use ground_station::config::Config;
 
 #[test]
 fn test_load_default_config() {

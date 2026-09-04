@@ -1,5 +1,5 @@
-use noaa_station::config::ObserverConfig;
-use noaa_station::orbit::{azimuth_to_direction, OrbitPredictor, SatelliteInfo};
+use ground_station::config::ObserverConfig;
+use ground_station::orbit::{azimuth_to_direction, OrbitPredictor, SatelliteInfo};
 
 #[test]
 fn test_tle_parsing_and_pass_prediction() {
@@ -10,7 +10,7 @@ fn test_tle_parsing_and_pass_prediction() {
         name: "NOAA 19".to_string(),
         norad_id: 33591,
         frequency_hz: 137_100_000,
-        signal_type: noaa_station::orbit::SignalType::Apt,
+        signal_type: ground_station::orbit::SignalType::Apt,
         line1: tle_line1.to_string(),
         line2: tle_line2.to_string(),
     };
@@ -25,7 +25,7 @@ fn test_tle_parsing_and_pass_prediction() {
     use chrono::TimeZone;
     let start_of_day = chrono::Utc.with_ymd_and_hms(2026, 9, 3, 15, 0, 0).unwrap();
 
-    let satellites_config = noaa_station::config::SatellitesConfig {
+    let satellites_config = ground_station::config::SatellitesConfig {
         enable_meteor: true,
         enable_noaa: true,
     };
@@ -34,7 +34,7 @@ fn test_tle_parsing_and_pass_prediction() {
     let http_client = reqwest::Client::new();
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let satellites = runtime.block_on(async {
-        noaa_station::orbit::fetch_weather_tles(&http_client, &satellites_config).await.unwrap()
+        ground_station::orbit::fetch_weather_tles(&http_client, &satellites_config).await.unwrap()
     });
 
     let passes = OrbitPredictor::predict_all_passes(&satellites, &observer, start_of_day, 24, 15.0)
