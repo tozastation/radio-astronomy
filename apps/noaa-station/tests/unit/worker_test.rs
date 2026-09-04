@@ -58,4 +58,6 @@ fn test_command_args_construction() {
     assert_eq!(satdump_args[3], "/tmp/output");
     assert!(satdump_args.contains(&"--samplerate".to_string()));
     assert!(satdump_args.contains(&"240000".to_string()));
+    assert!(satdump_args.contains(&"--baseband_format".to_string()));
+    assert!(satdump_args.contains(&"cu8".to_string()));
 }
