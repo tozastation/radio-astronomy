@@ -54,7 +54,7 @@ pub fn create_wav_header(data_size: u32) -> [u8; 44] {
 }
 
 /// rtl_fm 録音用引数を構築
-/// - `-M wfm`: 帯域の広いFM復調（NOAA-APT信号の34〜40kHzに対応）
+/// - `-M fm`: 標準FM復調（NOAA-APT信号の約34kHzに最適化し、ワイドFMのような余計な広帯域ノイズをカット）
 /// - `-s 60k`: SDRのサンプリングレート
 /// - `-r 11025`: 音声サンプリングレート (noaa-apt デコーダ標準)
 /// - `-g <gain>`: チューナー利得 (例: 45.0dB)
@@ -64,7 +64,7 @@ pub fn create_wav_header(data_size: u32) -> [u8; 44] {
 pub fn build_rtl_fm_args(freq_hz: u64, sdr: &SdrConfig) -> Vec<String> {
     let mut args = vec![
         "-M".to_string(),
-        "wfm".to_string(),
+        "fm".to_string(),
         "-f".to_string(),
         freq_hz.to_string(),
         "-s".to_string(),
