@@ -24,6 +24,8 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default)]
     pub sdr: SdrConfig,
+    #[serde(default)]
+    pub discord: DiscordConfig,
 }
 
 fn default_gain() -> f64 {
@@ -96,29 +98,43 @@ pub struct StorageConfig {
     pub output_dir: String, // 保存先ディレクトリ (例: "data/noaa")
 }
 
+/// Discord Webhook 通知設定
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct DiscordConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub webhook_url: Option<String>,
+}
+
 // =============================================================================
 // メソッド実装ブロック (impl Config)
-// -----------------------------------------------------------------------------
-// 【言語対比】
-// - impl Config: Goでいう `func (c *Config) Method()` のように構造体にメソッドを生やす構文。
-// - Result<Self>: Goでいう `(Config, error)` の多値返却に相当します。
-//   成功時は `Ok(config)`、失敗時は `Err(err)` をラップして返します。
-// - `?` 演算子: Goでいう `if err != nil { return nil, err }` のボイラープレートを
-//   1文字で代行する早期リターン構文です。
 // =============================================================================
 impl Config {
     /// TOML文字列から設定構造体をパース
     pub fn from_str(s: &str) -> Result<Self> {
-        // toml::from_str でデシリアライズし、エラー時は context で文脈メッセージを付加
         toml::from_str(s).context("TOML設定のパースに失敗しました")
     }
 
-    /// ファイルパスから設定を読み込む
-    /// 【言語対比】P: AsRef<Path> は Go の io.Reader や TS の string | Path のような
-    /// 抽象引数。文字列スライス `&str` でも `PathBuf` でも受け取れるようにするイディオムです。
+    /// ファイルパスから設定を読み込み、環境変数（.env, .local.env）でオーバーライド
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        // .env および .local.env を自動探索して読み込み
+        dotenvy::dotenv().ok();
+        dotenvy::from_filename(".local.env").ok();
+        dotenvy::from_filename("../.local.env").ok();
+
         let content = fs::read_to_string(path.as_ref())
             .with_context(|| format!("設定ファイルの読み込みに失敗しました: {:?}", path.as_ref()))?;
-        Self::from_str(&content)
+        let mut config = Self::from_str(&content)?;
+
+        // 環境変数 DISCORD_WEBHOOK_URL が存在する場合は最優先で採用し、自動有効化
+        if let Ok(url) = std::env::var("DISCORD_WEBHOOK_URL") {
+            if !url.trim().is_empty() {
+                config.discord.webhook_url = Some(url.trim().to_string());
+                config.discord.enabled = true;
+            }
+        }
+
+        Ok(config)
     }
 }
