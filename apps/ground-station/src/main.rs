@@ -37,6 +37,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// RTL-SDRデバイス、デコーダ、VOICEVOX、ストレージの事前ヘルスチェックを実行
+    Check,
     /// 今後24時間の通過予定一覧をテーブル表示 (パス予測の即時確認)
     Schedule,
     /// ずんだもん音声発話の疎通テスト (VOICEVOX 連携確認)
@@ -63,6 +65,13 @@ async fn main() -> Result<()> {
     // 【言語対比】`match` によるサブコマンド分岐:
     // Go の `switch cmd` や TypeScript の `switch (command.type)` に相当。
     match cli.command {
+        Commands::Check => {
+            let report = ground_station::health::run_preflight_checks(&config).await?;
+            report.print_table();
+            if report.is_fatal() {
+                anyhow::bail!("ヘルスチェックで致命的なエラーが検出されました。上記の対処法に従って解決してください。");
+            }
+        }
         Commands::Schedule => {
             show_schedule(&config).await?;
         }
@@ -73,6 +82,12 @@ async fn main() -> Result<()> {
             test_discord(&config).await?;
         }
         Commands::Daemon => {
+            println!("🔍 起動時事前ヘルスチェックを実行中...");
+            let report = ground_station::health::run_preflight_checks(&config).await?;
+            report.print_table();
+            if report.is_fatal() {
+                anyhow::bail!("ヘルスチェックで致命的なエラーが検出されたため、デーモン起動を中止しました。");
+            }
             run_daemon(config).await?;
         }
     }
