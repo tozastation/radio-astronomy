@@ -20,19 +20,45 @@ fn test_tle_parsing_and_pass_prediction() {
         altitude_m: 200.0,
     };
 
-    // 現在時刻から今後24時間をスキャン
-    let base_time = chrono::Utc::now();
-    let passes = OrbitPredictor::predict_passes_for_satellite(&sat, &observer, base_time, 24, 15.0)
+    // 2026-09-04 00:00:00 JST (2026-09-03 15:00:00 UTC) から 24時間をスキャン
+    use chrono::TimeZone;
+    let start_of_day = chrono::Utc.with_ymd_and_hms(2026, 9, 3, 15, 0, 0).unwrap();
+
+    // 最新TLEの取得
+    let http_client = reqwest::Client::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let satellites = runtime.block_on(async {
+        noaa_station::orbit::fetch_weather_tles(&http_client).await.unwrap()
+    });
+
+    let passes = OrbitPredictor::predict_all_passes(&satellites, &observer, start_of_day, 24, 15.0)
         .expect("パス計算に失敗しました");
 
-    // 24時間あれば極軌道衛星は最低1回以上日本上空を通過する
+    println!("\n========================================================================================================");
+    println!("📅 本日 (2026年9月4日 00:00 〜 24:00 JST) の NOAA 気象衛星 真の通過スケジュール一覧");
+    println!("========================================================================================================");
+    println!("{:<10} | {:<12} | {:<20} | {:<20} | {:<20}", "衛星名", "周波数", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
+    println!("--------------------------------------------------------------------------------------------------------");
+    for p in &passes {
+        let aos_jst: chrono::DateTime<chrono::Local> = chrono::DateTime::from(p.aos);
+        let los_jst: chrono::DateTime<chrono::Local> = chrono::DateTime::from(p.los);
+        let freq_mhz = p.frequency_hz as f64 / 1_000_000.0;
+        let dir = azimuth_to_direction(p.peak_azimuth_deg);
+        println!(
+            "{:<10} | {:>7.4} MHz | {} | {} | {:>4.1}° ({})",
+            p.satellite_name, freq_mhz,
+            aos_jst.format("%Y-%m-%d %H:%M:%S"),
+            los_jst.format("%Y-%m-%d %H:%M:%S"),
+            p.max_elevation_deg, dir
+        );
+    }
+    println!("========================================================================================================\n");
+
     assert!(!passes.is_empty(), "24時間以内に少なくとも1回のパスが検出される必要があります");
     for pass in &passes {
         assert!(pass.max_elevation_deg >= 15.0);
         assert!(pass.peak_azimuth_deg >= 0.0 && pass.peak_azimuth_deg < 360.0);
         assert!(pass.los > pass.aos);
-        assert_eq!(pass.frequency_hz, 137_100_000);
-        assert_eq!(pass.satellite_name, "NOAA 19");
     }
 }
 
