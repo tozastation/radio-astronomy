@@ -1,6 +1,6 @@
 use crate::config::ObserverConfig;
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, Utc};
 use log::info;
 use reqwest::Client;
 use sgp4::{Constants, Elements};
@@ -275,7 +275,7 @@ fn calculate_topo_pos(
     t: DateTime<Utc>,
 ) -> (f64, f64) {
     // TLE エポック（起点時刻）からの経過時間 (分) を計算
-    let epoch_dt = sgp4_epoch_to_datetime(elements.epoch());
+    let epoch_dt = DateTime::<Utc>::from_naive_utc_and_offset(elements.datetime, Utc);
     let diff = t.signed_duration_since(epoch_dt);
     let minutes_since_epoch = diff.num_milliseconds() as f64 / 60_000.0;
 
@@ -339,22 +339,6 @@ fn calculate_topo_pos(
     (el_deg, az_deg)
 }
 
-/// SGP4 の epoch 形式 (YYDDD.DDDDDD) を標準の UTC 日時に変換
-fn sgp4_epoch_to_datetime(epoch: f64) -> DateTime<Utc> {
-    let year_prefix = epoch as i32 / 1000;
-    let full_year = if year_prefix < 57 {
-        2000 + year_prefix
-    } else {
-        1900 + year_prefix
-    };
-    let day_of_year = epoch - (year_prefix * 1000) as f64;
-    let whole_days = day_of_year.floor() as i64;
-    let day_fraction = day_of_year - whole_days as f64;
-
-    let jan1 = Utc.with_ymd_and_hms(full_year, 1, 1, 0, 0, 0).unwrap();
-    let seconds = ((whole_days - 1) as f64 + day_fraction) * 86400.0;
-    jan1 + Duration::milliseconds((seconds * 1000.0) as i64)
-}
 
 /// 指定 UTC 日時におけるグリニッジ平均恒星時 (GMST) を算出 (rad)
 /// IAU 1982 公式を用いて地球の自転角を求めます。
