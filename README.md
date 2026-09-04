@@ -285,7 +285,9 @@ radio-astronomy/
 │   ├── 00_glossary.md                 # 電波天文学 & SDR 用語集 (Glossary)
 │   ├── 01_math_and_dsp_cheatsheet.md  # 複素数・IQ・FFT・窓関数・雑音理論
 │   ├── 02_radio_astronomy_guide.md    # 21cm線・銀河回転・座標系・ドップラー効果
-│   └── 03_system_architecture.md      # 自宅KubeEdge分散観測システム構成図
+│   ├── 03_system_architecture.md      # 自宅KubeEdge分散観測システム構成図
+│   ├── 04_qa.md                       # 質疑応答・ナレッジ蓄積集 (Q&A)
+│   └── 05_getting_started.md          # エッジ構築＆電波受信ファーストステップ
 ├── notebooks/                # 実践 Jupyter Notebook
 │   ├── 01_iq_and_dsp_foundations.ipynb  # IQ信号生成・FFT・PSD・窓関数の実験
 │   ├── 02_radiometer_and_noise.ipynb   # 放射計方程式とノイズ積算シミュレーション
