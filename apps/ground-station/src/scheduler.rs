@@ -207,9 +207,10 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             pass.satellite_name.replace(' ', "")
         ));
 
-        let record_path = match pass.signal_type {
-            SignalType::Apt => session_dir.join("raw.wav"),
-            SignalType::Lrpt => session_dir.join("raw.u8"),
+        let record_path = if pass.signal_type.is_raw_iq() {
+            session_dir.join("raw.u8")
+        } else {
+            session_dir.join("raw.wav")
         };
         let png_path = session_dir.join("image.png");
 
@@ -278,6 +279,12 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             }
             SignalType::Lrpt => {
                 Decoder::decode_meteor_lrpt(&saved_record, &session_dir).await
+            }
+            SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry | SignalType::MorseCw => {
+                Decoder::decode_cubesat(&pass, &saved_record, &session_dir).await
+            }
+            SignalType::IssSstv => {
+                Decoder::decode_iss_sstv(&saved_record, &session_dir).await
             }
         };
 

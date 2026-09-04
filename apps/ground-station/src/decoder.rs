@@ -131,4 +131,79 @@ impl Decoder {
             bail!("satdump による画像ファイルが生成されませんでした: {:?}", output_dir);
         }
     }
+
+    /// キューブサット生IQ信号のデコード (satdump / gr-satellites)
+    pub async fn decode_cubesat(
+        pass: &crate::orbit::SatellitePass,
+        input_raw: &Path,
+        output_dir: &Path,
+    ) -> Result<std::path::PathBuf> {
+        info!(
+            "CubeSat デコード開始: 衛星 {}, 方式 {:?}, 入力 {:?} -> 出力 {:?}",
+            pass.satellite_name, pass.signal_type, input_raw, output_dir
+        );
+
+        if !input_raw.exists() {
+            bail!("入力生IQファイルが存在しません: {:?}", input_raw);
+        }
+
+        std::fs::create_dir_all(output_dir)
+            .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
+
+        // satdump または gr-satellites がインストールされていれば実行
+        if crate::health::check_command_exists("satdump") {
+            let status = Command::new("satdump")
+                .arg("live")
+                .arg(&pass.satellite_name)
+                .arg(input_raw)
+                .arg(output_dir)
+                .status()
+                .await;
+            if let Ok(st) = status {
+                if st.success() {
+                    if let Ok(entries) = std::fs::read_dir(output_dir) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                                if ext == "png" || ext == "jpg" {
+                                    return Ok(p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 外部デコーダ未導入または画像未生成時は生IQファイルのパスを返す (Graceful Degradation)
+        Ok(input_raw.to_path_buf())
+    }
+
+    /// ISS SSTV (音声WAVから画像復調)
+    pub async fn decode_iss_sstv(
+        input_wav: &Path,
+        output_dir: &Path,
+    ) -> Result<std::path::PathBuf> {
+        info!("ISS SSTV デコード開始: 入力 {:?} -> 出力 {:?}", input_wav, output_dir);
+
+        if !input_wav.exists() {
+            bail!("入力WAVファイルが存在しません: {:?}", input_wav);
+        }
+
+        std::fs::create_dir_all(output_dir)
+            .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
+
+        let out_png = output_dir.join("iss_sstv.png");
+        if crate::health::check_command_exists("satdump") {
+            let _ = Command::new("satdump")
+                .args(&["iss_sstv", "audio", &input_wav.to_string_lossy(), &output_dir.to_string_lossy()])
+                .status()
+                .await;
+            if out_png.exists() {
+                return Ok(out_png);
+            }
+        }
+
+        Ok(input_wav.to_path_buf())
+    }
 }

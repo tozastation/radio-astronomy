@@ -1,5 +1,5 @@
 use crate::config::{ObserverConfig, SatellitesConfig};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use log::info;
 use reqwest::Client;
@@ -27,6 +27,16 @@ pub enum SignalType {
     Apt,
     /// Meteor-M LRPT: 72k/80k QPSK デジタル変調 (広帯域IQストリーム)
     Lrpt,
+    /// CubeSat SSDV: カメラ画像分割パケット送信 (生IQストリーム)
+    CubeSatSsdv,
+    /// CubeSat SSTV: アナログスロースキャンTV画像 (生IQストリーム)
+    CubeSatSstv,
+    /// CubeSat Telemetry: BPSK/AFSK テレメトリデータ (生IQストリーム)
+    CubeSatTelemetry,
+    /// CubeSat Morse: CWモールス符号 (狭帯域IQまたはオーディオ)
+    MorseCw,
+    /// ISS SSTV: 国際宇宙ステーションからのカラー画像 (Robot36 / Martin1 等)
+    IssSstv,
 }
 
 impl SignalType {
@@ -34,6 +44,35 @@ impl SignalType {
         match self {
             SignalType::Apt => "NOAA APT (アナログ)",
             SignalType::Lrpt => "Meteor LRPT (デジタルQPSK)",
+            SignalType::CubeSatSsdv => "CubeSat SSDV (カメラ画像)",
+            SignalType::CubeSatSstv => "CubeSat SSTV (カメラ画像)",
+            SignalType::CubeSatTelemetry => "CubeSat Telemetry (テレメトリ)",
+            SignalType::MorseCw => "CubeSat Morse (モールスCW)",
+            SignalType::IssSstv => "ISS SSTV (宇宙ステーション画像)",
+        }
+    }
+
+    pub fn from_str_type(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "camerasstv" | "sstv" | "cubesatsstv" => SignalType::CubeSatSstv,
+            "isssstv" | "iss" => SignalType::IssSstv,
+            "ssdvcamera" | "ssdv" => SignalType::CubeSatSsdv,
+            "morsecw" | "morse" | "cw" => SignalType::MorseCw,
+            "lrpt" => SignalType::Lrpt,
+            "apt" => SignalType::Apt,
+            _ => SignalType::CubeSatTelemetry,
+        }
+    }
+
+    /// 受信録音時の方式（FM音声 vs 生IQベースバンド）
+    pub fn is_raw_iq(&self) -> bool {
+        match self {
+            SignalType::Apt | SignalType::IssSstv => false,
+            SignalType::Lrpt
+            | SignalType::CubeSatSsdv
+            | SignalType::CubeSatSstv
+            | SignalType::CubeSatTelemetry
+            | SignalType::MorseCw => true,
         }
     }
 }
@@ -217,73 +256,155 @@ impl OrbitPredictor {
     }
 }
 
-/// CelesTrak から対象の気象衛星（Meteor-M / NOAA）の TLE を個別取得
-pub async fn fetch_weather_tles(
+/// 3行フォーマットのTLEテキストをパースして NORAD ID をキーとしてマップに格納
+pub fn parse_3line_tles(
+    text: &str,
+    out_map: &mut std::collections::HashMap<u32, (String, String, String)>,
+) {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut i = 0;
+    while i + 2 < lines.len() {
+        if lines[i + 1].starts_with("1 ") && lines[i + 2].starts_with("2 ") {
+            let sat_name = lines[i].to_string();
+            let line1 = lines[i + 1].to_string();
+            let line2 = lines[i + 2].to_string();
+
+            // Line 2 の文字インデックス 2..7 から NORAD ID を抽出 (例: "2 25544 ...")
+            if line2.len() >= 7 {
+                if let Ok(norad_id) = line2[2..7].trim().parse::<u32>() {
+                    out_map.insert(norad_id, (sat_name, line1, line2));
+                }
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// CelesTrak から対象の全衛星（気象衛星、キューブサット、ISS等）の TLE を一括・個別取得
+pub async fn fetch_all_tles(
     client: &Client,
     satellites_config: &SatellitesConfig,
 ) -> Result<Vec<SatelliteInfo>> {
-    let mut targets = Vec::new();
+    let mut targets: Vec<(String, u32, u64, SignalType)> = Vec::new();
 
-    // 1. ロシア極軌道気象衛星 Meteor-M (現役・LRPT デジタルQPSK)
-    if satellites_config.enable_meteor {
-        // Meteor-M N2-3: 137.900 MHz (NORAD ID: 57166)
-        targets.push(("Meteor-M N2-3", 57166, 137_900_000, SignalType::Lrpt));
-        // Meteor-M N2-4: 137.900 MHz (NORAD ID: 59051)
-        targets.push(("Meteor-M N2-4", 59051, 137_900_000, SignalType::Lrpt));
+    // 1. 気象衛星 Meteor-M (ロシア極軌道 LRPT)
+    if satellites_config.is_meteor_enabled() {
+        targets.push(("Meteor-M N2-3".to_string(), 57166, 137_900_000, SignalType::Lrpt));
+        targets.push(("Meteor-M N2-4".to_string(), 59051, 137_900_000, SignalType::Lrpt));
     }
 
-    // 2. 米国極軌道気象衛星 NOAA POES (2025年8月に全機退役・停波)
-    if satellites_config.enable_noaa {
-        targets.push(("NOAA 15", 25338, 137_620_000, SignalType::Apt));
-        targets.push(("NOAA 18", 28654, 137_912_500, SignalType::Apt));
-        targets.push(("NOAA 19", 33591, 137_100_000, SignalType::Apt));
+    // 2. 気象衛星 NOAA (米国極軌道 APT - 停波)
+    if satellites_config.is_noaa_enabled() {
+        targets.push(("NOAA 15".to_string(), 25338, 137_620_000, SignalType::Apt));
+        targets.push(("NOAA 18".to_string(), 28654, 137_912_500, SignalType::Apt));
+        targets.push(("NOAA 19".to_string(), 33591, 137_100_000, SignalType::Apt));
+    }
+
+    // 3. 国際宇宙ステーション (ISS SSTV/FM)
+    if satellites_config.iss.enabled {
+        targets.push((
+            "ISS (ZARYA)".to_string(),
+            satellites_config.iss.norad_id,
+            satellites_config.iss.freq,
+            SignalType::IssSstv,
+        ));
+    }
+
+    // 4. キューブサット (超小型衛星)
+    if satellites_config.cubesats.enabled {
+        for t in &satellites_config.cubesats.targets {
+            let sig_type = SignalType::from_str_type(&t.r#type);
+            targets.push((t.name.clone(), t.norad_id, t.freq, sig_type));
+        }
     }
 
     if targets.is_empty() {
-        info!("追尾対象の気象衛星が設定されていません (enable_meteor または enable_noaa を有効にしてください)");
+        info!("追尾対象の衛星が設定されていません");
         return Ok(Vec::new());
+    }
+
+    // CelesTrak からグループ TLE を取得してメモリ上にインデックス化
+    let mut tle_db: std::collections::HashMap<u32, (String, String, String)> =
+        std::collections::HashMap::new();
+
+    // 4-1. 気象衛星グループ TLE
+    if satellites_config.is_meteor_enabled() || satellites_config.is_noaa_enabled() {
+        let weather_url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle";
+        if let Ok(resp) = client.get(weather_url).send().await {
+            if let Ok(text) = resp.text().await {
+                parse_3line_tles(&text, &mut tle_db);
+            }
+        }
+    }
+
+    // 4-2. アマチュア衛星グループ TLE (CubeSat, ISS)
+    if satellites_config.cubesats.enabled || satellites_config.iss.enabled {
+        let amateur_url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle";
+        if let Ok(resp) = client.get(amateur_url).send().await {
+            if let Ok(text) = resp.text().await {
+                parse_3line_tles(&text, &mut tle_db);
+            }
+        }
     }
 
     let mut results = Vec::new();
     for (name, norad_id, freq, sig_type) in targets {
-        // CelesTrak GP API (カタログ番号 CATNR 指定で取得)
-        let url = format!(
-            "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle",
-            norad_id
-        );
-        info!("TLE 取得中: {} (NORAD ID: {}, 方式: {:?})", name, norad_id, sig_type);
-
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("TLE取得失敗: {}", name))?;
-
-        let text = resp
-            .text()
-            .await
-            .with_context(|| format!("レスポンステキスト取得失敗: {}", name))?;
-
-        let lines: Vec<&str> = text
-            .lines()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        // TLE形式: 1行目が衛星名、2行目が "1 ...", 3行目が "2 ..."
-        if lines.len() >= 3 && lines[1].starts_with("1 ") && lines[2].starts_with("2 ") {
+        // グループ TLE から探索
+        if let Some((_tle_name, line1, line2)) = tle_db.get(&norad_id) {
             results.push(SatelliteInfo {
-                name: name.to_string(),
+                name,
                 norad_id,
                 frequency_hz: freq,
                 signal_type: sig_type,
-                line1: lines[1].to_string(),
-                line2: lines[2].to_string(),
+                line1: line1.clone(),
+                line2: line2.clone(),
             });
+        } else {
+            // グループに含まれていない場合は個別 CATNR クエリで取得
+            let url = format!(
+                "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle",
+                norad_id
+            );
+            info!("TLE 個別取得中: {} (NORAD ID: {})", name, norad_id);
+            if let Ok(resp) = client.get(&url).send().await {
+                if let Ok(text) = resp.text().await {
+                    let lines: Vec<&str> = text
+                        .lines()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    if lines.len() >= 3 && lines[1].starts_with("1 ") && lines[2].starts_with("2 ") {
+                        results.push(SatelliteInfo {
+                            name,
+                            norad_id,
+                            frequency_hz: freq,
+                            signal_type: sig_type,
+                            line1: lines[1].to_string(),
+                            line2: lines[2].to_string(),
+                        });
+                    }
+                }
+            }
         }
     }
 
+    info!("合計 {} 機の衛星 TLE を読み込みました", results.len());
     Ok(results)
+}
+
+/// 下位互換用エイリアス
+pub async fn fetch_weather_tles(
+    client: &Client,
+    satellites_config: &SatellitesConfig,
+) -> Result<Vec<SatelliteInfo>> {
+    fetch_all_tles(client, satellites_config).await
 }
 
 /// 観測地（緯度・経度・標高）の WGS84 楕円体における ECEF 直交座標 (km) を算出

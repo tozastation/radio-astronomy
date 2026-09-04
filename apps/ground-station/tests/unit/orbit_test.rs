@@ -82,3 +82,13 @@ fn test_azimuth_to_direction() {
     assert_eq!(azimuth_to_direction(315.0), "北西 (NW)");
 }
 
+#[test]
+fn test_signal_type_display_and_parsing() {
+    let sig = ground_station::orbit::SignalType::CubeSatSsdv;
+    assert_eq!(sig.name(), "CubeSat SSDV (カメラ画像)");
+    assert_eq!(ground_station::orbit::SignalType::CubeSatSstv.name(), "CubeSat SSTV (カメラ画像)");
+    assert_eq!(ground_station::orbit::SignalType::CubeSatTelemetry.name(), "CubeSat Telemetry (テレメトリ)");
+    assert_eq!(ground_station::orbit::SignalType::MorseCw.name(), "CubeSat Morse (モールスCW)");
+    assert_eq!(ground_station::orbit::SignalType::IssSstv.name(), "ISS SSTV (宇宙ステーション画像)");
+}
+
