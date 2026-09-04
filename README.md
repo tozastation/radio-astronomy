@@ -278,26 +278,49 @@ jupyter lab
 
 ```text
 radio-astronomy/
-├── README.md                 # 本ドキュメント
-├── pyproject.toml            # プロジェクト設定・パッケージ定義
-├── requirements.txt          # Python依存ライブラリ一覧
-├── docs/                     # 数学・DSP・電波天文学の詳細解説ノート
+├── README.md                          # 本ドキュメント
+├── Cargo.toml                         # Rust ワークスペース設定
+├── mise.toml                          # ツールバージョン管理 (mise)
+├── pyproject.toml / requirements.txt  # Python依存ライブラリ一覧 (Jupyter分析用)
+├── apps/                              # 🚀 独立したツール・デーモン群 (モノレポ構成)
+│   ├── noaa-station/                  # 🛰️ [Rust] NOAA気象衛星 自律自動受信・デコード地上局
+│   │   ├── Cargo.toml                 # クレート固有の依存関係
+│   │   ├── config.toml                # 観測地座標・VOICEVOX等の設定
+│   │   └── src/
+│   │       ├── main.rs                # CLIサブコマンド (schedule / test-voice / daemon)
+│   │       ├── config.rs              # TOML設定読み込み (serde)
+│   │       ├── orbit.rs               # CelesTrak TLE取得 & sgp4軌道・仰角計算
+│   │       ├── scheduler.rs           # tokio非同期タイマーループ & ステートマシン
+│   │       ├── receiver.rs            # rtl_fm プロセス制御 (WAV録音・安全停止)
+│   │       ├── decoder.rs             # noaa-apt CLI 呼び出し & PNG画像生成
+│   │       └── voicevox.rs            # VOICEVOX API 連携 & ずんだもん音声通知
+│   ├── sdr-collector/                 # ⚡ [Rust] (今後) 2.4MSPS 高速IQ受信・FFT・1秒積算エッジデーモン
+│   └── meteor-detector/               # 🌠 [Python/Rust] (今後) 流星電波反射エコー検知
+├── packages/                          # 📦 ツール間で共通利用するライブラリ群 (必要に応じて追加)
+│   ├── rust/                          # 例: sdr-common, dsp-utils などの共通クレート
+│   └── python/                        # 例: 共通の天文学ユーティリティ等
+├── docs/                              # 📚 数学・DSP・電波天文学の詳細解説ノート・仕様書
 │   ├── 00_glossary.md                 # 電波天文学 & SDR 用語集 (Glossary)
 │   ├── 01_math_and_dsp_cheatsheet.md  # 複素数・IQ・FFT・窓関数・雑音理論
 │   ├── 02_radio_astronomy_guide.md    # 21cm線・銀河回転・座標系・ドップラー効果
 │   ├── 03_system_architecture.md      # 自宅KubeEdge分散観測システム構成図
 │   ├── 04_qa.md                       # 質疑応答・ナレッジ蓄積集 (Q&A)
-│   └── 05_getting_started.md          # エッジ構築＆電波受信ファーストステップ
-├── notebooks/                # 実践 Jupyter Notebook
+│   ├── 05_getting_started.md          # エッジ構築＆電波受信ファーストステップ
+│   └── superpowers/specs/             # ツール別詳細設計仕様書
+│       └── 2026-09-04-noaa-station-design.md
+├── notebooks/                         # 📓 実践 Jupyter Notebook
 │   ├── 01_iq_and_dsp_foundations.ipynb  # IQ信号生成・FFT・PSD・窓関数の実験
 │   ├── 02_radiometer_and_noise.ipynb   # 放射計方程式とノイズ積算シミュレーション
 │   ├── 03_meteor_scatter_analysis.ipynb # 流星電波反射エコー検出
 │   └── 04_hi_line_rotation_curve.ipynb # 21cm線解析と銀河回転曲線のプロット
-└── src/                      # 観測・信号処理・パイプラインコード
-    ├── collector/            # RTL-SDR制御・生IQデータ/スペクトル収集
-    ├── dsp/                  # FFT・ポリフェーズフィルタ・積算処理
-    └── pipeline/             # 自動観測・DB保存・エクスポートパイプライン
+├── k8s/                               # ☸️ KubeEdge / Kubernetes マニフェスト
+│   ├── cloud/                         # ゲーミングPC側 (CloudCore, JupyterLab, Grafana)
+│   └── edge/                          # GPD Pocket3側 (EdgeCore, noaa-station, collector)
+└── data/                              # 💾 観測データ・生成物 (.gitignore 対象)
+    ├── noaa/                          # NOAA衛星画像 (PNG) & 録音 (WAV)
+    └── spectra/                       # 21cm積算スペクトル (Parquet / DuckDB)
 ```
+
 
 ---
 

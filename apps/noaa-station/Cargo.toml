@@ -1,0 +1,49 @@
+[package]
+name = "noaa-station"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sgp4 = "0.2"
+nix = { version = "0.29", features = ["signal", "process"] }
+urlencoding = "2.1"
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.11"
+
+# ==============================================================================
+# 🧪 単体テスト (Unit Tests)
+# ------------------------------------------------------------------------------
+# 外部プロセスやネットワークに依存せず、内部ロジックや計算精度を検証
+# ==============================================================================
+[[test]]
+name = "unit_config"
+path = "tests/unit/config_test.rs"
+
+[[test]]
+name = "unit_orbit"
+path = "tests/unit/orbit_test.rs"
+
+[[test]]
+name = "unit_voicevox"
+path = "tests/unit/voicevox_test.rs"
+
+[[test]]
+name = "unit_worker"
+path = "tests/unit/worker_test.rs"
+
+# ==============================================================================
+# 🔗 統合テスト (Integration Tests)
+# ------------------------------------------------------------------------------
+# VOICEVOX Engine コンテナ等の外部サービスと実際に通信して結合動作を検証
+# ==============================================================================
+[[test]]
+name = "integration_voicevox"
+path = "tests/integration/voicevox_integration_test.rs"
