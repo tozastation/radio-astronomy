@@ -54,7 +54,8 @@ passwd
 ```
 
 ### 2. Windows 側で Mirrored モードを設定
-WSL2 がホスト Windows の LAN IP アドレスを直接共有するようにします（ポートフォワーディング不要）。
+WSL2 がホスト Windows の LAN IP アドレスを直接共有するようにします（ポートフォワーディング不要）。  
+*(公式仕様: [Microsoft Learn: WSL の詳細構成設定 - Mirrored mode networking](https://learn.microsoft.com/ja-jp/windows/wsl/wsl-config#mirrored-mode-networking) / [WSL のネットワーク構成](https://learn.microsoft.com/ja-jp/windows/wsl/networking))*
 
 GPD Pocket3 の Windows 側で `C:\Users\<Windowsユーザー名>\.wslconfig` を作成・編集：
 
@@ -93,7 +94,8 @@ ssh-copy-id <WSLユーザー名>@<GPD Pocket3のLAN_IP>
 
 ## Step 3: RTL-SDR の USB パススルー（`usbipd-win`）
 
-Windows ホストに挿した RTL-SDR ドングルを WSL2 内へパススルーします。
+Windows ホストに挿した RTL-SDR ドングルを WSL2 内へパススルーします。  
+*(公式リポジトリ: [GitHub: dorssel/usbipd-win](https://github.com/dorssel/usbipd-win) / [Microsoft Learn: USB デバイスの接続](https://learn.microsoft.com/ja-jp/windows/wsl/connect-usb))*
 
 ### 1. `usbipd-win` のインストール（Windows 側）
 GPD Pocket3 の PowerShell（管理者）で実行：
@@ -131,7 +133,8 @@ lsusb
 > **超重要（既知の罠）**:  
 > Ubuntu 標準の `apt install rtl-sdr` で入るドライバは旧型（V3/R820T用）です。  
 > 新型 V4 に搭載されたチューナーチップ（Rafael Micro R828D）に対応していないため、指定した周波数にロックできず **`[R82XX] PLL not locked!` が無限に出力される問題** が必ず発生します。  
-> 公式リポジトリからパッチ適用済みドライバを自前ビルドして導入します。
+> 必ず公式パッチ適用済みドライバを自前ビルドして導入してください。  
+> *(公式情報: [RTL-SDR Blog V4 Users Guide](https://www.rtl-sdr.com/V4/) / [GitHub: rtlsdrblog/rtl-sdr-blog](https://github.com/rtlsdrblog/rtl-sdr-blog))*
 
 ### 一発ビルド＆インストール手順
 
@@ -227,6 +230,14 @@ ssh <WSLユーザー名>@<GPD Pocket3のLAN_IP> "rtl_fm -M wfm -f 81.3M -s 200k 
 おめでとうございます！これで「電波を受信し、データ処理し、ネットワーク越しに活用する」ための基盤が完成しました。
 
 ここからは、本プロジェクトの真の目的である**宇宙・天体観測**に進みます：
-1. [人工衛星（NOAA気象衛星）の軌道計算とリアルタイム地球画像デコード](04_qa.md#3-アプリケーションシステム応用)
-2. [流星電波前方散乱観測（53.57MHz 流星エコー検知）](04_qa.md#1-観測対象宇宙の状態)
-3. [天の川銀河の21cm中性水素線観測＆銀河回転曲線解析](02_radio_astronomy_guide.md)
+1. **人工衛星（NOAA気象衛星 / Meteor-M）の軌道計算とリアルタイム地球画像デコード**:
+   - 軌道要素（TLE）計算: [Skyfield 公式ドキュメント](https://rhodesmill.org/skyfield/)
+   - NOAA APT デコーダ: [noaa-apt 公式サイト・GitHub](https://noaa-apt.mbernardi.com.ar/)
+   - 汎用衛星デコーダ: [GitHub: SatDump/SatDump](https://github.com/SatDump/SatDump)
+   - 詳細解説: [04_qa.md#3-アプリケーションシステム応用](04_qa.md#3-アプリケーションシステム応用)
+2. **流星電波前方散乱観測（53.57MHz 流星エコー検知）**:
+   - 福井高専の送信所や国内の電波反射観測網を活用した突入エコーの自動カウント。
+   - 詳細解説: [04_qa.md#1-観測対象宇宙の状態](04_qa.md#1-観測対象宇宙の状態)
+3. **天の川銀河の21cm中性水素線観測＆銀河回転曲線解析**:
+   - 1420MHz水素線スペクトルからドップラー速度を算出し、ダークマターの存在を検証。
+   - 詳細解説: [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md)
