@@ -106,6 +106,7 @@ async fn test_discord(config: &Config) -> Result<()> {
             137_912_500,
             "2026-09-04 12:13:00 〜 12:20:00",
             None,
+            Some("🛰️ **NOAA 19**\n時間: 22:08:30 〜 22:17:00\n最大仰角: 40.7° (西南西 (WSW))"),
         )
         .await?;
 

@@ -133,7 +133,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         };
 
         // LOS（通過終了）が現在より未来にある最も近いパスを特定
-        let next_pass = passes.into_iter().find(|p| p.los > now);
+        let next_pass = passes.iter().find(|p| p.los > now).cloned();
         let pass = match next_pass {
             Some(p) => p,
             None => {
@@ -294,6 +294,23 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                 );
                 let _ = voice_client.speak(&success_text).await;
 
+                // 次の通過パス（未来のパス）を検索
+                let next_upcoming_pass = passes.iter().find(|p| p.aos > pass.los);
+                let next_pass_str = next_upcoming_pass.map(|np| {
+                    let np_aos: DateTime<Local> = DateTime::from(np.aos);
+                    let np_los: DateTime<Local> = DateTime::from(np.los);
+                    let np_dir = azimuth_to_direction(np.peak_azimuth_deg);
+                    format!(
+                        "🛰️ **{}** (周波数: {:.4} MHz)\n時間: {} 〜 {}\n最大仰角: {:.1}° ({})",
+                        np.satellite_name,
+                        np.frequency_hz as f64 / 1_000_000.0,
+                        np_aos.format("%H:%M:%S"),
+                        np_los.format("%H:%M:%S"),
+                        np.max_elevation_deg,
+                        np_dir
+                    )
+                });
+
                 // Discord Webhook へ画像付きレポートを送信
                 if config.discord.enabled {
                     let _ = discord_client
@@ -304,6 +321,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                             pass.frequency_hz,
                             &pass_time_str,
                             Some(&png_path),
+                            next_pass_str.as_deref(),
                         )
                         .await;
 
