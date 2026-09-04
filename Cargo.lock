@@ -389,6 +389,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ground-station"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "dotenvy",
+ "env_logger",
+ "log",
+ "nix",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sgp4",
+ "tokio",
+ "toml",
+ "urlencoding",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -777,26 +797,6 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
-]
-
-[[package]]
-name = "noaa-station"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "dotenvy",
- "env_logger",
- "log",
- "nix",
- "reqwest",
- "serde",
- "serde_json",
- "sgp4",
- "tokio",
- "toml",
- "urlencoding",
 ]
 
 [[package]]
