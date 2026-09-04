@@ -79,6 +79,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
 
     let mut last_tle_update = Utc::now() - Duration::hours(25);
     let mut cached_satellites = Vec::new();
+    let mut is_first_run = true;
 
     loop {
         let now = Utc::now();
@@ -152,6 +153,17 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             pass.max_elevation_deg
         );
 
+        // 初回起動時のみ、ずんだもんが元気に挨拶と次回の予定をアナウンス
+        if is_first_run {
+            is_first_run = false;
+            let startup_text = format!(
+                "NOAA自律地上局デーモンを起動したのだ！次の通過予定は{}、{}なのだ！",
+                aos_local.format("%H時%M分"),
+                pass.satellite_name
+            );
+            let _ = voice_client.speak(&startup_text).await;
+        }
+
         // ---------------------------------------------------------------------
         // 3. 事前通知時刻 (AOS - pre_alert_minutes) の待機
         // ---------------------------------------------------------------------
@@ -207,6 +219,13 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         let wav_path = session_dir.join("raw.wav");
         let png_path = session_dir.join("image.png");
 
+        // AOS 受信開始アナウンス
+        let aos_text = format!(
+            "{}が地平線から昇ってきたのだ！受信録音を開始するのだ！",
+            pass.satellite_name
+        );
+        let _ = voice_client.speak(&aos_text).await;
+
         let receiver = match ReceiverSession::start(pass.frequency_hz, &config.sdr, &wav_path).await {
             Ok(r) => r,
             Err(e) => {
@@ -244,6 +263,13 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             }
         };
 
+        // LOS 録音終了・デコード開始アナウンス
+        let los_text = format!(
+            "{}が地平線下に沈んだのだ！録音完了、画像デコードを開始するのだ！",
+            pass.satellite_name
+        );
+        let _ = voice_client.speak(&los_text).await;
+
         // ---------------------------------------------------------------------
         // 9. 画像デコード & ずんだもん事後通知 & Discord画像自動送信
         // ---------------------------------------------------------------------
@@ -265,15 +291,21 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                 let _ = voice_client.speak(&success_text).await;
 
                 // Discord Webhook へ画像付きレポートを送信
-                let _ = discord_client
-                    .send_satellite_pass_report(
-                        &pass.satellite_name,
-                        pass.max_elevation_deg,
-                        pass.frequency_hz,
-                        &pass_time_str,
-                        Some(&png_path),
-                    )
-                    .await;
+                if config.discord.enabled {
+                    let _ = discord_client
+                        .send_satellite_pass_report(
+                            &pass.satellite_name,
+                            pass.max_elevation_deg,
+                            pass.frequency_hz,
+                            &pass_time_str,
+                            Some(&png_path),
+                        )
+                        .await;
+
+                    let _ = voice_client
+                        .speak("Discordに雲画像を送信したのだ！スマホを確認してみてほしいのだ！")
+                        .await;
+                }
             }
             Err(e) => {
                 warn!("デコード失敗: {}", e);
@@ -286,6 +318,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
     }
 
+    let _ = voice_client.speak("観測デーモンを終了するのだ！お疲れ様なのだ！").await;
     info!("デーモンを終了しました");
     Ok(())
 }
