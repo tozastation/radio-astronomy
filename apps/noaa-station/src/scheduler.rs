@@ -207,7 +207,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         let wav_path = session_dir.join("raw.wav");
         let png_path = session_dir.join("image.png");
 
-        let receiver = match ReceiverSession::start(pass.frequency_hz, &wav_path) {
+        let receiver = match ReceiverSession::start(pass.frequency_hz, &config.sdr, &wav_path).await {
             Ok(r) => r,
             Err(e) => {
                 error!("録音プロセスの起動に失敗しました: {}", e);

@@ -17,3 +17,8 @@ timeout_secs = 15
 
 [storage]
 output_dir = "data/noaa"
+
+[sdr]
+gain = 45.0          # チューナー利得 (dB)。宇宙からの微弱信号には 40.0〜49.6 の高利得が必須
+sample_rate = 60000  # SDRサンプリングレート (60kHz)
+ppm_error = 0        # 周波数偏差補正 (PPM)
