@@ -1,0 +1,9 @@
+services:
+  # ずんだもん音声合成エンジン (CPU版)
+  # 公式Dockerイメージ: https://hub.docker.com/r/voicevox/voicevox_engine
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+    container_name: voicevox_engine
+    ports:
+      - "50021:50021"
+    restart: unless-stopped
