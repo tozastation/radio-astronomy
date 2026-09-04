@@ -245,9 +245,16 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         };
 
         // ---------------------------------------------------------------------
-        // 9. 画像デコード & ずんだもん事後通知
+        // 9. 画像デコード & ずんだもん事後通知 & Discord画像自動送信
         // ---------------------------------------------------------------------
         info!("画像デコード処理を実行中: {:?}", saved_wav);
+        let discord_client = crate::discord::DiscordClient::new(config.discord.clone());
+        let pass_time_str = format!(
+            "{} 〜 {}",
+            aos_local.format("%Y-%m-%d %H:%M:%S"),
+            los_local.format("%H:%M:%S")
+        );
+
         match Decoder::decode_apt(&saved_wav, &png_path).await {
             Ok(()) => {
                 info!("画像生成完了: {:?}", png_path);
@@ -256,6 +263,17 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                     pass.satellite_name
                 );
                 let _ = voice_client.speak(&success_text).await;
+
+                // Discord Webhook へ画像付きレポートを送信
+                let _ = discord_client
+                    .send_satellite_pass_report(
+                        &pass.satellite_name,
+                        pass.max_elevation_deg,
+                        pass.frequency_hz,
+                        &pass_time_str,
+                        Some(&png_path),
+                    )
+                    .await;
             }
             Err(e) => {
                 warn!("デコード失敗: {}", e);

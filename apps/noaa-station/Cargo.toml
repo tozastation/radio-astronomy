@@ -10,10 +10,11 @@ serde_json = "1.0"
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 sgp4 = "0.2"
 nix = { version = "0.29", features = ["signal", "process"] }
 urlencoding = "2.1"
+dotenvy = "0.15"
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"

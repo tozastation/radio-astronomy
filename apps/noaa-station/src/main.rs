@@ -41,6 +41,8 @@ enum Commands {
     Schedule,
     /// ずんだもん音声発話の疎通テスト (VOICEVOX 連携確認)
     TestVoice,
+    /// Discord Webhook 通知の疎通テスト (スマホ通知確認)
+    TestDiscord,
     /// 自律常駐監視デーモンを起動 (自動観測本番モード)
     Daemon,
 }
@@ -65,10 +67,10 @@ async fn main() -> Result<()> {
             show_schedule(&config).await?;
         }
         Commands::TestVoice => {
-            let client = VoicevoxClient::new(config.voicevox);
-            println!("🔊 ずんだもん発話テストを実行中...");
-            client.speak("テストなのだ！正常に通信できているのだ！").await?;
-            println!("✨ 発話リクエストが完了しました。");
+            test_voice(&config).await?;
+        }
+        Commands::TestDiscord => {
+            test_discord(&config).await?;
         }
         Commands::Daemon => {
             run_daemon(config).await?;
@@ -77,3 +79,36 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+async fn test_voice(config: &Config) -> Result<()> {
+    let client = VoicevoxClient::new(config.voicevox.clone());
+    println!("🔊 ずんだもん発話テストを実行中...");
+    client.speak("テストなのだ！正常に通信できているのだ！").await?;
+    println!("✨ 発話リクエストが完了しました。");
+    Ok(())
+}
+
+async fn test_discord(config: &Config) -> Result<()> {
+    println!("📲 Discord Webhook 通知テストを実行中...");
+    let client = noaa_station::discord::DiscordClient::new(config.discord.clone());
+
+    if !config.discord.enabled {
+        println!("⚠️  Discord通知が無効化されているか、Webhook URLが設定されていません。");
+        println!("   .local.env または環境変数 DISCORD_WEBHOOK_URL を確認してください。");
+        return Ok(());
+    }
+
+    client
+        .send_satellite_pass_report(
+            "NOAA 18 (テスト通知)",
+            52.5,
+            137_912_500,
+            "2026-09-04 12:13:00 〜 12:20:00",
+            None,
+        )
+        .await?;
+
+    println!("✨ Discord 通知リクエストが完了しました！スマホまたはPCのDiscordを確認してください。");
+    Ok(())
+}
+

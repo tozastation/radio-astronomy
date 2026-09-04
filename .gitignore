@@ -12,8 +12,11 @@ __pycache__/
 .venv/
 venv/
 
-# Environment / IDE
+# Environment / Secrets / IDE
 .env
+.env.*
+*.env
+.local.env
 .idea/
 .vscode/
 *.swp
