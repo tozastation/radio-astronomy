@@ -34,7 +34,7 @@ pub fn build_satdump_lrpt_args(input_raw: &Path, output_dir: &Path) -> Vec<Strin
         "--samplerate".to_string(),
         "240000".to_string(),
         "--baseband_format".to_string(),
-        "u8".to_string(),
+        "cu8".to_string(),
     ]
 }
 
