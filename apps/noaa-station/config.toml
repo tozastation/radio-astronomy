@@ -1,7 +1,8 @@
 [observer]
-latitude = 35.6895
-longitude = 139.6917
-altitude_m = 40.0
+latitude = 35.6895    # 東京都東京都
+longitude = 139.6917  # 東経 139.6917
+altitude_m = 200.0    # 標高 (m)
+
 
 [scheduler]
 min_elevation_deg = 20.0
