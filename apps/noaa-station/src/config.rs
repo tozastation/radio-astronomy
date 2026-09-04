@@ -26,6 +26,8 @@ pub struct Config {
     pub sdr: SdrConfig,
     #[serde(default)]
     pub discord: DiscordConfig,
+    #[serde(default)]
+    pub satellites: SatellitesConfig,
 }
 
 fn default_gain() -> f64 {
@@ -105,6 +107,32 @@ pub struct DiscordConfig {
     pub enabled: bool,
     #[serde(default)]
     pub webhook_url: Option<String>,
+}
+
+fn default_enable_meteor() -> bool {
+    true // ロシア Meteor-M (N2-3, N2-4): 2026年現在も現役でLRPTデジタル気象画像を送信中
+}
+
+fn default_enable_noaa() -> bool {
+    false // 米国 NOAA (15, 18, 19): 2025年8月に全機退役・停波したためデフォルトOFF
+}
+
+/// 追尾・受信対象の気象衛星シリーズ設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct SatellitesConfig {
+    #[serde(default = "default_enable_meteor")]
+    pub enable_meteor: bool,
+    #[serde(default = "default_enable_noaa")]
+    pub enable_noaa: bool,
+}
+
+impl Default for SatellitesConfig {
+    fn default() -> Self {
+        Self {
+            enable_meteor: default_enable_meteor(),
+            enable_noaa: default_enable_noaa(),
+        }
+    }
 }
 
 // =============================================================================

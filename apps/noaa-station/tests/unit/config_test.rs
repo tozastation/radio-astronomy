@@ -26,4 +26,6 @@ fn test_load_default_config() {
     assert_eq!(config.scheduler.min_elevation_deg, 20.0);
     assert_eq!(config.voicevox.speaker_id, 3);
     assert_eq!(config.storage.output_dir, "data/noaa");
+    assert!(config.satellites.enable_meteor);
+    assert!(!config.satellites.enable_noaa);
 }

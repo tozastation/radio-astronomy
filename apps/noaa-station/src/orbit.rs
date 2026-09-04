@@ -1,4 +1,4 @@
-use crate::config::ObserverConfig;
+use crate::config::{ObserverConfig, SatellitesConfig};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use log::info;
@@ -20,12 +20,31 @@ use sgp4::{Constants, Elements};
 //   ここから 仰角 (Elevation) と 方位角 (Azimuth) を三角関数で算出します。
 // =============================================================================
 
-/// 対象衛星の情報（TLE・受信周波数）
+/// 信号伝送・変調方式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalType {
+    /// NOAA APT: 2.4kHz AM副搬送波 + FM主搬送波 (11025Hz アナログ音声)
+    Apt,
+    /// Meteor-M LRPT: 72k/80k QPSK デジタル変調 (広帯域IQストリーム)
+    Lrpt,
+}
+
+impl SignalType {
+    pub fn name(&self) -> &'static str {
+        match self {
+            SignalType::Apt => "NOAA APT (アナログ)",
+            SignalType::Lrpt => "Meteor LRPT (デジタルQPSK)",
+        }
+    }
+}
+
+/// 対象衛星の情報（TLE・受信周波数・信号種別）
 #[derive(Debug, Clone)]
 pub struct SatelliteInfo {
     pub name: String,
     pub norad_id: u32,
     pub frequency_hz: u64,
+    pub signal_type: SignalType,
     pub line1: String,
     pub line2: String,
 }
@@ -35,6 +54,7 @@ pub struct SatelliteInfo {
 pub struct SatellitePass {
     pub satellite_name: String,
     pub frequency_hz: u64,
+    pub signal_type: SignalType,
     pub aos: DateTime<Utc>,           // Acquisition of Signal: 観測開始時刻（仰角閾値超え）
     pub los: DateTime<Utc>,           // Loss of Signal: 観測終了時刻（地平線下へ沈む）
     pub max_elevation_deg: f64,       // ピーク仰角（アンテナに最も電波が強く入る瞬間）
@@ -121,6 +141,7 @@ impl OrbitPredictor {
                 passes.push(SatellitePass {
                     satellite_name: sat.name.clone(),
                     frequency_hz: sat.frequency_hz,
+                    signal_type: sat.signal_type,
                     aos: current_aos,
                     los: t,
                     max_elevation_deg: max_el,
@@ -136,6 +157,7 @@ impl OrbitPredictor {
             passes.push(SatellitePass {
                 satellite_name: sat.name.clone(),
                 frequency_hz: sat.frequency_hz,
+                signal_type: sat.signal_type,
                 aos: current_aos,
                 los: start_time + Duration::hours(duration_hours as i64),
                 max_elevation_deg: max_el,
@@ -195,22 +217,41 @@ impl OrbitPredictor {
     }
 }
 
-/// CelesTrak から対象の気象衛星（NOAA 15, 18, 19）の TLE を個別取得
-pub async fn fetch_weather_tles(client: &Client) -> Result<Vec<SatelliteInfo>> {
-    let targets = [
-        ("NOAA 15", 25338, 137_620_000),
-        ("NOAA 18", 28654, 137_912_500),
-        ("NOAA 19", 33591, 137_100_000),
-    ];
+/// CelesTrak から対象の気象衛星（Meteor-M / NOAA）の TLE を個別取得
+pub async fn fetch_weather_tles(
+    client: &Client,
+    satellites_config: &SatellitesConfig,
+) -> Result<Vec<SatelliteInfo>> {
+    let mut targets = Vec::new();
+
+    // 1. ロシア極軌道気象衛星 Meteor-M (現役・LRPT デジタルQPSK)
+    if satellites_config.enable_meteor {
+        // Meteor-M N2-3: 137.900 MHz (NORAD ID: 57166)
+        targets.push(("Meteor-M N2-3", 57166, 137_900_000, SignalType::Lrpt));
+        // Meteor-M N2-4: 137.900 MHz (NORAD ID: 59051)
+        targets.push(("Meteor-M N2-4", 59051, 137_900_000, SignalType::Lrpt));
+    }
+
+    // 2. 米国極軌道気象衛星 NOAA POES (2025年8月に全機退役・停波)
+    if satellites_config.enable_noaa {
+        targets.push(("NOAA 15", 25338, 137_620_000, SignalType::Apt));
+        targets.push(("NOAA 18", 28654, 137_912_500, SignalType::Apt));
+        targets.push(("NOAA 19", 33591, 137_100_000, SignalType::Apt));
+    }
+
+    if targets.is_empty() {
+        info!("追尾対象の気象衛星が設定されていません (enable_meteor または enable_noaa を有効にしてください)");
+        return Ok(Vec::new());
+    }
 
     let mut results = Vec::new();
-    for (name, norad_id, freq) in targets {
+    for (name, norad_id, freq, sig_type) in targets {
         // CelesTrak GP API (カタログ番号 CATNR 指定で取得)
         let url = format!(
             "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle",
             norad_id
         );
-        info!("TLE 取得中: {} (NORAD ID: {})", name, norad_id);
+        info!("TLE 取得中: {} (NORAD ID: {}, 方式: {:?})", name, norad_id, sig_type);
 
         let resp = client
             .get(&url)
@@ -235,6 +276,7 @@ pub async fn fetch_weather_tles(client: &Client) -> Result<Vec<SatelliteInfo>> {
                 name: name.to_string(),
                 norad_id,
                 frequency_hz: freq,
+                signal_type: sig_type,
                 line1: lines[1].to_string(),
                 line2: lines[2].to_string(),
             });

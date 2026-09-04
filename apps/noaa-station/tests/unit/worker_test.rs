@@ -39,4 +39,23 @@ fn test_command_args_construction() {
     assert_eq!(&header[8..12], b"WAVE");
     assert_eq!(&header[12..16], b"fmt ");
     assert_eq!(&header[36..40], b"data");
+
+    // Meteor-M LRPT 用 rtl_sdr 引数構築テスト
+    let raw_out = Path::new("/tmp/meteor.raw");
+    let sdr_args = noaa_station::receiver::build_rtl_sdr_args(137_900_000, &sdr, raw_out);
+    assert!(sdr_args.contains(&"-f".to_string()));
+    assert!(sdr_args.contains(&"137900000".to_string()));
+    assert!(sdr_args.contains(&"-s".to_string()));
+    assert!(sdr_args.contains(&"240000".to_string()));
+    assert_eq!(sdr_args.last().unwrap(), "/tmp/meteor.raw");
+
+    // Meteor-M LRPT 用 satdump 引数構築テスト
+    let out_dir = Path::new("/tmp/output");
+    let satdump_args = noaa_station::decoder::build_satdump_lrpt_args(raw_out, out_dir);
+    assert_eq!(satdump_args[0], "meteor_m2_lrpt");
+    assert_eq!(satdump_args[1], "baseband");
+    assert_eq!(satdump_args[2], "/tmp/meteor.raw");
+    assert_eq!(satdump_args[3], "/tmp/output");
+    assert!(satdump_args.contains(&"--samplerate".to_string()));
+    assert!(satdump_args.contains(&"240000".to_string()));
 }
