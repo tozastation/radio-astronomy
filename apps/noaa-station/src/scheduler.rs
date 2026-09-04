@@ -173,16 +173,9 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         // ---------------------------------------------------------------------
         let pre_alert_time = pass.aos - Duration::milliseconds((config.scheduler.pre_alert_minutes * 60_000.0) as i64);
 
-        if pre_alert_time > now {
-            let wait_secs = (pre_alert_time - now).num_seconds().max(0) as u64;
-            info!("事前通知まで省電力待機中 ({} 秒)...", wait_secs);
-
-            tokio::select! {
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)) => {},
-                _ = tokio::signal::ctrl_c() => {
-                    info!("シャットダウン要求を受信しました");
-                    break;
-                }
+        if pre_alert_time > Utc::now() {
+            if !wait_until(pre_alert_time, "事前通知").await {
+                break;
             }
         }
 
@@ -198,17 +191,9 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         // ---------------------------------------------------------------------
         // 5. 実際の AOS (録音開始時刻) まで待機
         // ---------------------------------------------------------------------
-        let now_before_aos = Utc::now();
-        if pass.aos > now_before_aos {
-            let wait_secs = (pass.aos - now_before_aos).num_seconds().max(0) as u64;
-            info!("録音開始 (AOS) まで待機中 ({} 秒)...", wait_secs);
-
-            tokio::select! {
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)) => {},
-                _ = tokio::signal::ctrl_c() => {
-                    info!("シャットダウン要求を受信しました");
-                    break;
-                }
+        if pass.aos > Utc::now() {
+            if !wait_until(pass.aos, "録音開始 (AOS)").await {
+                break;
             }
         }
 
@@ -241,18 +226,11 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         // ---------------------------------------------------------------------
         // 7. LOS 到達まで録音継続
         // ---------------------------------------------------------------------
-        let now_during_recording = Utc::now();
-        if pass.los > now_during_recording {
-            let record_duration = (pass.los - now_during_recording).num_seconds().max(1) as u64;
-            info!("衛星通過録音中 (残り {} 秒)...", record_duration);
-
-            tokio::select! {
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(record_duration)) => {},
-                _ = tokio::signal::ctrl_c() => {
-                    info!("録音中にシャットダウン要求を受信。プロセスを停止します");
-                    let _ = receiver.stop().await;
-                    break;
-                }
+        if pass.los > Utc::now() {
+            if !wait_until(pass.los, "衛星通過録音 (LOS)").await {
+                info!("録音中にシャットダウン要求を受信。プロセスを停止します");
+                let _ = receiver.stop().await;
+                break;
             }
         }
 
@@ -345,3 +323,54 @@ pub async fn run_daemon(config: Config) -> Result<()> {
     info!("デーモンを終了しました");
     Ok(())
 }
+
+/// 指定された UTC 時刻まで、短周期ポーリング (最大5秒刻み) で堅牢に待機する
+/// 【SRE的堅牢性】
+/// 1. 壁時計 (Wall Clock: UTC) を毎回評価するため、NTP補正やサスペンド復帰による時間ズレを即時検知。
+/// 2. 定期的なハートビートログにより、パイプバッファリングやプロセスの生存状態を可視化。
+/// 3. Ctrl+C による Graceful Shutdown に即応。
+/// 戻り値: Ctrl+C を受信した場合は false、時刻に到達した場合は true
+async fn wait_until(target_time: DateTime<Utc>, label: &str) -> bool {
+    let mut last_log_time = Utc::now();
+    let initial_wait = (target_time - Utc::now()).num_seconds().max(0);
+    info!(
+        "{}まで待機を開始します (目標: {}, 残り {} 秒)",
+        label,
+        target_time.with_timezone(&Local).format("%H:%M:%S"),
+        initial_wait
+    );
+
+    loop {
+        let now = Utc::now();
+        if now >= target_time {
+            break;
+        }
+
+        let remaining_secs = (target_time - now).num_seconds().max(0) as u64;
+
+        // 60秒以上待つ場合は、1分ごとにハートビートログを出力
+        if (now - last_log_time).num_seconds() >= 60 && remaining_secs >= 30 {
+            info!(
+                "{}まで待機中... (残り {} 秒 / 約 {:.1} 分)",
+                label,
+                remaining_secs,
+                remaining_secs as f64 / 60.0
+            );
+            last_log_time = now;
+        }
+
+        // 次の確認まで最大 5 秒スリープ (残り時間が短い場合はその秒数)
+        let sleep_secs = remaining_secs.min(5).max(1);
+
+        tokio::select! {
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(sleep_secs)) => {},
+            _ = tokio::signal::ctrl_c() => {
+                info!("待機中にシャットダウン要求 (Ctrl+C) を受信しました");
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
