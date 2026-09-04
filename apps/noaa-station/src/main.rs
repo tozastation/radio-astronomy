@@ -53,6 +53,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load_from_file(&cli.config)?;
 
+    // データ保存先ディレクトリが存在しない場合は自動作成
+    if let Err(e) = std::fs::create_dir_all(&config.storage.output_dir) {
+        log::warn!("保存先ディレクトリの作成に失敗しました ({}): {}", config.storage.output_dir, e);
+    }
+
     // 【言語対比】`match` によるサブコマンド分岐:
     // Go の `switch cmd` や TypeScript の `switch (command.type)` に相当。
     match cli.command {
