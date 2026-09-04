@@ -4,6 +4,16 @@ use log::{info, warn};
 use reqwest::Client;
 use std::process::Command;
 
+// =============================================================================
+// VOICEVOX API クライアント (ずんだもん音声合成)
+// -----------------------------------------------------------------------------
+// 【言語対比】
+// - struct にフィールド（設定やHTTPクライアント）を持たせ、`impl` でメソッドを定義するのは
+//   Go で構造体にレシーバ関数を生やす設計（例: `type VoicevoxClient struct`）と全く同じです。
+// - `reqwest::Client` は内部にコネクションプールを保持しており、スレッドセーフ（Go の `http.Client` と同等）
+//   のため、インスタンスを使い回すのが Rust のベストプラクティスです。
+// =============================================================================
+
 /// VOICEVOX Engine との通信および音声再生クライアント
 pub struct VoicevoxClient {
     config: VoicevoxConfig,
@@ -11,7 +21,11 @@ pub struct VoicevoxClient {
 }
 
 impl VoicevoxClient {
+    /// クライアントの初期化
     pub fn new(config: VoicevoxConfig) -> Self {
+        // HTTPクライアントのタイムアウトを3秒に設定。
+        // SRE的な観点から、外部通知サービス（VOICEVOX）の停止が原因で
+        // 主処理（SDR受信やデーモン）が永久ブロックされるのを防ぎます。
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(3))
             .build()
@@ -24,6 +38,8 @@ impl VoicevoxClient {
     }
 
     /// 音声クエリ生成用のURLを構築
+    /// 【言語対比】format! マクロは Python の f-string (`f"{host}/audio_query..."`)
+    /// や Go の `fmt.Sprintf` に相当します。
     pub fn audio_query_url(&self, text: &str) -> String {
         format!(
             "{}/audio_query?text={}&speaker={}",
@@ -43,7 +59,11 @@ impl VoicevoxClient {
     }
 
     /// 指定されたテキストをずんだもんの声で発話・再生する
+    /// 【言語対比】
+    /// - `async fn`: TypeScript や Python と同様の非同期関数構文。呼び出し側は `.await` で待機します。
+    /// - `&self`: Go でいうレシーバ `(c *VoicevoxClient)` のポインタ参照に相当（所有権を消費しない借用）。
     pub async fn speak(&self, text: &str) -> Result<()> {
+        // 設定で無効化されている場合は即時リターン
         if !self.config.enabled {
             info!("[VOICEVOX無効] 発話テキスト: {}", text);
             return Ok(());
@@ -51,11 +71,18 @@ impl VoicevoxClient {
 
         info!("ずんだもん発話開始: {}", text);
 
+        // ---------------------------------------------------------------------
         // 1. audio_query API を呼び出して合成用クエリJSONを取得
+        // ---------------------------------------------------------------------
         let query_url = self.audio_query_url(text);
+
+        // 【言語対比】`match` 式は Go の `if resp, err := client.Post(...); err != nil`
+        // を網羅的にパターンマッチする構文です。
         let query_resp = match self.http_client.post(&query_url).send().await {
             Ok(resp) => resp,
             Err(e) => {
+                // VOICEVOX Engine が起動していない場合でもデーモンを落とさず、
+                // 警告ログを出力して正常終了（Ok）とする安全フォールバック設計。
                 warn!("VOICEVOX接続失敗 (スキップして処理継続): {}", e);
                 return Ok(());
             }
@@ -71,7 +98,9 @@ impl VoicevoxClient {
             .await
             .context("クエリJSONのパースに失敗しました")?;
 
+        // ---------------------------------------------------------------------
         // 2. synthesis API を呼び出して WAV 音声バイナリを取得
+        // ---------------------------------------------------------------------
         let synth_url = self.synthesis_url();
         let synth_resp = match self.http_client.post(&synth_url).json(&query_json).send().await {
             Ok(resp) => resp,
@@ -91,13 +120,22 @@ impl VoicevoxClient {
             .await
             .context("音声WAVバイナリの受信に失敗しました")?;
 
+        // ---------------------------------------------------------------------
         // 3. 一時ファイルに保存して aplay / ffplay で再生
+        // ---------------------------------------------------------------------
         let tmp_wav = std::env::temp_dir().join("zundamon_notification.wav");
         tokio::fs::write(&tmp_wav, &wav_bytes)
             .await
             .context("一時WAVファイルの書き込みに失敗しました")?;
 
         let tmp_wav_clone = tmp_wav.clone();
+
+        // 【言語対比】`tokio::task::spawn_blocking`:
+        // Go では全ての Goroutine が自動的にOSスレッドを融通しますが、Tokioの非同期ループ内で
+        // `Command::status()` のような「同期的で重いOSプロセス呼び出し」を行うと非同期ワーカースレッドが
+        // 占有（ブロック）されてしまいます。
+        // `spawn_blocking` はブロッキング専用の別スレッドプールに処理を委譲するための構文です。
+        // `move ||` は外側の変数 `tmp_wav_clone` の所有権をクロージャ内に移動（move）することを明示します。
         tokio::task::spawn_blocking(move || {
             let status = Command::new("aplay")
                 .arg("-q")

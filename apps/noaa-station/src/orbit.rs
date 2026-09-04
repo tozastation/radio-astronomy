@@ -5,6 +5,21 @@ use log::info;
 use reqwest::Client;
 use sgp4::{Constants, Elements};
 
+// =============================================================================
+// 🛰️ 軌道計算 & パス予測モジュール (Orbit / SGP4)
+// -----------------------------------------------------------------------------
+// 【天文学 & DSP の概念と SRE 的対比】
+// - TLE (Two-Line Element): 衛星の軌道パラメータを2行の文字列にエンコードした規格。
+//   いわば「有効期限(TTL)付きの軌道状態スナップショット」です。大気抵抗等で徐々にズレるため、
+//   本システムでは24時間ごとに CelesTrak から最新スナップショットをプルします。
+// - ECI 座標系 (地心慣性系): 地球の中心を原点とし、宇宙空間に固定された座標系。
+//   地球の自転の影響を受けない「絶対座標系」です。SGP4 はこの座標で衛星位置を出力します。
+// - ECEF 座標系 (地心直交系): 地球の自転と一緒にぐるぐる回る座標系。GPSの位置と同じです。
+//   ECI から ECEF への変換には「グリニッジ恒星時 (GMST: 今地球が何度自転しているか)」を使います。
+// - Topocentric 水平座標系 (ENU): 観測者（ベランダのアンテナ）から見た「東(East)・北(North)・天頂(Up)」。
+//   ここから 仰角 (Elevation) と 方位角 (Azimuth) を三角関数で算出します。
+// =============================================================================
+
 /// 対象衛星の情報（TLE・受信周波数）
 #[derive(Debug, Clone)]
 pub struct SatelliteInfo {
@@ -15,14 +30,14 @@ pub struct SatelliteInfo {
     pub line2: String,
 }
 
-/// 検出された衛星通過イベント
+/// 検出された衛星通過イベント（パス）
 #[derive(Debug, Clone)]
 pub struct SatellitePass {
     pub satellite_name: String,
     pub frequency_hz: u64,
-    pub aos: DateTime<Utc>,
-    pub los: DateTime<Utc>,
-    pub max_elevation_deg: f64,
+    pub aos: DateTime<Utc>,           // Acquisition of Signal: 観測開始時刻（仰角閾値超え）
+    pub los: DateTime<Utc>,           // Loss of Signal: 観測終了時刻（地平線下へ沈む）
+    pub max_elevation_deg: f64,       // ピーク仰角（アンテナに最も電波が強く入る瞬間）
 }
 
 pub struct OrbitPredictor;
@@ -36,6 +51,7 @@ impl OrbitPredictor {
         duration_hours: u64,
         min_el_deg: f64,
     ) -> Result<Vec<SatellitePass>> {
+        // TLE 行から SGP4 軌道要素構造体を生成
         let elements = Elements::from_tle(
             Some(sat.name.clone()),
             sat.line1.as_bytes(),
@@ -46,7 +62,7 @@ impl OrbitPredictor {
         let constants = Constants::from_elements(&elements)
             .map_err(|e| anyhow::anyhow!("SGP4 Constantsの初期化に失敗しました: {:?}", e))?;
 
-        // 観測地点のECEF座標 (km) を事前計算
+        // 観測地点（ベランダ）のECEF座標 (km) を事前計算
         let obs_ecef = geodetic_to_ecef(observer.latitude, observer.longitude, observer.altitude_m);
 
         let mut passes = Vec::new();
@@ -54,7 +70,7 @@ impl OrbitPredictor {
         let mut current_aos = start_time;
         let mut max_el = 0.0f64;
 
-        // 30秒刻みでスキャン
+        // 30秒刻みで未来の軌道をサンプリング（ポーリングスキャン）
         let step_seconds = 30i64;
         let total_steps = (duration_hours as i64 * 3600) / step_seconds;
 
@@ -64,13 +80,16 @@ impl OrbitPredictor {
 
             if el >= min_el_deg {
                 if !in_pass {
+                    // 仰角が閾値を上に突き抜けた瞬間 (AOS)
                     in_pass = true;
                     current_aos = t;
                     max_el = el;
                 } else if el > max_el {
+                    // ピーク仰角を更新
                     max_el = el;
                 }
             } else if in_pass {
+                // 仰角が閾値を下回って見えなくなった瞬間 (LOS)
                 in_pass = false;
                 passes.push(SatellitePass {
                     satellite_name: sat.name.clone(),
@@ -83,7 +102,7 @@ impl OrbitPredictor {
             }
         }
 
-        // スキャン終了時にまだパスが継続していた場合
+        // スキャン境界でパスが継続していた場合の救済処理
         if in_pass {
             passes.push(SatellitePass {
                 satellite_name: sat.name.clone(),
@@ -98,6 +117,9 @@ impl OrbitPredictor {
     }
 
     /// 複数衛星の通過パスを予測し、時系列順にソート＆重複調整して返す
+    /// 【言語対比】
+    /// - `Vec::extend`: Python の `list.extend` や Go の `append(slice, items...)` に相当。
+    /// - `sort_by_key`: Python の `list.sort(key=lambda p: p.aos)` や Go の `sort.Slice` に相当。
     pub fn predict_all_passes(
         satellites: &[SatelliteInfo],
         observer: &ObserverConfig,
@@ -117,10 +139,12 @@ impl OrbitPredictor {
             all_passes.extend(passes);
         }
 
-        // AOS順にソート
+        // AOS（通過開始時刻）の昇順に時系列ソート
         all_passes.sort_by_key(|p| p.aos);
 
-        // 重複するパスがある場合は最大仰角が高い方を優先
+        // 重複調停アルゴリズム:
+        // アンテナ（SDR）は1台しかないため、2つの衛星が同時に空に現れた場合は
+        // 「最大仰角が高い方（電波強度が強く高品質に受信できる方）」を優先採用する
         let mut resolved = Vec::new();
         for pass in all_passes {
             if let Some(last) = resolved.last_mut() {
@@ -141,7 +165,7 @@ impl OrbitPredictor {
     }
 }
 
-/// CelesTrak から対象の気象衛星（NOAA 15, 18, 19）の TLE を取得
+/// CelesTrak から対象の気象衛星（NOAA 15, 18, 19）の TLE を個別取得
 pub async fn fetch_weather_tles(client: &Client) -> Result<Vec<SatelliteInfo>> {
     let targets = [
         ("NOAA 15", 25338, 137_620_000),
@@ -151,6 +175,7 @@ pub async fn fetch_weather_tles(client: &Client) -> Result<Vec<SatelliteInfo>> {
 
     let mut results = Vec::new();
     for (name, norad_id, freq) in targets {
+        // CelesTrak GP API (カタログ番号 CATNR 指定で取得)
         let url = format!(
             "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle",
             norad_id
@@ -174,6 +199,7 @@ pub async fn fetch_weather_tles(client: &Client) -> Result<Vec<SatelliteInfo>> {
             .filter(|s| !s.is_empty())
             .collect();
 
+        // TLE形式: 1行目が衛星名、2行目が "1 ...", 3行目が "2 ..."
         if lines.len() >= 3 && lines[1].starts_with("1 ") && lines[2].starts_with("2 ") {
             results.push(SatelliteInfo {
                 name: name.to_string(),
@@ -188,16 +214,17 @@ pub async fn fetch_weather_tles(client: &Client) -> Result<Vec<SatelliteInfo>> {
     Ok(results)
 }
 
-/// 観測地（緯度・経度・標高）の WGS84 ECEF 座標 (km) を算出
+/// 観測地（緯度・経度・標高）の WGS84 楕円体における ECEF 直交座標 (km) を算出
 fn geodetic_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> [f64; 3] {
     let lat = lat_deg.to_radians();
     let lon = lon_deg.to_radians();
     let alt_km = alt_m / 1000.0;
 
     let a = 6378.137; // 地球赤道半径 (km)
-    let f = 1.0 / 298.257223563; // 扁平率
+    let f = 1.0 / 298.257223563; // 地球の扁平率 (赤道が膨らんでいる度合い)
     let e2 = f * (2.0 - f); // 第一離心率の2乗
 
+    // 卯酉線（ぼうゆうせん）曲率半径
     let n = a / (1.0 - e2 * lat.sin().powi(2)).sqrt();
 
     let x = (n + alt_km) * lat.cos() * lon.cos();
@@ -216,27 +243,25 @@ fn calculate_elevation(
     lon_deg: f64,
     t: DateTime<Utc>,
 ) -> f64 {
-    // TLE エポックからの経過分 (minutes) を計算
+    // TLE エポック（起点時刻）からの経過時間 (分) を計算
     let epoch_dt = sgp4_epoch_to_datetime(elements.epoch());
     let diff = t.signed_duration_since(epoch_dt);
     let minutes_since_epoch = diff.num_milliseconds() as f64 / 60_000.0;
 
+    // SGP4 モデルで衛星の位置 (ECI座標系 [km]) を推算
     let prediction = match constants.propagate(minutes_since_epoch) {
         Ok(p) => p,
-        Err(_) => return -90.0,
+        Err(_) => return -90.0, // 軌道崩壊または計算不能時は地平線下扱い
     };
 
-    // 衛星の ECI 座標 (km)
     let sat_eci = [
         prediction.position[0],
         prediction.position[1],
         prediction.position[2],
     ];
 
-    // グリニッジ恒星時 (GMST) 角 [rad]
+    // グリニッジ平均恒星時 (GMST) 角 [rad] を計算し、地球の自転分だけ回転
     let gmst = calculate_gmst(t);
-
-    // ECI -> ECEF 回転
     let cos_g = gmst.cos();
     let sin_g = gmst.sin();
     let sat_ecef = [
@@ -245,12 +270,12 @@ fn calculate_elevation(
         sat_eci[2],
     ];
 
-    // 観測点から衛星への相対ベクトル
+    // 観測地点（アンテナ）から衛星への相対ベクトル
     let rx = sat_ecef[0] - obs_ecef[0];
     let ry = sat_ecef[1] - obs_ecef[1];
     let rz = sat_ecef[2] - obs_ecef[2];
 
-    // Topocentric 水平座標系 (East, North, Up)
+    // Topocentric 水平座標系 (East, North, Up) への回転
     let lat = lat_deg.to_radians();
     let lon = lon_deg.to_radians();
 
@@ -259,21 +284,22 @@ fn calculate_elevation(
     let sin_lon = lon.sin();
     let cos_lon = lon.cos();
 
-    let _east = -sin_lon * rx + cos_lon * ry;
-    let _north = -sin_lat * cos_lon * rx - sin_lat * sin_lon * ry + cos_lat * rz;
+    // 天頂方向（Up成分）の射影長
     let up = cos_lat * cos_lon * rx + cos_lat * sin_lon * ry + sin_lat * rz;
 
+    // アンテナから衛星までの直線距離 (Range)
     let range = (rx.powi(2) + ry.powi(2) + rz.powi(2)).sqrt();
     if range < 1e-6 {
         return -90.0;
     }
 
+    // 仰角: sin(elevation) = Up / Range
     let sin_el = up / range;
     let el_rad = sin_el.clamp(-1.0, 1.0).asin();
     el_rad.to_degrees()
 }
 
-/// SGP4 の epoch (YYDDD.DDDDDD) を chrono::DateTime<Utc> に変換
+/// SGP4 の epoch 形式 (YYDDD.DDDDDD) を標準の UTC 日時に変換
 fn sgp4_epoch_to_datetime(epoch: f64) -> DateTime<Utc> {
     let year_prefix = epoch as i32 / 1000;
     let full_year = if year_prefix < 57 {
@@ -291,10 +317,11 @@ fn sgp4_epoch_to_datetime(epoch: f64) -> DateTime<Utc> {
 }
 
 /// 指定 UTC 日時におけるグリニッジ平均恒星時 (GMST) を算出 (rad)
+/// IAU 1982 公式を用いて地球の自転角を求めます。
 fn calculate_gmst(t: DateTime<Utc>) -> f64 {
     let ts = t.timestamp() as f64;
-    let jd = (ts / 86400.0) + 2440587.5;
-    let d = jd - 2451545.0; // J2000.0 からの日数
+    let jd = (ts / 86400.0) + 2440587.5; // ユリウス日 (JD)
+    let d = jd - 2451545.0;              // J2000.0 からの日数
 
     let gmst_deg = 280.46061837 + 360.98564736629 * d;
     let gmst_deg_norm = gmst_deg.rem_euclid(360.0);

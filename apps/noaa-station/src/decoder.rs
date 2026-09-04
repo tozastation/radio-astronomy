@@ -3,6 +3,18 @@ use log::info;
 use std::path::Path;
 use tokio::process::Command;
 
+// =============================================================================
+// 🖼️ 画像デコードモジュール (Decoder)
+// -----------------------------------------------------------------------------
+// 【背景と処理内容】
+// NOAA気象衛星が送信する APT (Automatic Picture Transmission) は、2400Hzの搬送波に
+// 振幅変調(AM)された可視光と赤外線の2チャンネルのアナログファクシミリ信号です。
+// `noaa-apt` CLI は、音声WAVから以下の処理を一括で行い、高品質なPNG地球画像を生成します：
+// 1. 同期パルス（各ラインの先頭にある白黒バー）を検知して歪み・水平同期を補正
+// 2. 衛星のセンサ較正データ（テレメトリ）を読み取り、赤外線温度・コントラストを正規化
+// 3. 地形データ・昼夜判定に基づき、カラーパレットで美しいフォルスカラー着色
+// =============================================================================
+
 /// noaa-apt CLI 呼び出し用引数を構築
 pub fn build_noaa_apt_args(input_wav: &Path, output_png: &Path) -> Vec<String> {
     vec![
@@ -26,6 +38,7 @@ impl Decoder {
             bail!("入力WAVファイルが存在しません: {:?}", input_wav);
         }
 
+        // 出力先ディレクトリの自動作成
         if let Some(parent) = output_png.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("ディレクトリ作成失敗: {:?}", parent))?;
@@ -33,6 +46,7 @@ impl Decoder {
 
         let args = build_noaa_apt_args(input_wav, output_png);
 
+        // noaa-apt CLI を実行
         let status = Command::new("noaa-apt")
             .args(&args)
             .status()
