@@ -6,10 +6,11 @@ fn test_tle_parsing_and_pass_prediction() {
     // CelesTrakから今取得した最新 TLE データ
     let tle_line1 = "1 33591U 09005A   26247.26050863 -.00000003  00000+0  22278-4 0  9994";
     let tle_line2 = "2 33591  98.9457 318.1680 0014124 162.6873 197.4784 14.13484468905655";
-    let sat = SatelliteInfo {
+    let _sat = SatelliteInfo {
         name: "NOAA 19".to_string(),
         norad_id: 33591,
         frequency_hz: 137_100_000,
+        signal_type: noaa_station::orbit::SignalType::Apt,
         line1: tle_line1.to_string(),
         line2: tle_line2.to_string(),
     };
@@ -24,11 +25,16 @@ fn test_tle_parsing_and_pass_prediction() {
     use chrono::TimeZone;
     let start_of_day = chrono::Utc.with_ymd_and_hms(2026, 9, 3, 15, 0, 0).unwrap();
 
+    let satellites_config = noaa_station::config::SatellitesConfig {
+        enable_meteor: true,
+        enable_noaa: true,
+    };
+
     // 最新TLEの取得
     let http_client = reqwest::Client::new();
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let satellites = runtime.block_on(async {
-        noaa_station::orbit::fetch_weather_tles(&http_client).await.unwrap()
+        noaa_station::orbit::fetch_weather_tles(&http_client, &satellites_config).await.unwrap()
     });
 
     let passes = OrbitPredictor::predict_all_passes(&satellites, &observer, start_of_day, 24, 15.0)

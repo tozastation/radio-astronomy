@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::decoder::Decoder;
-use crate::orbit::{azimuth_to_direction, fetch_weather_tles, OrbitPredictor};
+use crate::orbit::{azimuth_to_direction, fetch_weather_tles, OrbitPredictor, SignalType};
 use crate::receiver::ReceiverSession;
 use crate::voicevox::VoicevoxClient;
 use anyhow::Result;
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 pub async fn show_schedule(config: &Config) -> Result<()> {
     let http_client = Client::new();
     println!("🛰️  CelesTrak から最新 TLE を取得中...");
-    let satellites = fetch_weather_tles(&http_client).await?;
+    let satellites = fetch_weather_tles(&http_client, &config.satellites).await?;
 
     let now = Utc::now();
     let passes = OrbitPredictor::predict_all_passes(
@@ -35,11 +35,11 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
         config.scheduler.min_elevation_deg,
     )?;
 
-    println!("\n========================================================================================================");
-    println!("📡 NOAA 気象衛星 通過予定スケジュール (今後24時間 / 観測地: 緯度 {:.4}, 経度 {:.4})", config.observer.latitude, config.observer.longitude);
-    println!("========================================================================================================");
-    println!("{:<10} | {:<12} | {:<20} | {:<20} | {:<18}", "衛星名", "周波数", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
-    println!("--------------------------------------------------------------------------------------------------------");
+    println!("\n=====================================================================================================================");
+    println!("📡 気象衛星 通過予定スケジュール (今後24時間 / 観測地: 緯度 {:.4}, 経度 {:.4})", config.observer.latitude, config.observer.longitude);
+    println!("=====================================================================================================================");
+    println!("{:<15} | {:<12} | {:<24} | {:<20} | {:<20} | {:<18}", "衛星名", "周波数", "信号方式", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
+    println!("---------------------------------------------------------------------------------------------------------------------");
 
     if passes.is_empty() {
         println!("※ 仰角 {:.1}° 以上の通過パスは見つかりませんでした", config.scheduler.min_elevation_deg);
@@ -51,9 +51,10 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
             let dir = azimuth_to_direction(pass.peak_azimuth_deg);
 
             println!(
-                "{:<10} | {:>7.4} MHz | {} | {} | {:>4.1}° ({})",
+                "{:<15} | {:>7.4} MHz | {:<24} | {} | {} | {:>4.1}° ({})",
                 pass.satellite_name,
                 freq_mhz,
+                pass.signal_type.name(),
                 aos_local.format("%Y-%m-%d %H:%M:%S"),
                 los_local.format("%Y-%m-%d %H:%M:%S"),
                 pass.max_elevation_deg,
@@ -61,7 +62,7 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
             );
         }
     }
-    println!("========================================================================================================\n");
+    println!("=====================================================================================================================\n");
 
     Ok(())
 }
@@ -93,7 +94,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             >= Duration::hours(config.scheduler.tle_update_interval_hours as i64)
             || cached_satellites.is_empty()
         {
-            match fetch_weather_tles(&http_client).await {
+            match fetch_weather_tles(&http_client, &config.satellites).await {
                 Ok(sats) => {
                     info!("TLE の更新に成功しました ({} 機)", sats.len());
                     cached_satellites = sats;
@@ -198,24 +199,29 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         }
 
         // ---------------------------------------------------------------------
-        // 6. 受信・録音開始 (rtl_fm プロセス起動)
+        // 6. 受信・録音開始 (SDR プロセス起動)
         // ---------------------------------------------------------------------
         let session_dir = PathBuf::from(&config.storage.output_dir).join(format!(
             "{}_{}",
             aos_local.format("%Y%m%d_%H%M%S"),
             pass.satellite_name.replace(' ', "")
         ));
-        let wav_path = session_dir.join("raw.wav");
+
+        let record_path = match pass.signal_type {
+            SignalType::Apt => session_dir.join("raw.wav"),
+            SignalType::Lrpt => session_dir.join("raw.u8"),
+        };
         let png_path = session_dir.join("image.png");
 
         // AOS 受信開始アナウンス
         let aos_text = format!(
-            "{}が地平線から昇ってきたのだ！受信録音を開始するのだ！",
-            pass.satellite_name
+            "{}が地平線から昇ってきたのだ！{}の受信録音を開始するのだ！",
+            pass.satellite_name,
+            pass.signal_type.name()
         );
         let _ = voice_client.speak(&aos_text).await;
 
-        let receiver = match ReceiverSession::start(pass.frequency_hz, &config.sdr, &wav_path).await {
+        let receiver = match ReceiverSession::start(pass.frequency_hz, pass.signal_type, &config.sdr, &record_path).await {
             Ok(r) => r,
             Err(e) => {
                 error!("録音プロセスの起動に失敗しました: {}", e);
@@ -235,13 +241,13 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         }
 
         // ---------------------------------------------------------------------
-        // 8. 録音停止 (SIGINT 送信 & WAV ヘッダ正常クローズ)
+        // 8. 録音停止 (SIGINT 送信 & 正常クローズ)
         // ---------------------------------------------------------------------
-        let saved_wav = match receiver.stop().await {
+        let saved_record = match receiver.stop().await {
             Ok(p) => p,
             Err(e) => {
                 warn!("録音停止処理警告: {}", e);
-                wav_path.clone()
+                record_path.clone()
             }
         };
 
@@ -255,7 +261,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         // ---------------------------------------------------------------------
         // 9. 画像デコード & ずんだもん事後通知 & Discord画像自動送信
         // ---------------------------------------------------------------------
-        info!("画像デコード処理を実行中: {:?}", saved_wav);
+        info!("画像デコード処理を実行中: {:?}", saved_record);
         let discord_client = crate::discord::DiscordClient::new(config.discord.clone());
         let pass_time_str = format!(
             "{} 〜 {}",
@@ -263,9 +269,21 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             los_local.format("%H:%M:%S")
         );
 
-        match Decoder::decode_apt(&saved_wav, &png_path).await {
-            Ok(()) => {
-                info!("画像生成完了: {:?}", png_path);
+        let decode_result = match pass.signal_type {
+            SignalType::Apt => {
+                match Decoder::decode_apt(&saved_record, &png_path).await {
+                    Ok(()) => Ok(png_path.clone()),
+                    Err(e) => Err(e),
+                }
+            }
+            SignalType::Lrpt => {
+                Decoder::decode_meteor_lrpt(&saved_record, &session_dir).await
+            }
+        };
+
+        match decode_result {
+            Ok(image_path) => {
+                info!("画像生成完了: {:?}", image_path);
                 let success_text = format!(
                     "{}の受信とデコードに成功したのだ！新しい画像を確認するのだ！",
                     pass.satellite_name
@@ -279,9 +297,10 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                     let np_los: DateTime<Local> = DateTime::from(np.los);
                     let np_dir = azimuth_to_direction(np.peak_azimuth_deg);
                     format!(
-                        "🛰️ **{}** (周波数: {:.4} MHz)\n時間: {} 〜 {}\n最大仰角: {:.1}° ({})",
+                        "🛰️ **{}** (周波数: {:.4} MHz / {})\n時間: {} 〜 {}\n最大仰角: {:.1}° ({})",
                         np.satellite_name,
                         np.frequency_hz as f64 / 1_000_000.0,
+                        np.signal_type.name(),
                         np_aos.format("%H:%M:%S"),
                         np_los.format("%H:%M:%S"),
                         np.max_elevation_deg,
@@ -293,12 +312,12 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                 if config.discord.enabled {
                     let _ = discord_client
                         .send_satellite_pass_report(
-                            &pass.satellite_name,
+                            &format!("{} ({})", pass.satellite_name, pass.signal_type.name()),
                             pass.max_elevation_deg,
                             peak_dir,
                             pass.frequency_hz,
                             &pass_time_str,
-                            Some(&png_path),
+                            Some(&image_path),
                             next_pass_str.as_deref(),
                         )
                         .await;
@@ -310,7 +329,10 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             }
             Err(e) => {
                 warn!("デコード失敗: {}", e);
-                let fail_text = "画像のデコードに失敗したのだ…電波が弱かったかもしれないのだ".to_string();
+                let fail_text = format!(
+                    "画像のデコードに失敗したのだ…電波が弱かったかもしれないのだ (詳細: {})",
+                    e
+                );
                 let _ = voice_client.speak(&fail_text).await;
             }
         }

@@ -1,4 +1,5 @@
 use crate::config::SdrConfig;
+use crate::orbit::SignalType;
 use anyhow::{Context, Result};
 use log::{info, warn};
 use nix::sys::signal::{kill, Signal};
@@ -20,6 +21,9 @@ use tokio::task::JoinHandle;
 //    rtl_fm は標準出力にヘッダなし生PCMを出力します。本モジュールは先頭に44バイトの
 //    WAVヘッダ枠を確保し、録音終了時にストリーミングバイト数を計測してヘッダを
 //    確定（Seek&Flush）することで、soxやffmpeg等の外部依存ゼロで完全なWAVを出力します。
+// 3. Meteor-M LRPT (QPSK) への対応:
+//    デジタル変調である LRPT（帯域幅約120kHz）を受信するため、rtl_sdr コマンドにより
+//    240kSPS の生IQストリーム（8-bit unsigned IQ）を保存します。
 // =============================================================================
 
 /// 11025Hz, 16bit, モノラルの標準 RIFF/WAVE ヘッダ (44バイト) を生成
@@ -53,7 +57,7 @@ pub fn create_wav_header(data_size: u32) -> [u8; 44] {
     header
 }
 
-/// rtl_fm 録音用引数を構築
+/// rtl_fm 録音用引数を構築 (NOAA APT用)
 /// - `-M fm`: 標準FM復調（NOAA-APT信号の約34kHzに最適化し、ワイドFMのような余計な広帯域ノイズをカット）
 /// - `-s 60k`: SDRのサンプリングレート
 /// - `-r 11025`: 音声サンプリングレート (noaa-apt デコーダ標準)
@@ -89,69 +93,121 @@ pub fn build_rtl_fm_args(freq_hz: u64, sdr: &SdrConfig) -> Vec<String> {
     args
 }
 
+/// rtl_sdr 録音用引数を構築 (Meteor-M LRPT用 生IQストリーム)
+/// - `-f <freq>`: 中心周波数 (例: 137.9MHz)
+/// - `-s 240000`: サンプリングレート 240kSPS (LRPTの帯域約120kHzを完全にカバー)
+/// - `-g <gain>`: チューナー利得 (例: 45.0dB)
+/// - `<output_path>`: 出力ファイルパス
+pub fn build_rtl_sdr_args(freq_hz: u64, sdr: &SdrConfig, output_raw_path: &Path) -> Vec<String> {
+    let mut args = vec![
+        "-f".to_string(),
+        freq_hz.to_string(),
+        "-s".to_string(),
+        "240000".to_string(),
+        "-g".to_string(),
+        format!("{:.1}", sdr.gain),
+    ];
+
+    if sdr.ppm_error != 0 {
+        args.push("-p".to_string());
+        args.push(sdr.ppm_error.to_string());
+    }
+
+    args.push(output_raw_path.to_string_lossy().to_string());
+    args
+}
+
 /// 衛星通過中の SDR 録音セッション
 pub struct ReceiverSession {
     child: Child,
     output_path: PathBuf,
-    writer_task: JoinHandle<Result<u64>>,
+    signal_type: SignalType,
+    writer_task: Option<JoinHandle<Result<u64>>>,
 }
 
 impl ReceiverSession {
-    /// rtl_fm をバックグラウンド起動し、生PCMを標準出力から直接ストリーミング受信して
-    /// WAVヘッダ付きファイルにリアルタイム書き込み
-    pub async fn start(freq_hz: u64, sdr: &SdrConfig, output_wav_path: &Path) -> Result<Self> {
+    /// 衛星の信号種別（NOAA APT / Meteor LRPT）に応じたコマンドで録音を開始
+    pub async fn start(
+        freq_hz: u64,
+        signal_type: SignalType,
+        sdr: &SdrConfig,
+        output_path: &Path,
+    ) -> Result<Self> {
         info!(
-            "SDR 録音開始: 周波数 {} Hz, 利得 {:.1} dB, 出力 {:?}",
-            freq_hz, sdr.gain, output_wav_path
+            "SDR 録音開始: 方式 {:?}, 周波数 {} Hz, 利得 {:.1} dB, 出力 {:?}",
+            signal_type, freq_hz, sdr.gain, output_path
         );
 
         // 出力先ディレクトリの存在確認・自動作成 (mkdir -p)
-        if let Some(parent) = output_wav_path.parent() {
+        if let Some(parent) = output_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .with_context(|| format!("ディレクトリ作成失敗: {:?}", parent))?;
         }
 
-        // 録音先ファイルを生成し、先頭に44バイトのダミーWAVヘッダを書き込む
-        let mut file = tokio::fs::File::create(output_wav_path)
-            .await
-            .with_context(|| format!("WAVファイル作成失敗: {:?}", output_wav_path))?;
-        file.write_all(&create_wav_header(0))
-            .await
-            .context("初期WAVヘッダの書き込みに失敗しました")?;
+        match signal_type {
+            SignalType::Apt => {
+                // 録音先ファイルを生成し、先頭に44バイトのダミーWAVヘッダを書き込む
+                let mut file = tokio::fs::File::create(output_path)
+                    .await
+                    .with_context(|| format!("WAVファイル作成失敗: {:?}", output_path))?;
+                file.write_all(&create_wav_header(0))
+                    .await
+                    .context("初期WAVヘッダの書き込みに失敗しました")?;
 
-        let args = build_rtl_fm_args(freq_hz, sdr);
+                let args = build_rtl_fm_args(freq_hz, sdr);
 
-        // rtl_fm 子プロセスを起動 (標準出力をパイプで取得)
-        let mut child = Command::new("rtl_fm")
-            .args(&args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .context("rtl_fm コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
+                // rtl_fm 子プロセスを起動 (標準出力をパイプで取得)
+                let mut child = Command::new("rtl_fm")
+                    .args(&args)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .context("rtl_fm コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
 
-        let mut stdout = child
-            .stdout
-            .take()
-            .context("rtl_fm 標準出力の取得に失敗しました")?;
+                let mut stdout = child
+                    .stdout
+                    .take()
+                    .context("rtl_fm 標準出力の取得に失敗しました")?;
 
-        // バックグラウンドで非同期ストリーミングコピー
-        let writer_task = tokio::spawn(async move {
-            let copied_bytes = tokio::io::copy(&mut stdout, &mut file)
-                .await
-                .context("ストリーミング書き込み中にエラーが発生しました")?;
-            file.flush().await?;
-            Ok(copied_bytes)
-        });
+                // バックグラウンドで非同期ストリーミングコピー
+                let writer_task = tokio::spawn(async move {
+                    let copied_bytes = tokio::io::copy(&mut stdout, &mut file)
+                        .await
+                        .context("ストリーミング書き込み中にエラーが発生しました")?;
+                    file.flush().await?;
+                    Ok(copied_bytes)
+                });
 
-        Ok(Self {
-            child,
-            output_path: output_wav_path.to_path_buf(),
-            writer_task,
-        })
+                Ok(Self {
+                    child,
+                    output_path: output_path.to_path_buf(),
+                    signal_type,
+                    writer_task: Some(writer_task),
+                })
+            }
+            SignalType::Lrpt => {
+                // rtl_sdr による生IQストリーム録音 (240kSPS, 8bit unsigned IQ)
+                let args = build_rtl_sdr_args(freq_hz, sdr, output_path);
+
+                let child = Command::new("rtl_sdr")
+                    .args(&args)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .context("rtl_sdr コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
+
+                Ok(Self {
+                    child,
+                    output_path: output_path.to_path_buf(),
+                    signal_type,
+                    writer_task: None,
+                })
+            }
+        }
     }
 
-    /// 衛星通過終了時、SIGINT を送信して優雅に録音を終了し、ファイル先頭の WAV ヘッダを確定
+    /// 衛星通過終了時、SIGINT を送信して優雅に録音を終了
     pub async fn stop(mut self) -> Result<PathBuf> {
         info!("SDR 録音停止要求送信中: {:?}", self.output_path);
 
@@ -165,42 +221,57 @@ impl ReceiverSession {
         // プロセスの終了待機
         match self.child.wait().await {
             Ok(status) => {
-                info!("rtl_fm 正常終了: status {}", status);
+                info!("SDR 録音プロセス正常終了: status {}", status);
             }
             Err(e) => {
-                warn!("rtl_fm 待機エラー: {}", e);
+                warn!("SDR 録音プロセス待機エラー: {}", e);
             }
         }
 
-        // ストリーミングタスクの終了を待機し、書き込まれたデータバイト数を取得
-        let data_bytes = match self.writer_task.await {
-            Ok(Ok(bytes)) => bytes,
-            Ok(Err(e)) => {
-                warn!("書き込みタスクエラー: {}", e);
+        if self.signal_type == SignalType::Apt {
+            // ストリーミングタスクの終了を待機し、書き込まれたデータバイト数を取得
+            let data_bytes = if let Some(task) = self.writer_task {
+                match task.await {
+                    Ok(Ok(bytes)) => bytes,
+                    Ok(Err(e)) => {
+                        warn!("書き込みタスクエラー: {}", e);
+                        0
+                    }
+                    Err(e) => {
+                        warn!("タスクJoinエラー: {}", e);
+                        0
+                    }
+                }
+            } else {
                 0
+            };
+
+            // ファイル先頭にシークして、正しいデータ長を記録した WAV ヘッダで上書き
+            let header = create_wav_header(data_bytes as u32);
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&self.output_path)
+                .await
+                .context("WAVヘッダ上書き用のファイルオープンに失敗しました")?;
+
+            file.seek(std::io::SeekFrom::Start(0)).await?;
+            file.write_all(&header).await?;
+            file.flush().await?;
+
+            info!(
+                "WAVファイル確定完了: データサイズ {} バイト, {:?}",
+                data_bytes, self.output_path
+            );
+        } else {
+            // LRPT 生IQファイル
+            if let Ok(metadata) = tokio::fs::metadata(&self.output_path).await {
+                info!(
+                    "LRPT生IQファイル確定完了: データサイズ {} バイト, {:?}",
+                    metadata.len(),
+                    self.output_path
+                );
             }
-            Err(e) => {
-                warn!("タスクJoinエラー: {}", e);
-                0
-            }
-        };
-
-        // ファイル先頭にシークして、正しいデータ長を記録した WAV ヘッダで上書き
-        let header = create_wav_header(data_bytes as u32);
-        let mut file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .open(&self.output_path)
-            .await
-            .context("WAVヘッダ上書き用のファイルオープンに失敗しました")?;
-
-        file.seek(std::io::SeekFrom::Start(0)).await?;
-        file.write_all(&header).await?;
-        file.flush().await?;
-
-        info!(
-            "WAVファイル確定完了: データサイズ {} バイト, {:?}",
-            data_bytes, self.output_path
-        );
+        }
 
         Ok(self.output_path)
     }
