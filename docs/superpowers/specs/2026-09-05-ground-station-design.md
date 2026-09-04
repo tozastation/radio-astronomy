@@ -108,6 +108,21 @@
   - エッジノード上の VOICEVOX Engine REST API（`:50021`）を非同期 HTTP POST で呼び出し。
   - 「〇〇衛星の通過が完了したのだ！綺麗な画像が復元できたのだ！」等の状況に応じた音声合成・再生。
 
+### 3.5 起動時事前ヘルスチェック (Preflight Health Check: `src/health.rs`)
+常駐デーモンの起動時および専用 CLI コマンド（`check`）において、SRE的ベストプラクティスである**事前ヘルスチェック（Preflight Checks / Fail-fast）**を実行し、運用トラブルを即座に可視化します：
+
+1. **SDR デバイス疎通チェック**:
+   - `rtl_test -t` 相当のプローブを試行し、RTL-SDR v4 が USB 上でオープン可能か、他のプロセスにロックされていないかを検査。
+   - **失敗時のトラブルシュート提示**: 未検出時は「`usbipd attach --wsl --auto-attach --busid <BUSID>` を実行してください」など具体的なコマンドを表示。
+2. **外部デコードツール導入状況チェック**:
+   - `satdump`, `gr_satellites`, `rtl_sdr` のバイナリが `$PATH` 上に存在するか検査。
+   - 未インストール時は警告（WARN）とし、利用不可となる衛星種別とインストール手順を明示。
+3. **通知サービス疎通チェック**:
+   - VOICEVOX（`http://localhost:50021`）への HTTP GET（`/version`）疎通確認。
+   - Discord Webhook URL の環境変数設定状況の確認。
+4. **ストレージ書き込み＆空き容量チェック**:
+   - `data/ground-station/` の書き込み権限とディスク残容量（10GB以上推奨）の確認。
+
 ---
 
 ## 4. 設定ファイルスキーマ (`config.toml`)
@@ -176,8 +191,9 @@ timeout_secs = 5
    - `apps/ground-station/Cargo.toml`: `name = "ground-station"`
    - `docker-compose.yaml` やドキュメント内のパス参照を同期。
 3. **CLI コマンド体系**:
+   - `ground-station check`: 起動前事前ヘルスチェック（SDRデバイス・デコーダ・通知・ストレージ疎通）の実行
    - `ground-station schedule`: 統合パス予測テーブルの表示
-   - `ground-station daemon`: 自律受信常駐監視デーモンの起動
+   - `ground-station daemon`: 自律受信常駐監視デーモンの起動（起動時に自動Preflightを実行）
    - `ground-station test-voice`: ずんだもん音声疎通テスト
    - `ground-station test-discord`: Discord Webhook 疎通テスト
 
@@ -189,6 +205,8 @@ timeout_secs = 5
    - `config_test.rs`: 新スキーマ（`[satellites.cubesats]`, `[satellites.iss]`）の正常系・異常系パース検証。
    - `orbit_test.rs`: 複数衛星（VHF/UHF混在）のSGP4パス予測、ENU座標計算、重複調停の動作検証。
    - `worker_test.rs`: MPSCチャネルを介したジョブキューイングとバックグラウンドワーカの非同期連携テスト。
+   - `health_test.rs`: ヘルスチェック項目の合格/不合格/警告判定ロジックの検証。
 2. **結合・CLIテスト (Integration & CLI Tests)**:
+   - `cargo run --bin ground-station -- check` による事前ヘルスチェック結果の表示確認。
    - `cargo run --bin ground-station -- schedule` によるリアルタイムスケジュール出力の整合性確認。
    - `cargo test --all` による全ユニットテストのパス確認。
