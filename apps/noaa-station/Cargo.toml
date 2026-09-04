@@ -17,3 +17,33 @@ urlencoding = "2.1"
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
+
+# ==============================================================================
+# 🧪 単体テスト (Unit Tests)
+# ------------------------------------------------------------------------------
+# 外部プロセスやネットワークに依存せず、内部ロジックや計算精度を検証
+# ==============================================================================
+[[test]]
+name = "unit_config"
+path = "tests/unit/config_test.rs"
+
+[[test]]
+name = "unit_orbit"
+path = "tests/unit/orbit_test.rs"
+
+[[test]]
+name = "unit_voicevox"
+path = "tests/unit/voicevox_test.rs"
+
+[[test]]
+name = "unit_worker"
+path = "tests/unit/worker_test.rs"
+
+# ==============================================================================
+# 🔗 統合テスト (Integration Tests)
+# ------------------------------------------------------------------------------
+# VOICEVOX Engine コンテナ等の外部サービスと実際に通信して結合動作を検証
+# ==============================================================================
+[[test]]
+name = "integration_voicevox"
+path = "tests/integration/voicevox_integration_test.rs"
