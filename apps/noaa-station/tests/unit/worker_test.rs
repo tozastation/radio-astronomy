@@ -17,7 +17,7 @@ fn test_command_args_construction() {
     assert!(fm_args.contains(&"-f".to_string()));
     assert!(fm_args.contains(&"137100000".to_string()));
     assert!(fm_args.contains(&"-M".to_string()));
-    assert!(fm_args.contains(&"wfm".to_string()));
+    assert!(fm_args.contains(&"fm".to_string()));
     assert!(fm_args.contains(&"-s".to_string()));
     assert!(fm_args.contains(&"60000".to_string()));
     assert!(fm_args.contains(&"-r".to_string()));
