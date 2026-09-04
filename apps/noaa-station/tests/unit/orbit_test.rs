@@ -1,6 +1,6 @@
 use chrono::Utc;
 use noaa_station::config::ObserverConfig;
-use noaa_station::orbit::{OrbitPredictor, SatelliteInfo};
+use noaa_station::orbit::{azimuth_to_direction, OrbitPredictor, SatelliteInfo};
 
 #[test]
 fn test_tle_parsing_and_pass_prediction() {
@@ -30,8 +30,23 @@ fn test_tle_parsing_and_pass_prediction() {
     assert!(!passes.is_empty(), "24時間以内に少なくとも1回のパスが検出される必要があります");
     for pass in &passes {
         assert!(pass.max_elevation_deg >= 15.0);
+        assert!(pass.peak_azimuth_deg >= 0.0 && pass.peak_azimuth_deg < 360.0);
         assert!(pass.los > pass.aos);
         assert_eq!(pass.frequency_hz, 137_100_000);
         assert_eq!(pass.satellite_name, "NOAA 19");
     }
 }
+
+#[test]
+fn test_azimuth_to_direction() {
+    assert_eq!(azimuth_to_direction(0.0), "北 (N)");
+    assert_eq!(azimuth_to_direction(360.0), "北 (N)");
+    assert_eq!(azimuth_to_direction(45.0), "北東 (NE)");
+    assert_eq!(azimuth_to_direction(90.0), "東 (E)");
+    assert_eq!(azimuth_to_direction(135.0), "南東 (SE)");
+    assert_eq!(azimuth_to_direction(180.0), "南 (S)");
+    assert_eq!(azimuth_to_direction(225.0), "南西 (SW)");
+    assert_eq!(azimuth_to_direction(270.0), "西 (W)");
+    assert_eq!(azimuth_to_direction(315.0), "北西 (NW)");
+}
+

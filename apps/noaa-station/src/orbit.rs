@@ -38,6 +38,30 @@ pub struct SatellitePass {
     pub aos: DateTime<Utc>,           // Acquisition of Signal: 観測開始時刻（仰角閾値超え）
     pub los: DateTime<Utc>,           // Loss of Signal: 観測終了時刻（地平線下へ沈む）
     pub max_elevation_deg: f64,       // ピーク仰角（アンテナに最も電波が強く入る瞬間）
+    pub peak_azimuth_deg: f64,        // ピーク時の方位角 (0度=北, 90度=東, 180度=南, 270度=西)
+}
+
+/// 方位角（度）を16方位の日本語方角名に変換
+pub fn azimuth_to_direction(az_deg: f64) -> &'static str {
+    let normalized = az_deg.rem_euclid(360.0);
+    match normalized {
+        a if (348.75..=360.0).contains(&a) || (0.0..11.25).contains(&a) => "北 (N)",
+        a if (11.25..33.75).contains(&a) => "北北東 (NNE)",
+        a if (33.75..56.25).contains(&a) => "北東 (NE)",
+        a if (56.25..78.75).contains(&a) => "東北東 (ENE)",
+        a if (78.75..101.25).contains(&a) => "東 (E)",
+        a if (101.25..123.75).contains(&a) => "東南東 (ESE)",
+        a if (123.75..146.25).contains(&a) => "南東 (SE)",
+        a if (146.25..168.75).contains(&a) => "南南東 (SSE)",
+        a if (168.75..191.25).contains(&a) => "南 (S)",
+        a if (191.25..213.75).contains(&a) => "南南西 (SSW)",
+        a if (213.75..236.25).contains(&a) => "南西 (SW)",
+        a if (236.25..258.75).contains(&a) => "西南西 (WSW)",
+        a if (258.75..281.25).contains(&a) => "西 (W)",
+        a if (281.25..303.75).contains(&a) => "西北西 (WNW)",
+        a if (303.75..326.25).contains(&a) => "北西 (NW)",
+        _ => "北北西 (NNW)",
+    }
 }
 
 pub struct OrbitPredictor;
@@ -69,6 +93,7 @@ impl OrbitPredictor {
         let mut in_pass = false;
         let mut current_aos = start_time;
         let mut max_el = 0.0f64;
+        let mut max_az = 0.0f64;
 
         // 30秒刻みで未来の軌道をサンプリング（ポーリングスキャン）
         let step_seconds = 30i64;
@@ -76,7 +101,7 @@ impl OrbitPredictor {
 
         for i in 0..=total_steps {
             let t = start_time + Duration::seconds(i * step_seconds);
-            let el = calculate_elevation(&elements, &constants, &obs_ecef, observer.latitude, observer.longitude, t);
+            let (el, az) = calculate_topo_pos(&elements, &constants, &obs_ecef, observer.latitude, observer.longitude, t);
 
             if el >= min_el_deg {
                 if !in_pass {
@@ -84,9 +109,11 @@ impl OrbitPredictor {
                     in_pass = true;
                     current_aos = t;
                     max_el = el;
+                    max_az = az;
                 } else if el > max_el {
-                    // ピーク仰角を更新
+                    // ピーク仰角と方位角を更新
                     max_el = el;
+                    max_az = az;
                 }
             } else if in_pass {
                 // 仰角が閾値を下回って見えなくなった瞬間 (LOS)
@@ -97,8 +124,10 @@ impl OrbitPredictor {
                     aos: current_aos,
                     los: t,
                     max_elevation_deg: max_el,
+                    peak_azimuth_deg: max_az,
                 });
                 max_el = 0.0;
+                max_az = 0.0;
             }
         }
 
@@ -110,6 +139,7 @@ impl OrbitPredictor {
                 aos: current_aos,
                 los: start_time + Duration::hours(duration_hours as i64),
                 max_elevation_deg: max_el,
+                peak_azimuth_deg: max_az,
             });
         }
 
@@ -234,15 +264,16 @@ fn geodetic_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> [f64; 3] {
     [x, y, z]
 }
 
-/// 指定時刻における衛星の仰角 (度) を計算
-fn calculate_elevation(
+/// 指定時刻における衛星の仰角 (度) と方位角 (度) を計算
+/// 戻り値: (elevation_deg, azimuth_deg)
+fn calculate_topo_pos(
     elements: &Elements,
     constants: &Constants,
     obs_ecef: &[f64; 3],
     lat_deg: f64,
     lon_deg: f64,
     t: DateTime<Utc>,
-) -> f64 {
+) -> (f64, f64) {
     // TLE エポック（起点時刻）からの経過時間 (分) を計算
     let epoch_dt = sgp4_epoch_to_datetime(elements.epoch());
     let diff = t.signed_duration_since(epoch_dt);
@@ -251,7 +282,7 @@ fn calculate_elevation(
     // SGP4 モデルで衛星の位置 (ECI座標系 [km]) を推算
     let prediction = match constants.propagate(minutes_since_epoch) {
         Ok(p) => p,
-        Err(_) => return -90.0, // 軌道崩壊または計算不能時は地平線下扱い
+        Err(_) => return (-90.0, 0.0), // 軌道崩壊または計算不能時は地平線下扱い
     };
 
     let sat_eci = [
@@ -275,7 +306,7 @@ fn calculate_elevation(
     let ry = sat_ecef[1] - obs_ecef[1];
     let rz = sat_ecef[2] - obs_ecef[2];
 
-    // Topocentric 水平座標系 (East, North, Up) への回転
+    // Topocentric 水平座標系 (East, North, Up) への変換
     let lat = lat_deg.to_radians();
     let lon = lon_deg.to_radians();
 
@@ -284,19 +315,28 @@ fn calculate_elevation(
     let sin_lon = lon.sin();
     let cos_lon = lon.cos();
 
-    // 天頂方向（Up成分）の射影長
+    // 東 (East), 北 (North), 天頂 (Up) 成分
+    let east = -sin_lon * rx + cos_lon * ry;
+    let north = -sin_lat * cos_lon * rx - sin_lat * sin_lon * ry + cos_lat * rz;
     let up = cos_lat * cos_lon * rx + cos_lat * sin_lon * ry + sin_lat * rz;
 
     // アンテナから衛星までの直線距離 (Range)
     let range = (rx.powi(2) + ry.powi(2) + rz.powi(2)).sqrt();
     if range < 1e-6 {
-        return -90.0;
+        return (-90.0, 0.0);
     }
 
     // 仰角: sin(elevation) = Up / Range
     let sin_el = up / range;
     let el_rad = sin_el.clamp(-1.0, 1.0).asin();
-    el_rad.to_degrees()
+    let el_deg = el_rad.to_degrees();
+
+    // 方位角: 北(0度)を基準とし、時計回りに東(90度)、南(180度)、西(270度)
+    // az = atan2(East, North)
+    let az_rad = east.atan2(north);
+    let az_deg = az_rad.to_degrees().rem_euclid(360.0);
+
+    (el_deg, az_deg)
 }
 
 /// SGP4 の epoch 形式 (YYDDD.DDDDDD) を標準の UTC 日時に変換

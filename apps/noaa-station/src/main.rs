@@ -102,6 +102,7 @@ async fn test_discord(config: &Config) -> Result<()> {
         .send_satellite_pass_report(
             "NOAA 18 (テスト通知)",
             52.5,
+            "東南東 (ESE)",
             137_912_500,
             "2026-09-04 12:13:00 〜 12:20:00",
             None,

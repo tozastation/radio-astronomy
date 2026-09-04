@@ -43,6 +43,7 @@ impl DiscordClient {
         &self,
         sat_name: &str,
         max_elev: f64,
+        direction: &str,
         freq_hz: u64,
         pass_time_str: &str,
         image_path: Option<&Path>,
@@ -59,7 +60,7 @@ impl DiscordClient {
             }
         };
 
-        info!("Discord に観測レポートを送信中: {}", sat_name);
+        info!("Discord に観測レポートを送信中: {} (最大仰角: {:.1}° 方角: {})", sat_name, max_elev, direction);
 
         let freq_mhz = freq_hz as f64 / 1_000_000.0;
         let content_text = format!("🛰️ **{}** の受信・デコードが完了したのだ！宇宙からの雲画像をお届けするのだ！", sat_name);
@@ -70,8 +71,8 @@ impl DiscordClient {
             "color": 3447003, // エレガントな宇宙ブルー (#3498DB)
             "fields": [
                 {
-                    "name": "最大仰角",
-                    "value": format!("{:.1}°", max_elev),
+                    "name": "最大仰角 / 方角",
+                    "value": format!("{:.1}° ({})", max_elev, direction),
                     "inline": true
                 },
                 {

@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::decoder::Decoder;
-use crate::orbit::{fetch_weather_tles, OrbitPredictor};
+use crate::orbit::{azimuth_to_direction, fetch_weather_tles, OrbitPredictor};
 use crate::receiver::ReceiverSession;
 use crate::voicevox::VoicevoxClient;
 use anyhow::Result;
@@ -35,11 +35,11 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
         config.scheduler.min_elevation_deg,
     )?;
 
-    println!("\n==========================================================================================");
+    println!("\n========================================================================================================");
     println!("📡 NOAA 気象衛星 通過予定スケジュール (今後24時間 / 観測地: 緯度 {:.4}, 経度 {:.4})", config.observer.latitude, config.observer.longitude);
-    println!("==========================================================================================");
-    println!("{:<10} | {:<12} | {:<20} | {:<20} | {:<10}", "衛星名", "周波数", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角");
-    println!("------------------------------------------------------------------------------------------");
+    println!("========================================================================================================");
+    println!("{:<10} | {:<12} | {:<20} | {:<20} | {:<18}", "衛星名", "周波数", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
+    println!("--------------------------------------------------------------------------------------------------------");
 
     if passes.is_empty() {
         println!("※ 仰角 {:.1}° 以上の通過パスは見つかりませんでした", config.scheduler.min_elevation_deg);
@@ -48,18 +48,20 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
             let aos_local: DateTime<Local> = DateTime::from(pass.aos);
             let los_local: DateTime<Local> = DateTime::from(pass.los);
             let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
+            let dir = azimuth_to_direction(pass.peak_azimuth_deg);
 
             println!(
-                "{:<10} | {:>7.4} MHz | {} | {} | {:>4.1}°",
+                "{:<10} | {:>7.4} MHz | {} | {} | {:>4.1}° ({})",
                 pass.satellite_name,
                 freq_mhz,
                 aos_local.format("%Y-%m-%d %H:%M:%S"),
                 los_local.format("%Y-%m-%d %H:%M:%S"),
-                pass.max_elevation_deg
+                pass.max_elevation_deg,
+                dir
             );
         }
     }
-    println!("==========================================================================================\n");
+    println!("========================================================================================================\n");
 
     Ok(())
 }
@@ -145,12 +147,14 @@ pub async fn run_daemon(config: Config) -> Result<()> {
 
         let aos_local: DateTime<Local> = DateTime::from(pass.aos);
         let los_local: DateTime<Local> = DateTime::from(pass.los);
+        let peak_dir = azimuth_to_direction(pass.peak_azimuth_deg);
         info!(
-            "次の通過予定: {} (AOS: {}, LOS: {}, 最大仰角: {:.1}°)",
+            "次の通過予定: {} (AOS: {}, LOS: {}, 最大仰角: {:.1}° 方角: {})",
             pass.satellite_name,
             aos_local.format("%H:%M:%S"),
             los_local.format("%H:%M:%S"),
-            pass.max_elevation_deg
+            pass.max_elevation_deg,
+            peak_dir
         );
 
         // 初回起動時のみ、ずんだもんが元気に挨拶と次回の予定をアナウンス
@@ -186,8 +190,8 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         // 4. ずんだもん事前通知発話
         // ---------------------------------------------------------------------
         let alert_text = format!(
-            "まもなく{}が通過するのだ！最大仰角は{:.0}度、受信を試みるのだ！",
-            pass.satellite_name, pass.max_elevation_deg
+            "まもなく{}が通過するのだ！最大仰角は{:.0}度、{}の空なのだ！",
+            pass.satellite_name, pass.max_elevation_deg, peak_dir
         );
         let _ = voice_client.speak(&alert_text).await;
 
@@ -296,6 +300,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                         .send_satellite_pass_report(
                             &pass.satellite_name,
                             pass.max_elevation_deg,
+                            peak_dir,
                             pass.frequency_hz,
                             &pass_time_str,
                             Some(&png_path),
