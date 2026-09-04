@@ -46,6 +46,7 @@ async fn test_voicevox_container_synthesis_integration() {
         enabled: true,
         host: host.to_string(),
         speaker_id: 3, // ずんだもん
+        timeout_secs: 15,
     };
     let client = VoicevoxClient::new(config);
 

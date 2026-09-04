@@ -41,12 +41,18 @@ pub struct SchedulerConfig {
     pub tle_update_interval_hours: u64, // 軌道要素(TLE)を更新する頻度 (時間)
 }
 
+fn default_timeout_secs() -> u64 {
+    15
+}
+
 /// VOICEVOXずんだもん音声合成エンジンの設定
 #[derive(Debug, Clone, Deserialize)]
 pub struct VoicevoxConfig {
     pub enabled: bool,      // 音声通知を有効にするか (falseの場合はログ出力のみ)
     pub host: String,       // VOICEVOX Engineのエンドポイント (例: "http://localhost:50021")
     pub speaker_id: u32,    // スピーカーID (3 = ずんだもん ノーマル)
+    #[serde(default = "default_timeout_secs")]
+    pub timeout_secs: u64,  // HTTPリクエストタイムアウト秒数 (CPU推論を考慮しデフォルト15秒)
 }
 
 /// 観測データ・生成画像の保存先設定

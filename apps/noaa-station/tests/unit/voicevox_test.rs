@@ -5,8 +5,9 @@ use noaa_station::voicevox::VoicevoxClient;
 fn test_voicevox_url_generation() {
     let config = VoicevoxConfig {
         enabled: true,
-        host: "http://localhost:50021".to_string(),
+        host: "http://localhost:50021/".to_string(),
         speaker_id: 3,
+        timeout_secs: 15,
     };
     let client = VoicevoxClient::new(config);
     let query_url = client.audio_query_url("こんにちは");

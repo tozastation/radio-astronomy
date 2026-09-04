@@ -23,11 +23,12 @@ pub struct VoicevoxClient {
 impl VoicevoxClient {
     /// クライアントの初期化
     pub fn new(config: VoicevoxConfig) -> Self {
-        // HTTPクライアントのタイムアウトを3秒に設定。
-        // SRE的な観点から、外部通知サービス（VOICEVOX）の停止が原因で
-        // 主処理（SDR受信やデーモン）が永久ブロックされるのを防ぎます。
+        // HTTPクライアントのタイムアウトを設定値（デフォルト15秒）に設定。
+        // GPD Pocket3 のような低電力CPU環境での長文音声合成推論（4〜8秒程度）
+        // でもタイムアウトせず、確実に音声を生成できるようにします。
+        let timeout_secs = config.timeout_secs;
         let http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(3))
+            .timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .unwrap_or_else(|_| Client::new());
 
