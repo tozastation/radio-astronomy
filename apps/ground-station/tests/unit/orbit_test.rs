@@ -28,6 +28,7 @@ fn test_tle_parsing_and_pass_prediction() {
     let satellites_config = ground_station::config::SatellitesConfig {
         enable_meteor: true,
         enable_noaa: true,
+        ..Default::default()
     };
 
     // 最新TLEの取得

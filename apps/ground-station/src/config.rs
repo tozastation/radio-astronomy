@@ -109,6 +109,135 @@ pub struct DiscordConfig {
     pub webhook_url: Option<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_iss_norad_id() -> u32 {
+    25544
+}
+
+fn default_iss_freq() -> u64 {
+    145_800_000
+}
+
+/// キューブサット（超小型衛星）の個別受信目標設定
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct CubeSatTargetConfig {
+    pub name: String,
+    pub norad_id: u32,
+    pub freq: u64,
+    pub r#type: String, // "BpskTelemetry", "CameraSstv", "SsdvCamera", "MorseCw"
+}
+
+fn default_cubesat_targets() -> Vec<CubeSatTargetConfig> {
+    vec![
+        CubeSatTargetConfig {
+            name: "FUNcube-1".to_string(),
+            norad_id: 39444,
+            freq: 145_935_000,
+            r#type: "BpskTelemetry".to_string(),
+        },
+        CubeSatTargetConfig {
+            name: "UmKA-1".to_string(),
+            norad_id: 57172,
+            freq: 437_625_000,
+            r#type: "CameraSstv".to_string(),
+        },
+        CubeSatTargetConfig {
+            name: "SONATE-2".to_string(),
+            norad_id: 59112,
+            freq: 437_025_000,
+            r#type: "SsdvCamera".to_string(),
+        },
+        CubeSatTargetConfig {
+            name: "XI-IV".to_string(),
+            norad_id: 27848,
+            freq: 436_847_500,
+            r#type: "MorseCw".to_string(),
+        },
+        CubeSatTargetConfig {
+            name: "CUTE-1".to_string(),
+            norad_id: 27844,
+            freq: 436_837_500,
+            r#type: "MorseCw".to_string(),
+        },
+    ]
+}
+
+/// キューブサット受信設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct CubeSatsConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_cubesat_targets")]
+    pub targets: Vec<CubeSatTargetConfig>,
+}
+
+impl Default for CubeSatsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            targets: default_cubesat_targets(),
+        }
+    }
+}
+
+/// 国際宇宙ステーション(ISS)のSSTV/FM受信設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct IssConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_iss_norad_id")]
+    pub norad_id: u32,
+    #[serde(default = "default_iss_freq")]
+    pub freq: u64,
+}
+
+impl Default for IssConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            norad_id: default_iss_norad_id(),
+            freq: default_iss_freq(),
+        }
+    }
+}
+
+/// ロシア Meteor-M 気象衛星設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct MeteorConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for MeteorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+        }
+    }
+}
+
+/// 米国 NOAA 気象衛星設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct NoaaConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+}
+
+impl Default for NoaaConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_false(),
+        }
+    }
+}
+
 fn default_enable_meteor() -> bool {
     true // ロシア Meteor-M (N2-3, N2-4): 2026年現在も現役でLRPTデジタル気象画像を送信中
 }
@@ -117,18 +246,42 @@ fn default_enable_noaa() -> bool {
     false // 米国 NOAA (15, 18, 19): 2025年8月に全機退役・停波したためデフォルトOFF
 }
 
-/// 追尾・受信対象の気象衛星シリーズ設定
+/// 追尾・受信対象の全衛星設定
 #[derive(Debug, Clone, Deserialize)]
 pub struct SatellitesConfig {
+    #[serde(default)]
+    pub meteor: MeteorConfig,
+    #[serde(default)]
+    pub noaa: NoaaConfig,
+    #[serde(default)]
+    pub cubesats: CubeSatsConfig,
+    #[serde(default)]
+    pub iss: IssConfig,
+
+    // 旧設定互換用フラグ
     #[serde(default = "default_enable_meteor")]
     pub enable_meteor: bool,
     #[serde(default = "default_enable_noaa")]
     pub enable_noaa: bool,
 }
 
+impl SatellitesConfig {
+    pub fn is_meteor_enabled(&self) -> bool {
+        self.meteor.enabled && self.enable_meteor
+    }
+
+    pub fn is_noaa_enabled(&self) -> bool {
+        self.noaa.enabled && self.enable_noaa
+    }
+}
+
 impl Default for SatellitesConfig {
     fn default() -> Self {
         Self {
+            meteor: MeteorConfig::default(),
+            noaa: NoaaConfig::default(),
+            cubesats: CubeSatsConfig::default(),
+            iss: IssConfig::default(),
             enable_meteor: default_enable_meteor(),
             enable_noaa: default_enable_noaa(),
         }

@@ -24,6 +24,23 @@ gain = 45.0          # チューナー利得 (dB)。宇宙からの微弱信号�
 sample_rate = 60000  # SDRサンプリングレート (60kHz)
 ppm_error = 0        # 周波数偏差補正 (PPM)
 
-[satellites]
-enable_meteor = true   # ロシア極軌道気象衛星 Meteor-M (N2-3, N2-4: 2026年現役 LRPTデジタル画像)
-enable_noaa = false    # 米国 NOAA (15, 18, 19: 2025年8月に全機退役・停波済み)
+[satellites.meteor]
+enabled = true   # ロシア極軌道気象衛星 Meteor-M (N2-3, N2-4: 2026年現役 LRPTデジタル画像)
+
+[satellites.noaa]
+enabled = false  # 米国 NOAA (15, 18, 19: 2025年8月に全機退役・停波済み)
+
+[satellites.cubesats]
+enabled = true
+targets = [
+    { name = "FUNcube-1", norad_id = 39444, freq = 145935000, type = "BpskTelemetry" },
+    { name = "UmKA-1", norad_id = 57172, freq = 437625000, type = "CameraSstv" },
+    { name = "SONATE-2", norad_id = 59112, freq = 437025000, type = "SsdvCamera" },
+    { name = "XI-IV", norad_id = 27848, freq = 436847500, type = "MorseCw" },
+    { name = "CUTE-1", norad_id = 27844, freq = 436837500, type = "MorseCw" },
+]
+
+[satellites.iss]
+enabled = true
+norad_id = 25544
+freq = 145800000
