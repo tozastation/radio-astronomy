@@ -66,3 +66,26 @@ fn test_meteor_lrpt_arguments_generation() {
     assert!(satdump_args.contains(&"--baseband_format".to_string()));
     assert!(satdump_args.contains(&"cu8".to_string()));
 }
+
+#[tokio::test]
+async fn test_decoder_engine_routing() {
+    use chrono::{Duration, Utc};
+    use ground_station::decoder::DecoderEngine;
+    use ground_station::orbit::{SatellitePass, SignalType};
+    use std::path::Path;
+
+    let pass = SatellitePass {
+        satellite_name: "UmKA-1".to_string(),
+        frequency_hz: 437_625_000,
+        signal_type: SignalType::CubeSatSstv,
+        aos: Utc::now(),
+        los: Utc::now() + Duration::minutes(5),
+        max_elevation_deg: 50.0,
+        peak_azimuth_deg: 90.0,
+    };
+
+    let raw_path = Path::new("tests/fixtures/nonexistent.raw");
+    let session_dir = Path::new("tests/fixtures/session");
+    let result = DecoderEngine::decode(&pass, raw_path, session_dir).await;
+    assert!(result.is_ok());
+}
