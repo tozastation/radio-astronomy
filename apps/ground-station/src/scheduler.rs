@@ -66,6 +66,21 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// 衛星通過パス一覧から、開始時刻(AOS)が指定されたJST日付に該当するものだけを抽出
+pub fn filter_passes_for_jst_date(
+    passes: &[crate::orbit::SatellitePass],
+    target_date: chrono::NaiveDate,
+) -> Vec<crate::orbit::SatellitePass> {
+    passes
+        .iter()
+        .filter(|p| {
+            let aos_jst: chrono::DateTime<chrono::Local> = chrono::DateTime::from(p.aos);
+            aos_jst.date_naive() == target_date
+        })
+        .cloned()
+        .collect()
+}
+
 /// 現在計算される今後24時間の通過予定一覧を Discord へ送信 (CLI / 手動トリガー用)
 pub async fn send_schedule_to_discord(config: &Config) -> Result<()> {
     let http_client = Client::new();
@@ -82,12 +97,161 @@ pub async fn send_schedule_to_discord(config: &Config) -> Result<()> {
     )?;
 
     let discord = crate::discord::DiscordClient::new(config.discord.clone());
-    let today_jst = Local::now().date_naive();
-    let date_str = today_jst.format("%Y-%m-%d").to_string();
+
+    discord
+        .send_24h_schedule(
+            &passes,
+            config.observer.latitude,
+            config.observer.longitude,
+            config.scheduler.min_elevation_deg,
+        )
+        .await?;
+
+    println!("✨ Discord への今後24時間通過予定の送信が完了しました！ (対象パス: {} 件)", passes.len());
+    Ok(())
+}
+
+/// 毎朝定時（または起動時）に本日の衛星受信スケジュールを Discord に自動配信する独立常駐タスク
+/// 【非同期分離による堅牢性】
+/// メインループ（SDR録音シーケンスの直列ステートマシン）から完全に分離して独立動作します。
+/// SDRが深夜の長時間スリープ中であっても、毎朝設定された時刻（例: 07:00 JST）に正確に発火します。
+pub async fn run_daily_scheduler(
+    config: Config,
+    discord: std::sync::Arc<crate::discord::DiscordClient>,
+) -> Result<()> {
+    if !config.scheduler.daily_schedule_enabled {
+        info!("デイリースケジューラは設定により無効化されています");
+        return Ok(());
+    }
+
+    let http_client = Client::new();
+    let mut last_sent_date: Option<chrono::NaiveDate> = None;
+    let target_hour = config.scheduler.daily_schedule_hour_jst;
+    let target_minute = config.scheduler.daily_schedule_minute_jst;
+
+    info!(
+        "デイリースケジューラを起動しました (毎朝 {:02}:{:02} JST に配信予定)",
+        target_hour, target_minute
+    );
+
+    // 起動時即時配信が有効な場合、本日分が未送信なら送信
+    if config.scheduler.daily_schedule_send_on_startup {
+        let today = Local::now().date_naive();
+        info!("起動時デイリースケジュール送信を実行します (日付: {})", today);
+        match send_daily_for_date(&config, &discord, &http_client, today).await {
+            Ok(count) => {
+                info!("起動時デイリースケジュール配信が完了しました ({} 件)", count);
+                last_sent_date = Some(today);
+            }
+            Err(e) => {
+                warn!("起動時デイリースケジュール配信エラー: {}", e);
+            }
+        }
+    }
+
+    loop {
+        let now_local = Local::now();
+        let today = now_local.date_naive();
+
+        use chrono::TimeZone;
+        let today_target_dt = match today.and_hms_opt(target_hour, target_minute, 0) {
+            Some(naive) => match Local.from_local_datetime(&naive).single() {
+                Some(dt) => dt,
+                None => now_local + Duration::hours(24),
+            },
+            None => now_local + Duration::hours(24),
+        };
+
+        let next_target = if now_local < today_target_dt && last_sent_date != Some(today) {
+            today_target_dt
+        } else {
+            let tomorrow = today + Duration::days(1);
+            match tomorrow.and_hms_opt(target_hour, target_minute, 0) {
+                Some(naive) => match Local.from_local_datetime(&naive).single() {
+                    Some(dt) => dt,
+                    None => now_local + Duration::hours(24),
+                },
+                None => now_local + Duration::hours(24),
+            }
+        };
+
+        let wait_duration = match (next_target - now_local).to_std() {
+            Ok(d) => d,
+            Err(_) => std::time::Duration::from_secs(1),
+        };
+
+        info!(
+            "次回のデイリースケジュール配信予定: {} (残り約 {:.1} 時間)",
+            next_target.format("%Y-%m-%d %H:%M:%S"),
+            wait_duration.as_secs_f64() / 3600.0
+        );
+
+        tokio::select! {
+            _ = tokio::time::sleep(wait_duration) => {},
+            sig = wait_for_shutdown_signal() => {
+                info!("デイリースケジューラがシャットダウン要求 ({}) を受信しました", sig);
+                break;
+            }
+        }
+
+        let target_date = Local::now().date_naive();
+        info!("デイリースケジュール配信処理を実行中... (対象日: {})", target_date);
+
+        match send_daily_for_date(&config, &discord, &http_client, target_date).await {
+            Ok(count) => {
+                info!("✨ 本日のデイリースケジュール配信が完了しました (全 {} 件)", count);
+                last_sent_date = Some(target_date);
+                // 同一分内での多重発火防止のため60秒待機
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            }
+            Err(e) => {
+                warn!("デイリースケジュール配信に失敗しました ({}). 5分後に再試行します", e);
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {},
+                    sig = wait_for_shutdown_signal() => {
+                        info!("リトライ待機中にシャットダウン要求 ({}) を受信しました", sig);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    info!("デイリースケジューラを停止しました");
+    Ok(())
+}
+
+/// 指定された JST 日付における当日の全パスを計算し Discord へ送信
+async fn send_daily_for_date(
+    config: &Config,
+    discord: &crate::discord::DiscordClient,
+    http_client: &Client,
+    date: chrono::NaiveDate,
+) -> Result<usize> {
+    let satellites = fetch_weather_tles(http_client, &config.satellites).await?;
+
+    use chrono::TimeZone;
+    let start_of_day_local = match date.and_hms_opt(0, 0, 0) {
+        Some(naive) => Local.from_local_datetime(&naive).single().unwrap_or_else(Local::now),
+        None => Local::now(),
+    };
+    let start_of_day_utc: DateTime<Utc> = start_of_day_local.with_timezone(&Utc);
+
+    // 当日 00:00:00 JST から 24時間をスキャン
+    let passes = OrbitPredictor::predict_all_passes(
+        &satellites,
+        &config.observer,
+        start_of_day_utc,
+        24,
+        config.scheduler.min_elevation_deg,
+    )?;
+
+    let day_passes = filter_passes_for_jst_date(&passes, date);
+    let date_str = date.format("%Y-%m-%d").to_string();
 
     discord
         .send_daily_schedule(
-            &passes,
+            &day_passes,
             &date_str,
             config.observer.latitude,
             config.observer.longitude,
@@ -95,8 +259,7 @@ pub async fn send_schedule_to_discord(config: &Config) -> Result<()> {
         )
         .await?;
 
-    println!("✨ Discord へのスケジュール送信が完了しました！ (対象パス: {} 件)", passes.len());
-    Ok(())
+    Ok(day_passes.len())
 }
 
 /// 自律常駐監視デーモンのメインループ
@@ -118,10 +281,18 @@ pub async fn run_daemon(config: Config) -> Result<()> {
     let voice_arc = std::sync::Arc::new(voice_client.clone());
     tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc.clone(), voice_arc));
 
+    // デイリースケジューラの独立起動 (毎朝定時に本日のスケジュールをDiscord自動配信)
+    let config_clone = config.clone();
+    let discord_for_scheduler = discord_arc.clone();
+    tokio::spawn(async move {
+        if let Err(e) = run_daily_scheduler(config_clone, discord_for_scheduler).await {
+            error!("デイリースケジューラで予期せぬエラーが発生しました: {}", e);
+        }
+    });
+
     let mut last_tle_update = Utc::now() - Duration::hours(25);
     let mut cached_satellites = Vec::new();
     let mut is_first_run = true;
-    let mut last_daily_schedule_date: Option<chrono::NaiveDate> = None;
 
     loop {
         let now = Utc::now();
@@ -172,26 +343,9 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             }
         };
 
-        // ---------------------------------------------------------------------
-        // 2.1 デイリースケジュールの Discord 自動送信 (日付更新時または起動初日に1回送信)
-        // ---------------------------------------------------------------------
-        let today_jst = Local::now().date_naive();
-        if last_daily_schedule_date != Some(today_jst) {
-            let date_str = today_jst.format("%Y-%m-%d").to_string();
-            let _ = discord_arc
-                .send_daily_schedule(
-                    &passes,
-                    &date_str,
-                    config.observer.latitude,
-                    config.observer.longitude,
-                    config.scheduler.min_elevation_deg,
-                )
-                .await;
-            last_daily_schedule_date = Some(today_jst);
-        }
-
         // LOS（通過終了）が現在より未来にある最も近いパスを特定
         let next_pass = passes.iter().find(|p| p.los > now).cloned();
+
         let pass = match next_pass {
             Some(p) => p,
             None => {

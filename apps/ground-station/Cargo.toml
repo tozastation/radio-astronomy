@@ -48,6 +48,11 @@ path = "tests/unit/health_test.rs"
 name = "unit_discord"
 path = "tests/unit/discord_test.rs"
 
+[[test]]
+name = "unit_scheduler"
+path = "tests/unit/scheduler_test.rs"
+
+
 # ==============================================================================
 # 🔗 統合テスト (Integration Tests)
 # ------------------------------------------------------------------------------
