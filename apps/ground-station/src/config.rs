@@ -81,7 +81,7 @@ pub struct SchedulerConfig {
 }
 
 fn default_timeout_secs() -> u64 {
-    15
+    60
 }
 
 /// VOICEVOXずんだもん音声合成エンジンの設定
@@ -91,7 +91,7 @@ pub struct VoicevoxConfig {
     pub host: String,       // VOICEVOX Engineのエンドポイント (例: "http://localhost:50021")
     pub speaker_id: u32,    // スピーカーID (3 = ずんだもん ノーマル)
     #[serde(default = "default_timeout_secs")]
-    pub timeout_secs: u64,  // HTTPリクエストタイムアウト秒数 (CPU推論を考慮しデフォルト15秒)
+    pub timeout_secs: u64,  // HTTPリクエストタイムアウト秒数 (CPU推論やコールドスタートを考慮しデフォルト60秒)
 }
 
 /// 観測データ・生成画像の保存先設定

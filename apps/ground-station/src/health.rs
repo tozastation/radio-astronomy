@@ -243,7 +243,7 @@ pub async fn probe_voicevox(config: &Config) -> HealthCheckItem {
     }
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(5))
         .build();
 
     let client = match client {
