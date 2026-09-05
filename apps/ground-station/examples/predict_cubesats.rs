@@ -37,22 +37,22 @@ async fn main() -> Result<()> {
             payload: "📊 VHF高感度テレメトリ (BPSK)",
         },
         CubeSatDef {
+            name_pattern: "SO-50",
+            display_name: "SO-50 (Saudi-OSCAR 50)",
+            freq_hz: 436_795_000,
+            payload: "📻 常時活発なFMレピータ・テレメトリ",
+        },
+        CubeSatDef {
+            name_pattern: "CAS-4A",
+            display_name: "CAS-4A (Zhongwei-1A)",
+            freq_hz: 435_220_000,
+            payload: "📻 超高SNR 定番CWモールスビーコン",
+        },
+        CubeSatDef {
             name_pattern: "CUBESAT XI-IV",
-            display_name: "XI-IV (東京大学)",
+            display_name: "XI-IV (東京大学 - 2003年打上)",
             freq_hz: 436_848_000,
-            payload: "📻 20年稼働・東大モールスCWビーコン",
-        },
-        CubeSatDef {
-            name_pattern: "CUBESAT XI-V",
-            display_name: "XI-V (東京大学)",
-            freq_hz: 437_345_000,
-            payload: "📻 東大モールスCW / FMビーコン",
-        },
-        CubeSatDef {
-            name_pattern: "CUTE-1",
-            display_name: "CUTE-1 (東工大)",
-            freq_hz: 436_837_500,
-            payload: "📻 東工大モールスCWビーコン",
+            payload: "📻 20年稼働・東大モールスCWビーコン (休眠/微弱)",
         },
         CubeSatDef {
             name_pattern: "ISS (ZARYA)",
