@@ -303,9 +303,22 @@ impl Config {
         dotenvy::dotenv().ok();
         dotenvy::from_filename(".local.env").ok();
         dotenvy::from_filename("../.local.env").ok();
+        dotenvy::from_filename("apps/ground-station/.local.env").ok();
 
-        let content = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("設定ファイルの読み込みに失敗しました: {:?}", path.as_ref()))?;
+        let p = path.as_ref();
+        let target_path = if !p.exists() && p == Path::new("config.toml") {
+            let alt = Path::new("apps/ground-station/config.toml");
+            if alt.exists() {
+                alt.to_path_buf()
+            } else {
+                p.to_path_buf()
+            }
+        } else {
+            p.to_path_buf()
+        };
+
+        let content = fs::read_to_string(&target_path)
+            .with_context(|| format!("設定ファイルの読み込みに失敗しました: {:?}", target_path))?;
         let mut config = Self::from_str(&content)?;
 
         // 環境変数 DISCORD_WEBHOOK_URL が存在する場合は最優先で採用し、自動有効化
