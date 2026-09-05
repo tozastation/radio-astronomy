@@ -25,11 +25,12 @@ else
     RUN_USER="$(id -un)"
     RUN_GROUP="$(id -gn)"
 fi
+RUN_UID="$(id -u "${RUN_USER}")"
 
 echo "================================================================="
 echo "🛰️  Ground Station systemd インストーラ"
 echo "================================================================="
-echo "・実行ユーザー: ${RUN_USER}:${RUN_GROUP}"
+echo "・実行ユーザー: ${RUN_USER}:${RUN_GROUP} (UID: ${RUN_UID})"
 echo "・リポジトリ  : ${REPO_ROOT}"
 echo "・作業ディレクトリ: ${APPS_DIR}"
 echo "================================================================="
@@ -74,6 +75,11 @@ RestartSec=10s
 TimeoutStopSec=30s
 KillMode=mixed
 KillSignal=SIGTERM
+
+# オーディオデバイス(/dev/snd/*)およびPulseAudio/PipeWireソケット接続設定
+SupplementaryGroups=audio
+Environment="XDG_RUNTIME_DIR=/run/user/${RUN_UID}"
+Environment="PULSE_SERVER=unix:/run/user/${RUN_UID}/pulse/native"
 
 # 環境変数の設定 (RUST_LOGでログレベル制御)
 Environment="RUST_LOG=info"

@@ -16,6 +16,11 @@ TimeoutStopSec=30s
 KillMode=mixed
 KillSignal=SIGTERM
 
+# オーディオデバイス(/dev/snd/*)およびPulseAudio/PipeWireソケット接続設定
+SupplementaryGroups=audio
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
+
 # 環境変数の設定 (RUST_LOGでログレベル制御)
 Environment="RUST_LOG=info"
 # .local.env が存在する場合は環境変数（DISCORD_WEBHOOK_URL 等）を自動ロード
