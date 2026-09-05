@@ -294,10 +294,10 @@ pub async fn fetch_all_tles(
 ) -> Result<Vec<SatelliteInfo>> {
     let mut targets: Vec<(String, u32, u64, SignalType)> = Vec::new();
 
-    // 1. 気象衛星 Meteor-M (ロシア極軌道 LRPT)
+    // 1. 気象衛星 Meteor-M (ロシア極軌道 LRPT: N2-4 が2024年打上・大本命機、N2-3 が予備機)
     if satellites_config.is_meteor_enabled() {
-        targets.push(("Meteor-M N2-3".to_string(), 57166, 137_100_000, SignalType::Lrpt));
         targets.push(("Meteor-M N2-4".to_string(), 59051, 137_900_000, SignalType::Lrpt));
+        targets.push(("Meteor-M N2-3".to_string(), 57166, 137_100_000, SignalType::Lrpt));
     }
 
     // 2. 気象衛星 NOAA (米国極軌道 APT - 停波)
