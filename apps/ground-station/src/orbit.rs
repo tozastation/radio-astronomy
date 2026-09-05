@@ -296,7 +296,7 @@ pub async fn fetch_all_tles(
 
     // 1. 気象衛星 Meteor-M (ロシア極軌道 LRPT)
     if satellites_config.is_meteor_enabled() {
-        targets.push(("Meteor-M N2-3".to_string(), 57166, 137_900_000, SignalType::Lrpt));
+        targets.push(("Meteor-M N2-3".to_string(), 57166, 137_100_000, SignalType::Lrpt));
         targets.push(("Meteor-M N2-4".to_string(), 59051, 137_900_000, SignalType::Lrpt));
     }
 

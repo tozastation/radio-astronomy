@@ -57,7 +57,7 @@ fn test_meteor_lrpt_arguments_generation() {
 
     let out_dir = Path::new("data/noaa");
     let satdump_args = ground_station::decoder::build_satdump_lrpt_args(raw_out, out_dir);
-    assert_eq!(satdump_args[0], "meteor_m2_lrpt");
+    assert_eq!(satdump_args[0], "meteor_m2-x_lrpt_80k");
     assert_eq!(satdump_args[1], "baseband");
     assert_eq!(satdump_args[2], "data/noaa/meteor.raw");
     assert_eq!(satdump_args[3], "data/noaa");
@@ -88,4 +88,36 @@ async fn test_decoder_engine_routing() {
     let session_dir = Path::new("tests/fixtures/session");
     let result = DecoderEngine::decode(&pass, raw_path, session_dir).await;
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_find_best_image_in_dir_recursive() {
+    use std::fs::{create_dir_all, remove_dir_all, File};
+    use std::io::Write;
+
+    let test_dir = std::env::temp_dir().join("test_ground_station_find_image");
+    let _ = remove_dir_all(&test_dir);
+    create_dir_all(test_dir.join("MSU-MR")).unwrap();
+
+    let small_img = test_dir.join("small.png");
+    let mut f1 = File::create(&small_img).unwrap();
+    f1.write_all(&[0u8; 100]).unwrap();
+
+    let large_img = test_dir.join("MSU-MR").join("large.jpg");
+    let mut f2 = File::create(&large_img).unwrap();
+    f2.write_all(&[0u8; 5000]).unwrap();
+
+    let best = ground_station::decoder::find_best_image_in_dir(&test_dir);
+    assert_eq!(best, Some(large_img));
+
+    let _ = remove_dir_all(&test_dir);
+}
+
+#[test]
+fn test_build_satdump_lrpt_args_with_pipeline() {
+    let raw = Path::new("test.raw");
+    let out = Path::new("out");
+    let args = ground_station::decoder::build_satdump_lrpt_args_with_pipeline("meteor_m2-x_lrpt", raw, out);
+    assert_eq!(args[0], "meteor_m2-x_lrpt");
+    assert_eq!(args[1], "baseband");
 }

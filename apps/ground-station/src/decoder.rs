@@ -1,6 +1,6 @@
 use crate::orbit::{SatellitePass, SignalType};
 use anyhow::{bail, Context, Result};
-use log::info;
+use log::{info, warn};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
@@ -25,10 +25,15 @@ pub fn build_noaa_apt_args(input_wav: &Path, output_png: &Path) -> Vec<String> {
     ]
 }
 
-/// satdump CLI 呼び出し用引数を構築 (Meteor-M LRPT用)
+/// satdump CLI 呼び出し用引数を構築 (Meteor-M LRPT用: デフォルト 80k OQPSK)
 pub fn build_satdump_lrpt_args(input_raw: &Path, output_dir: &Path) -> Vec<String> {
+    build_satdump_lrpt_args_with_pipeline("meteor_m2-x_lrpt_80k", input_raw, output_dir)
+}
+
+/// satdump CLI 呼び出し用引数を構築 (パイプライン名指定)
+pub fn build_satdump_lrpt_args_with_pipeline(pipeline: &str, input_raw: &Path, output_dir: &Path) -> Vec<String> {
     vec![
-        "meteor_m2_lrpt".to_string(),
+        pipeline.to_string(),
         "baseband".to_string(),
         input_raw.to_string_lossy().to_string(),
         output_dir.to_string_lossy().to_string(),
@@ -37,6 +42,34 @@ pub fn build_satdump_lrpt_args(input_raw: &Path, output_dir: &Path) -> Vec<Strin
         "--baseband_format".to_string(),
         "cu8".to_string(),
     ]
+}
+
+/// 指定ディレクトリ（およびサブディレクトリ）から最もサイズの大きい復調画像（PNG/JPG）を探索
+pub fn find_best_image_in_dir(dir: &Path) -> Option<std::path::PathBuf> {
+    let mut best_image: Option<(std::path::PathBuf, u64)> = None;
+    search_images_recursive(dir, &mut best_image);
+    best_image.map(|(p, _)| p)
+}
+
+fn search_images_recursive(dir: &Path, best: &mut Option<(std::path::PathBuf, u64)>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                search_images_recursive(&path, best);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                let ext_lower = ext.to_lowercase();
+                if ext_lower == "png" || ext_lower == "jpg" || ext_lower == "jpeg" {
+                    if let Ok(meta) = entry.metadata() {
+                        let len = meta.len();
+                        if best.as_ref().map_or(true, |(_, max_len)| len > *max_len) {
+                            *best = Some((path, len));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub struct Decoder;
@@ -80,7 +113,7 @@ impl Decoder {
         Ok(())
     }
 
-    /// 録音された生IQデータから Meteor-M 気象衛星画像（LRPT デジタルQPSK）をデコード
+    /// 録音された生IQデータから Meteor-M 気象衛星画像（LRPT デジタルQPSK/OQPSK）をデコード
     pub async fn decode_meteor_lrpt(input_raw: &Path, output_dir: &Path) -> Result<std::path::PathBuf> {
         info!(
             "Meteor-M LRPT デコード開始: 入力 {:?} -> 出力ディレクトリ {:?}",
@@ -94,40 +127,37 @@ impl Decoder {
         std::fs::create_dir_all(output_dir)
             .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
 
-        let args = build_satdump_lrpt_args(input_raw, output_dir);
+        // 現行の Meteor-M N2-3 / N2-4 は 80k OQPSK が標準。
+        // 運用状況によって 72k OQPSK に切り替わる場合があるため、80k -> 72k の順に自動適応試行
+        let pipelines = ["meteor_m2-x_lrpt_80k", "meteor_m2-x_lrpt"];
+        let mut last_status = None;
 
-        let status = Command::new("satdump")
-            .args(&args)
-            .status()
-            .await
-            .context("satdump コマンドの実行に失敗しました。satdump CLI が導入されているか確認してください")?;
+        for pipeline in pipelines {
+            info!("SatDump パイプライン実行試行: {}", pipeline);
+            let args = build_satdump_lrpt_args_with_pipeline(pipeline, input_raw, output_dir);
 
-        if !status.success() {
-            bail!("satdump が異常終了しました: status {}", status);
-        }
+            let status = Command::new("satdump")
+                .args(&args)
+                .status()
+                .await
+                .context("satdump コマンドの実行に失敗しました。satdump CLI が導入されているか確認してください")?;
 
-        // output_dir から生成された画像 (PNG / JPG) を探索
-        let mut best_image: Option<(std::path::PathBuf, u64)> = None;
-        if let Ok(entries) = std::fs::read_dir(output_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    let ext_lower = ext.to_lowercase();
-                    if ext_lower == "png" || ext_lower == "jpg" || ext_lower == "jpeg" {
-                        if let Ok(meta) = entry.metadata() {
-                            let len = meta.len();
-                            if best_image.as_ref().map_or(true, |(_, max_len)| len > *max_len) {
-                                best_image = Some((path, len));
-                            }
-                        }
-                    }
+            if status.success() {
+                if let Some(image_path) = find_best_image_in_dir(output_dir) {
+                    info!("Meteor-M デコード成功 (パイプライン: {}): {:?}", pipeline, image_path);
+                    return Ok(image_path);
                 }
+            } else {
+                warn!("SatDump パイプライン {} 終了 (非ゼロ終了コード): status {}", pipeline, status);
+                last_status = Some(status);
             }
         }
 
-        if let Some((image_path, _)) = best_image {
-            info!("Meteor-M デコード成功: {:?}", image_path);
+        if let Some(image_path) = find_best_image_in_dir(output_dir) {
+            info!("Meteor-M デコード画像確認: {:?}", image_path);
             Ok(image_path)
+        } else if let Some(status) = last_status {
+            bail!("satdump が異常終了しました: status {}", status);
         } else {
             bail!("satdump による画像ファイルが生成されませんでした: {:?}", output_dir);
         }
