@@ -134,3 +134,53 @@ fn test_build_daily_schedule_embed() {
     assert!(fields[0]["name"].as_str().unwrap().contains("NOAA 18"));
     assert!(fields[0]["value"].as_str().unwrap().contains("52.5°"));
 }
+
+#[test]
+fn test_build_daily_schedule_embed_truncation_footer() {
+    use chrono::{Duration, Utc};
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    let mut passes = Vec::new();
+    for i in 0..30 {
+        passes.push(SatellitePass {
+            satellite_name: format!("Sat-{}", i + 1),
+            frequency_hz: 137_912_500,
+            signal_type: SignalType::Apt,
+            aos: Utc::now() + Duration::minutes(i * 30),
+            los: Utc::now() + Duration::minutes(i * 30 + 10),
+            max_elevation_deg: 45.0,
+            peak_azimuth_deg: 90.0,
+        });
+    }
+
+    let embed = DiscordClient::build_daily_schedule_embed(&passes, "2026-09-06", 35.68, 139.76, 20.0);
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    assert_eq!(fields.len(), 25);
+    let footer_text = embed["footer"]["text"].as_str().expect("footer textが存在すること");
+    assert!(footer_text.contains("全 30 件中 25 件を表示"));
+    assert!(footer_text.contains("他 5 件"));
+}
+
+#[test]
+fn test_build_24h_schedule_embed_with_next_day_passes() {
+    use chrono::{Duration, Utc};
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    // 翌日のパス
+    let tomorrow_pass = SatellitePass {
+        satellite_name: "Meteor-M N2-4".to_string(),
+        frequency_hz: 137_900_000,
+        signal_type: SignalType::Lrpt,
+        aos: Utc::now() + Duration::hours(20),
+        los: Utc::now() + Duration::hours(20) + Duration::minutes(12),
+        max_elevation_deg: 65.0,
+        peak_azimuth_deg: 180.0,
+    };
+
+    let embed = DiscordClient::build_24h_schedule_embed(&[tomorrow_pass], 35.68, 139.76, 20.0);
+    assert!(embed["title"].as_str().unwrap().contains("今後24時間の衛星通過予定"));
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    assert_eq!(fields.len(), 1);
+    assert!(fields[0]["name"].as_str().unwrap().contains("Meteor-M N2-4"));
+}
+
