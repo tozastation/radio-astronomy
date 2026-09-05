@@ -172,14 +172,28 @@ fn play_audio_file(path: &std::path::Path) {
         }
     }
 
-    // 3. aplay (ALSA)
+    // 3. aplay デフォルト (PulseAudio / ALSA)
     if let Ok(status) = Command::new("aplay").arg("-q").arg(path).status() {
         if status.success() {
             return;
         }
     }
 
-    // 4. Windows 側 PowerShell SoundPlayer へのフォールバック (WSL2環境)
+    // 4. aplay 物理 ALSA ハードウェア直接出力 (systemd等の非対話環境でPulseAudio未接続時のフォールバック)
+    // sysdefault, plughw:0,0, plughw:1,0 等の物理PCMデバイスへ直接出力し、サウンドサーバ非依存で再生
+    for dev in ["sysdefault", "plughw:0,0", "plughw:1,0", "hw:0,0"] {
+        if let Ok(status) = Command::new("aplay")
+            .args(["-q", "-D", dev])
+            .arg(path)
+            .status()
+        {
+            if status.success() {
+                return;
+            }
+        }
+    }
+
+    // 5. Windows 側 PowerShell SoundPlayer へのフォールバック (WSL2環境)
     if let Ok(win_path_out) = Command::new("wslpath").arg("-w").arg(path).output() {
         if win_path_out.status.success() {
             let win_path = String::from_utf8_lossy(&win_path_out.stdout).trim().to_string();
