@@ -155,3 +155,34 @@ async fn test_meteor_lrpt_decoder_routing_and_fallback() {
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
+
+#[tokio::test]
+async fn test_decoder_engine_apt_audio_path_setting() {
+    use chrono::{Duration, Utc};
+    use ground_station::decoder::DecoderEngine;
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    let pass = SatellitePass {
+        satellite_name: "NOAA 18".to_string(),
+        frequency_hz: 137_912_500,
+        signal_type: SignalType::Apt,
+        aos: Utc::now(),
+        los: Utc::now() + Duration::minutes(5),
+        max_elevation_deg: 52.0,
+        peak_azimuth_deg: 120.0,
+    };
+
+    let session_dir = std::env::temp_dir().join("test_ground_station_apt_audio");
+    let _ = std::fs::remove_dir_all(&session_dir);
+    std::fs::create_dir_all(&session_dir).unwrap();
+
+    let wav_path = session_dir.join("audio.wav");
+    std::fs::write(&wav_path, b"dummy wav header").unwrap();
+
+    let result = DecoderEngine::decode(&pass, &wav_path, &session_dir).await;
+    assert!(result.is_ok());
+    let res = result.unwrap();
+    assert_eq!(res.audio_path, Some(wav_path));
+
+    let _ = std::fs::remove_dir_all(&session_dir);
+}

@@ -79,6 +79,38 @@ pub async fn run_worker(
                     (false, None)
                 };
 
+                let (has_audio, audio_bytes) = if let Some(ref path) = result.audio_path {
+                    if path.exists() {
+                        match tokio::fs::metadata(path).await {
+                            Ok(meta) if meta.len() as usize <= crate::discord::MAX_DISCORD_AUDIO_BYTES => {
+                                match tokio::fs::read(path).await {
+                                    Ok(bytes) => (true, Some(bytes)),
+                                    Err(e) => {
+                                        log::warn!("Discord送信用の音声読み込みに失敗しました: {}", e);
+                                        (false, None)
+                                    }
+                                }
+                            }
+                            Ok(meta) => {
+                                log::info!(
+                                    "音声ファイルがDiscord上限（8MB）過大のため送信をスキップします ({} bytes): {:?}",
+                                    meta.len(),
+                                    path
+                                );
+                                (false, None)
+                            }
+                            Err(e) => {
+                                log::warn!("音声メタデータ取得失敗: {}", e);
+                                (false, None)
+                            }
+                        }
+                    } else {
+                        (false, None)
+                    }
+                } else {
+                    (false, None)
+                };
+
                 let report = crate::discord::PassReport {
                     satellite_name: pass_name.clone(),
                     signal_type_name: job.pass.signal_type.name().to_string(),
@@ -88,10 +120,11 @@ pub async fn run_worker(
                     pass_time_str,
                     telemetry: result.telemetry,
                     has_image,
+                    has_audio,
                     next_pass_info: None,
                 };
 
-                let _ = discord.send_pass_report(&report, image_bytes).await;
+                let _ = discord.send_pass_report(&report, image_bytes, audio_bytes).await;
             }
             Err(e) => {
                 error!("デコード処理中に予期せぬエラーが発生しました: {}", e);
@@ -115,9 +148,10 @@ pub async fn run_worker(
                         status: crate::discord::PassStatus::DecodeError,
                     }),
                     has_image: false,
+                    has_audio: false,
                     next_pass_info: None,
                 };
-                let _ = discord.send_pass_report(&report, None).await;
+                let _ = discord.send_pass_report(&report, None, None).await;
             }
         }
     }
