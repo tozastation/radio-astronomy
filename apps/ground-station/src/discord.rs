@@ -150,4 +150,20 @@ impl DiscordClient {
 
         Ok(())
     }
+
+    /// テキストメッセージを Discord に送信
+    pub async fn send_text(&self, text: &str) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        let webhook_url = match &self.config.webhook_url {
+            Some(url) if !url.trim().is_empty() => url.trim(),
+            _ => return Ok(()),
+        };
+
+        let payload = serde_json::json!({ "content": text });
+        let _ = self.http_client.post(webhook_url).json(&payload).send().await;
+        Ok(())
+    }
 }

@@ -145,65 +145,60 @@ impl ReceiverSession {
                 .with_context(|| format!("ディレクトリ作成失敗: {:?}", parent))?;
         }
 
-        match signal_type {
-            SignalType::Apt => {
-                // 録音先ファイルを生成し、先頭に44バイトのダミーWAVヘッダを書き込む
-                let mut file = tokio::fs::File::create(output_path)
+        if !signal_type.is_raw_iq() {
+            // FM 音声録音 (NOAA APT / ISS SSTV: rtl_fm による復調音声ストリーム)
+            let mut file = tokio::fs::File::create(output_path)
+                .await
+                .with_context(|| format!("WAVファイル作成失敗: {:?}", output_path))?;
+            file.write_all(&create_wav_header(0))
+                .await
+                .context("初期WAVヘッダの書き込みに失敗しました")?;
+
+            let args = build_rtl_fm_args(freq_hz, sdr);
+
+            let mut child = Command::new("rtl_fm")
+                .args(&args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .context("rtl_fm コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
+
+            let mut stdout = child
+                .stdout
+                .take()
+                .context("rtl_fm 標準出力の取得に失敗しました")?;
+
+            let writer_task = tokio::spawn(async move {
+                let copied_bytes = tokio::io::copy(&mut stdout, &mut file)
                     .await
-                    .with_context(|| format!("WAVファイル作成失敗: {:?}", output_path))?;
-                file.write_all(&create_wav_header(0))
-                    .await
-                    .context("初期WAVヘッダの書き込みに失敗しました")?;
+                    .context("ストリーミング書き込み中にエラーが発生しました")?;
+                file.flush().await?;
+                Ok(copied_bytes)
+            });
 
-                let args = build_rtl_fm_args(freq_hz, sdr);
+            Ok(Self {
+                child,
+                output_path: output_path.to_path_buf(),
+                signal_type,
+                writer_task: Some(writer_task),
+            })
+        } else {
+            // 生IQベースバンド録音 (Meteor-M LRPT / CubeSat SSDV/Telemetry / Morse CW: rtl_sdr による 240kSPS 8bit unsigned IQ)
+            let args = build_rtl_sdr_args(freq_hz, sdr, output_path);
 
-                // rtl_fm 子プロセスを起動 (標準出力をパイプで取得)
-                let mut child = Command::new("rtl_fm")
-                    .args(&args)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .context("rtl_fm コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
+            let child = Command::new("rtl_sdr")
+                .args(&args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .context("rtl_sdr コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
 
-                let mut stdout = child
-                    .stdout
-                    .take()
-                    .context("rtl_fm 標準出力の取得に失敗しました")?;
-
-                // バックグラウンドで非同期ストリーミングコピー
-                let writer_task = tokio::spawn(async move {
-                    let copied_bytes = tokio::io::copy(&mut stdout, &mut file)
-                        .await
-                        .context("ストリーミング書き込み中にエラーが発生しました")?;
-                    file.flush().await?;
-                    Ok(copied_bytes)
-                });
-
-                Ok(Self {
-                    child,
-                    output_path: output_path.to_path_buf(),
-                    signal_type,
-                    writer_task: Some(writer_task),
-                })
-            }
-            SignalType::Lrpt => {
-                // rtl_sdr による生IQストリーム録音 (240kSPS, 8bit unsigned IQ)
-                let args = build_rtl_sdr_args(freq_hz, sdr, output_path);
-
-                let child = Command::new("rtl_sdr")
-                    .args(&args)
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .context("rtl_sdr コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
-
-                Ok(Self {
-                    child,
-                    output_path: output_path.to_path_buf(),
-                    signal_type,
-                    writer_task: None,
-                })
-            }
+            Ok(Self {
+                child,
+                output_path: output_path.to_path_buf(),
+                signal_type,
+                writer_task: None,
+            })
         }
     }
 
@@ -228,7 +223,7 @@ impl ReceiverSession {
             }
         }
 
-        if self.signal_type == SignalType::Apt {
+        if !self.signal_type.is_raw_iq() {
             // ストリーミングタスクの終了を待機し、書き込まれたデータバイト数を取得
             let data_bytes = if let Some(task) = self.writer_task {
                 match task.await {
