@@ -50,6 +50,8 @@ pub async fn run_worker(
                 // ずんだもん音声通知
                 let voice_msg = if result.image_path.is_some() {
                     format!("{}の画像デコードが完了したのだ！画像を確認するのだ！", pass_name)
+                } else if result.audio_path.is_some() {
+                    format!("{}の交信音声の録音が完了したのだ！音声を確認するのだ！", pass_name)
                 } else {
                     format!("{}のデータ保存が完了したのだ！", pass_name)
                 };

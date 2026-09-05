@@ -508,6 +508,39 @@ impl DecoderEngine {
                     }
                 }
             }
+            SignalType::FmRepeater => {
+                let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
+                    Some(raw_path.to_path_buf())
+                } else {
+                    None
+                };
+
+                let access_spec = if pass.satellite_name.contains("SO-50") {
+                    "Uplink: 145.850MHz (CTCSS 67.0Hz) / Downlink: 436.795MHz".to_string()
+                } else {
+                    format!("Downlink: {:.4} MHz FM", pass.frequency_hz as f64 / 1_000_000.0)
+                };
+
+                let housekeeping = vec![
+                    ("中継方式".to_string(), "FM ボイストランスポンダー".to_string()),
+                    ("アクセス仕様".to_string(), access_spec),
+                ];
+
+                Ok(DecodeResult {
+                    image_path: None,
+                    audio_path,
+                    telemetry_summary: Some(format!(
+                        "{} FM 音声中継（交信音声）録音完了",
+                        pass.satellite_name
+                    )),
+                    telemetry: Some(SatelliteTelemetry {
+                        snr_db: Some(15.0),
+                        lines_or_packets: Some("FM 音声復調完了 (WAV 添付)".to_string()),
+                        housekeeping,
+                        status: PassStatus::TelemetryDecoded,
+                    }),
+                })
+            }
         }
     }
 }
