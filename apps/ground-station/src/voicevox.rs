@@ -15,6 +15,7 @@ use std::process::Command;
 // =============================================================================
 
 /// VOICEVOX Engine との通信および音声再生クライアント
+#[derive(Clone)]
 pub struct VoicevoxClient {
     config: VoicevoxConfig,
     http_client: Client,
