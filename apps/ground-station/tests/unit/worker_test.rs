@@ -121,3 +121,34 @@ fn test_build_satdump_lrpt_args_with_pipeline() {
     assert_eq!(args[0], "meteor_m2-x_lrpt");
     assert_eq!(args[1], "baseband");
 }
+
+#[tokio::test]
+async fn test_meteor_lrpt_decoder_routing_and_fallback() {
+    use chrono::{Duration, Utc};
+    use ground_station::decoder::DecoderEngine;
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    let pass = SatellitePass {
+        satellite_name: "Meteor-M N2-4".to_string(),
+        frequency_hz: 137_900_000,
+        signal_type: SignalType::Lrpt,
+        aos: Utc::now(),
+        los: Utc::now() + Duration::minutes(5),
+        max_elevation_deg: 38.0,
+        peak_azimuth_deg: 240.0,
+    };
+
+    let session_dir = std::env::temp_dir().join("test_ground_station_meteor_lrpt");
+    let _ = std::fs::remove_dir_all(&session_dir);
+    std::fs::create_dir_all(&session_dir).unwrap();
+
+    let raw_path = session_dir.join("raw.u8");
+    std::fs::write(&raw_path, b"test raw iq").unwrap();
+
+    let result = DecoderEngine::decode(&pass, &raw_path, &session_dir).await;
+    assert!(result.is_ok());
+    let res = result.unwrap();
+    assert!(res.telemetry_summary.is_some());
+
+    let _ = std::fs::remove_dir_all(&session_dir);
+}
