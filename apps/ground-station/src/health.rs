@@ -221,7 +221,7 @@ pub fn probe_external_tools(config: &Config) -> Vec<HealthCheckItem> {
                 name: "gr-satellites (CubeSat)".to_string(),
                 status: HealthStatus::Warn,
                 message: "未検出 (GNU Radio サテライトデコーダ)".to_string(),
-                remedy: Some("pip install gr-satellites を実行してください".to_string()),
+                remedy: Some("sudo apt install gr-satellites または PPA (ppa:daniestevez/gr-satellites) から導入してください".to_string()),
             });
         }
     }
