@@ -66,6 +66,39 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// 現在計算される今後24時間の通過予定一覧を Discord へ送信 (CLI / 手動トリガー用)
+pub async fn send_schedule_to_discord(config: &Config) -> Result<()> {
+    let http_client = Client::new();
+    println!("🛰️  CelesTrak から最新 TLE を取得中...");
+    let satellites = fetch_weather_tles(&http_client, &config.satellites).await?;
+
+    let now = Utc::now();
+    let passes = OrbitPredictor::predict_all_passes(
+        &satellites,
+        &config.observer,
+        now,
+        24,
+        config.scheduler.min_elevation_deg,
+    )?;
+
+    let discord = crate::discord::DiscordClient::new(config.discord.clone());
+    let today_jst = Local::now().date_naive();
+    let date_str = today_jst.format("%Y-%m-%d").to_string();
+
+    discord
+        .send_daily_schedule(
+            &passes,
+            &date_str,
+            config.observer.latitude,
+            config.observer.longitude,
+            config.scheduler.min_elevation_deg,
+        )
+        .await?;
+
+    println!("✨ Discord へのスケジュール送信が完了しました！ (対象パス: {} 件)", passes.len());
+    Ok(())
+}
+
 /// 自律常駐監視デーモンのメインループ
 /// 【状態遷移ライフサイクル】
 /// Idle (待機) ──► Approaching (事前発話) ──► Receiving (録音) ──► Decoding (画像化) ──► Notifying (事後発話)
@@ -83,11 +116,12 @@ pub async fn run_daemon(config: Config) -> Result<()> {
     let (decode_tx, decode_rx) = tokio::sync::mpsc::channel::<crate::worker::DecodeJob>(32);
     let discord_arc = std::sync::Arc::new(crate::discord::DiscordClient::new(config.discord.clone()));
     let voice_arc = std::sync::Arc::new(voice_client.clone());
-    tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc, voice_arc));
+    tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc.clone(), voice_arc));
 
     let mut last_tle_update = Utc::now() - Duration::hours(25);
     let mut cached_satellites = Vec::new();
     let mut is_first_run = true;
+    let mut last_daily_schedule_date: Option<chrono::NaiveDate> = None;
 
     loop {
         let now = Utc::now();
@@ -137,6 +171,24 @@ pub async fn run_daemon(config: Config) -> Result<()> {
                 }
             }
         };
+
+        // ---------------------------------------------------------------------
+        // 2.1 デイリースケジュールの Discord 自動送信 (日付更新時または起動初日に1回送信)
+        // ---------------------------------------------------------------------
+        let today_jst = Local::now().date_naive();
+        if last_daily_schedule_date != Some(today_jst) {
+            let date_str = today_jst.format("%Y-%m-%d").to_string();
+            let _ = discord_arc
+                .send_daily_schedule(
+                    &passes,
+                    &date_str,
+                    config.observer.latitude,
+                    config.observer.longitude,
+                    config.scheduler.min_elevation_deg,
+                )
+                .await;
+            last_daily_schedule_date = Some(today_jst);
+        }
 
         // LOS（通過終了）が現在より未来にある最も近いパスを特定
         let next_pass = passes.iter().find(|p| p.los > now).cloned();

@@ -109,3 +109,28 @@ fn test_create_test_sample_wav_returns_valid_wav() {
     assert_eq!(&wav_bytes[12..16], b"fmt ");
     assert_eq!(&wav_bytes[36..40], b"data");
 }
+
+#[test]
+fn test_build_daily_schedule_embed() {
+    use chrono::{Duration, Utc};
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    let pass = SatellitePass {
+        satellite_name: "NOAA 18".to_string(),
+        frequency_hz: 137_912_500,
+        signal_type: SignalType::Apt,
+        aos: Utc::now(),
+        los: Utc::now() + Duration::minutes(10),
+        max_elevation_deg: 52.5,
+        peak_azimuth_deg: 120.0,
+    };
+
+    let embed = DiscordClient::build_daily_schedule_embed(&[pass], "2026-09-06", 35.68, 139.76, 25.0);
+
+    assert_eq!(embed["color"], 0x3498DB);
+    assert!(embed["title"].as_str().unwrap().contains("2026-09-06"));
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    assert_eq!(fields.len(), 1);
+    assert!(fields[0]["name"].as_str().unwrap().contains("NOAA 18"));
+    assert!(fields[0]["value"].as_str().unwrap().contains("52.5°"));
+}
