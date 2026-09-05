@@ -14,9 +14,9 @@ use std::path::PathBuf;
 // 【言語対比】
 // - `tokio::select!`: Go 言語の `select { case <-timer: ... case <-ctx.Done(): ... }`
 //   と全く同じ動作をする非同期多重化マクロです。
-//   「指定秒数のスリープ待機」と「Ctrl+C によるシャットダウン要求」を同時に監視し、
-//   どちらか早く発生したイベントを処理します。待機中に Ctrl+C が押された場合は
-//   直ちにスリープが安全にキャンセルされて Graceful Shutdown 処理へ移行します。
+//   「指定秒数のスリープ待機」と「シグナル (SIGINT / SIGTERM) によるシャットダウン要求」を
+//   同時に監視し、どちらか早く発生したイベントを処理します。systemd による停止 (SIGTERM)
+//   または Ctrl+C が押された場合は直ちにスリープが安全にキャンセルされて Graceful Shutdown 処理へ移行します。
 // =============================================================================
 
 /// 今後24時間の通過予定一覧をコンソールにきれいな表で出力
@@ -279,7 +279,13 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         }
 
         // 次のパス待機へ向けて少し休止 (10秒)
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {},
+            sig = wait_for_shutdown_signal() => {
+                info!("パス間待機中にシャットダウン要求 ({}) を受信しました", sig);
+                break;
+            }
+        }
     }
 
     let _ = voice_client.speak("観測デーモンを終了するのだ！お疲れ様なのだ！").await;
@@ -291,8 +297,8 @@ pub async fn run_daemon(config: Config) -> Result<()> {
 /// 【SRE的堅牢性】
 /// 1. 壁時計 (Wall Clock: UTC) を毎回評価するため、NTP補正やサスペンド復帰による時間ズレを即時検知。
 /// 2. 定期的なハートビートログにより、パイプバッファリングやプロセスの生存状態を可視化。
-/// 3. Ctrl+C による Graceful Shutdown に即応。
-/// 戻り値: Ctrl+C を受信した場合は false、時刻に到達した場合は true
+/// 3. Ctrl+C (SIGINT) および systemd 停止要求 (SIGTERM) による Graceful Shutdown に即応。
+/// 戻り値: シャットダウンシグナルを受信した場合は false、時刻に到達した場合は true
 async fn wait_until(target_time: DateTime<Utc>, label: &str) -> bool {
     let mut last_log_time = Utc::now();
     let initial_wait = (target_time - Utc::now()).num_seconds().max(0);
@@ -327,13 +333,49 @@ async fn wait_until(target_time: DateTime<Utc>, label: &str) -> bool {
 
         tokio::select! {
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(sleep_secs)) => {},
-            _ = tokio::signal::ctrl_c() => {
-                info!("待機中にシャットダウン要求 (Ctrl+C) を受信しました");
+            sig = wait_for_shutdown_signal() => {
+                info!("待機中にシャットダウン要求 ({}) を受信しました", sig);
                 return false;
             }
         }
     }
 
     true
+}
+
+/// シャットダウンシグナル (SIGINT または SIGTERM) を待ち受けるヘルパー関数
+/// 【systemd 安定動作と Graceful Shutdown】
+/// - `systemctl stop` や `systemctl restart` 時、systemd は対象サービスに `SIGTERM` を送信します。
+/// - Linux の標準動作では SIGTERM をハンドリングしないと即時異常終了となり、
+///   録音中のSDR子プロセスが孤立したり、WAVヘッダが未確定のまま破損する原因となります。
+/// - 従来の Ctrl+C (`SIGINT`) に加え、Unix シグナルとして `SIGTERM` を非同期イベントループで監視し、
+///   どちらを受信しても統一的に安全な終了シーケンス（SDR停止・ヘッダ確定）へ移行させます。
+pub async fn wait_for_shutdown_signal() -> &'static str {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+        "SIGINT (Ctrl+C)"
+    };
+
+    #[cfg(unix)]
+    let sigterm = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut stream) => {
+                stream.recv().await;
+                "SIGTERM (systemd stop/restart)"
+            }
+            Err(e) => {
+                error!("SIGTERM ハンドラの初期化に失敗しました: {}", e);
+                std::future::pending::<&'static str>().await
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let sigterm = std::future::pending::<&'static str>();
+
+    tokio::select! {
+        sig = ctrl_c => sig,
+        sig = sigterm => sig,
+    }
 }
 

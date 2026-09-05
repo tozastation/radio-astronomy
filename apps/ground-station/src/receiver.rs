@@ -160,6 +160,7 @@ impl ReceiverSession {
                 .args(&args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
+                .kill_on_drop(true)
                 .spawn()
                 .context("rtl_fm コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
 
@@ -190,6 +191,7 @@ impl ReceiverSession {
                 .args(&args)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
+                .kill_on_drop(true)
                 .spawn()
                 .context("rtl_sdr コマンドの起動に失敗しました。RTL-SDRドライバが導入されているか確認してください")?;
 
