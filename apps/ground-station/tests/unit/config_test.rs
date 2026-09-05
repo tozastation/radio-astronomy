@@ -91,3 +91,32 @@ fn test_load_real_config_file() {
     assert_eq!(config.satellites.cubesats.targets[0].name, "FUNcube-1");
     assert!(config.satellites.iss.enabled);
 }
+
+#[test]
+fn test_daily_schedule_config_defaults() {
+    let toml_str = r#"
+        [observer]
+        latitude = 35.6895
+        longitude = 139.6917
+        altitude_m = 40.0
+
+        [scheduler]
+        min_elevation_deg = 20.0
+        pre_alert_minutes = 3.0
+        tle_update_interval_hours = 24
+
+        [voicevox]
+        enabled = false
+        host = "http://localhost:50021"
+        speaker_id = 3
+
+        [storage]
+        output_dir = "data/noaa"
+    "#;
+    let config = Config::from_str(toml_str).expect("パース成功すること");
+    assert!(config.scheduler.daily_schedule_enabled);
+    assert_eq!(config.scheduler.daily_schedule_hour_jst, 7);
+    assert_eq!(config.scheduler.daily_schedule_minute_jst, 0);
+    assert!(!config.scheduler.daily_schedule_send_on_startup);
+}
+

@@ -8,6 +8,11 @@ altitude_m = 200.0    # 標高 (m)
 min_elevation_deg = 20.0
 pre_alert_minutes = 3.0
 tle_update_interval_hours = 24
+daily_schedule_enabled = true          # 毎朝のデイリースケジュール Discord 自動配信を有効化
+daily_schedule_hour_jst = 7            # 配信時刻 (時 / JST: 07:00)
+daily_schedule_minute_jst = 0          # 配信時刻 (分 / JST)
+daily_schedule_send_on_startup = false # デーモン起動時に本日分が未送信なら即座に送信するか
+
 
 [voicevox]
 enabled = true

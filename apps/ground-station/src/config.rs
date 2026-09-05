@@ -72,13 +72,30 @@ pub struct ObserverConfig {
     pub altitude_m: f64,  // 海抜標高 (メートル)
 }
 
+fn default_daily_schedule_hour_jst() -> u32 {
+    7
+}
+
+fn default_daily_schedule_minute_jst() -> u32 {
+    0
+}
+
 /// スケジューリングとパス検出の閾値設定
 #[derive(Debug, Clone, Deserialize)]
 pub struct SchedulerConfig {
     pub min_elevation_deg: f64,         // 受信対象とする最小ピーク仰角 (度)
     pub pre_alert_minutes: f64,         // 通過何分前にずんだもんが事前通知するか (分)
     pub tle_update_interval_hours: u64, // 軌道要素(TLE)を更新する頻度 (時間)
+    #[serde(default = "default_true")]
+    pub daily_schedule_enabled: bool,   // 毎朝のデイリースケジュールDiscord自動配信を有効にするか
+    #[serde(default = "default_daily_schedule_hour_jst")]
+    pub daily_schedule_hour_jst: u32,   // デイリースケジュールの配信時刻 (時 / JST: デフォルト 7)
+    #[serde(default = "default_daily_schedule_minute_jst")]
+    pub daily_schedule_minute_jst: u32, // デイリースケジュールの配信時刻 (分 / JST: デフォルト 0)
+    #[serde(default = "default_false")]
+    pub daily_schedule_send_on_startup: bool, // 起動時に本日分が未送信なら即座に送信するか (デフォルト false)
 }
+
 
 fn default_timeout_secs() -> u64 {
     60
