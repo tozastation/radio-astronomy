@@ -72,6 +72,31 @@ fn search_images_recursive(dir: &Path, best: &mut Option<(std::path::PathBuf, u6
     }
 }
 
+/// 指定ディレクトリに .cadu ファイルが存在するか判定
+pub fn has_cadu_files(dir: &Path) -> bool {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                if ext == "cadu" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 標準エラー／標準出力から末尾の有用なエラー行を抽出
+pub fn extract_error_snippet(stderr: &str, stdout: &str) -> String {
+    let text = if !stderr.trim().is_empty() { stderr } else { stdout };
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        "詳細ログなし".to_string()
+    } else {
+        lines.iter().rev().take(3).rev().cloned().collect::<Vec<_>>().join("; ")
+    }
+}
+
 pub struct Decoder;
 
 impl Decoder {
@@ -95,14 +120,18 @@ impl Decoder {
         let args = build_noaa_apt_args(input_wav, output_png);
 
         // noaa-apt CLI を実行
-        let status = Command::new("noaa-apt")
+        let output = Command::new("noaa-apt")
             .args(&args)
-            .status()
+            .output()
             .await
             .context("noaa-apt コマンドの実行に失敗しました。noaa-apt CLI がインストールされているか確認してください")?;
 
-        if !status.success() {
-            bail!("noaa-apt が異常終了しました: status {}", status);
+        if !output.status.success() {
+            let snippet = extract_error_snippet(
+                &String::from_utf8_lossy(&output.stderr),
+                &String::from_utf8_lossy(&output.stdout),
+            );
+            bail!("noaa-apt が異常終了しました (status {}): {}", output.status, snippet);
         }
 
         if !output_png.exists() {
@@ -114,7 +143,7 @@ impl Decoder {
     }
 
     /// 録音された生IQデータから Meteor-M 気象衛星画像（LRPT デジタルQPSK/OQPSK）をデコード
-    pub async fn decode_meteor_lrpt(input_raw: &Path, output_dir: &Path) -> Result<std::path::PathBuf> {
+    pub async fn decode_meteor_lrpt(input_raw: &Path, output_dir: &Path) -> Result<Option<std::path::PathBuf>> {
         info!(
             "Meteor-M LRPT デコード開始: 入力 {:?} -> 出力ディレクトリ {:?}",
             input_raw, output_dir
@@ -130,36 +159,65 @@ impl Decoder {
         // 現行の Meteor-M N2-3 / N2-4 は 80k OQPSK が標準。
         // 運用状況によって 72k OQPSK に切り替わる場合があるため、80k -> 72k の順に自動適応試行
         let pipelines = ["meteor_m2-x_lrpt_80k", "meteor_m2-x_lrpt"];
-        let mut last_status = None;
+        let mut last_error = None;
+        let mut executed_pipeline = false;
 
         for pipeline in pipelines {
             info!("SatDump パイプライン実行試行: {}", pipeline);
             let args = build_satdump_lrpt_args_with_pipeline(pipeline, input_raw, output_dir);
 
-            let status = Command::new("satdump")
+            let output = Command::new("satdump")
                 .args(&args)
-                .status()
+                .output()
                 .await
                 .context("satdump コマンドの実行に失敗しました。satdump CLI が導入されているか確認してください")?;
 
-            if status.success() {
+            executed_pipeline = true;
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+            if output.status.success() {
                 if let Some(image_path) = find_best_image_in_dir(output_dir) {
                     info!("Meteor-M デコード成功 (パイプライン: {}): {:?}", pipeline, image_path);
-                    return Ok(image_path);
+                    return Ok(Some(image_path));
                 }
             } else {
-                warn!("SatDump パイプライン {} 終了 (非ゼロ終了コード): status {}", pipeline, status);
-                last_status = Some(status);
+                // SatDump は復調処理が完走しても有効走査線が 0 行 (Lines: 0) だと status 1 で終了する
+                let is_low_snr = stdout_str.contains("Lines  : 0")
+                    || stderr_str.contains("Lines  : 0")
+                    || stdout_str.contains("Skipping")
+                    || stderr_str.contains("Skipping")
+                    || output_dir.join("telemetry.json").exists()
+                    || has_cadu_files(output_dir);
+
+                if is_low_snr {
+                    info!(
+                        "SatDump パイプライン {} 完了 (有効走査線 0 行 / 信号微弱): status {}",
+                        pipeline, output.status
+                    );
+                } else {
+                    let snippet = extract_error_snippet(&stderr_str, &stdout_str);
+                    warn!(
+                        "SatDump パイプライン {} 終了 (非ゼロ終了コード {}): {}",
+                        pipeline, output.status, snippet
+                    );
+                    last_error = Some(format!("status {}: {}", output.status, snippet));
+                }
             }
         }
 
+        // 画像が生成されているか確認
         if let Some(image_path) = find_best_image_in_dir(output_dir) {
             info!("Meteor-M デコード画像確認: {:?}", image_path);
-            Ok(image_path)
-        } else if let Some(status) = last_status {
-            bail!("satdump が異常終了しました: status {}", status);
+            Ok(Some(image_path))
+        } else if output_dir.join("telemetry.json").exists() || has_cadu_files(output_dir) || executed_pipeline {
+            // パイプラインは動作したが画像生成に至らなかった場合（電波微弱・未送信）
+            info!("Meteor-M デコード完了: 有効走査線なし (生IQおよびCADUパケット保全)");
+            Ok(None)
+        } else if let Some(err) = last_error {
+            bail!("satdump が異常終了しました: {}", err);
         } else {
-            bail!("satdump による画像ファイルが生成されませんでした: {:?}", output_dir);
+            Ok(None)
         }
     }
 
@@ -183,15 +241,15 @@ impl Decoder {
 
         // satdump または gr-satellites がインストールされていれば実行
         if crate::health::check_command_exists("satdump") {
-            let status = Command::new("satdump")
+            let output = Command::new("satdump")
                 .arg("live")
                 .arg(&pass.satellite_name)
                 .arg(input_raw)
                 .arg(output_dir)
-                .status()
+                .output()
                 .await;
-            if let Ok(st) = status {
-                if st.success() {
+            if let Ok(out) = output {
+                if out.status.success() {
                     if let Ok(entries) = std::fs::read_dir(output_dir) {
                         for entry in entries.flatten() {
                             let p = entry.path();
@@ -202,6 +260,12 @@ impl Decoder {
                             }
                         }
                     }
+                } else {
+                    let err = extract_error_snippet(
+                        &String::from_utf8_lossy(&out.stderr),
+                        &String::from_utf8_lossy(&out.stdout),
+                    );
+                    warn!("CubeSat SatDump 終了 (status {}): {}", out.status, err);
                 }
             }
         }
@@ -226,10 +290,19 @@ impl Decoder {
 
         let out_png = output_dir.join("iss_sstv.png");
         if crate::health::check_command_exists("satdump") {
-            let _ = Command::new("satdump")
+            let output = Command::new("satdump")
                 .args(&["iss_sstv", "audio", &input_wav.to_string_lossy(), &output_dir.to_string_lossy()])
-                .status()
+                .output()
                 .await;
+            if let Ok(out) = output {
+                if !out.status.success() {
+                    let err = extract_error_snippet(
+                        &String::from_utf8_lossy(&out.stderr),
+                        &String::from_utf8_lossy(&out.stdout),
+                    );
+                    warn!("ISS SSTV SatDump 終了 (status {}): {}", out.status, err);
+                }
+            }
             if out_png.exists() {
                 return Ok(out_png);
             }
@@ -275,9 +348,13 @@ impl DecoderEngine {
             }
             SignalType::Lrpt => {
                 match Decoder::decode_meteor_lrpt(raw_path, session_dir).await {
-                    Ok(img) => Ok(DecodeResult {
+                    Ok(Some(img)) => Ok(DecodeResult {
                         image_path: Some(img),
                         telemetry_summary: Some("Meteor-M LRPT デジタル画像復調成功".to_string()),
+                    }),
+                    Ok(None) => Ok(DecodeResult {
+                        image_path: None,
+                        telemetry_summary: Some("電波微弱または未送信のため画像生成スキップ (生IQ・CADU保存完了)".to_string()),
                     }),
                     Err(e) => {
                         log::warn!("Meteor LRPTデコード失敗 (生データ保存): {}", e);
