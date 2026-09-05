@@ -34,13 +34,13 @@
 - Renames crate from `noaa-station` (and library `noaa_station`) to `ground-station` (and library `ground_station`).
 - Binary name becomes `ground-station`.
 
-- [ ] **Step 1: Move directory using git mv**
+- [x] **Step 1: Move directory using git mv**
 
 ```bash
 git mv apps/noaa-station apps/ground-station
 ```
 
-- [ ] **Step 2: Update workspace Cargo.toml and crate Cargo.toml**
+- [x] **Step 2: Update workspace Cargo.toml and crate Cargo.toml**
 
 Update root `Cargo.toml`:
 ```toml
@@ -59,7 +59,7 @@ version = "0.1.0"
 edition = "2021"
 ```
 
-- [ ] **Step 3: Update crate imports in src and tests**
+- [x] **Step 3: Update crate imports in src and tests**
 
 Replace all occurrences of `noaa_station::` with `ground_station::` across:
 - `apps/ground-station/src/main.rs`
@@ -67,12 +67,12 @@ Replace all occurrences of `noaa_station::` with `ground_station::` across:
 - `apps/ground-station/tests/integration/*.rs`
 - `apps/ground-station/examples/predict_cubesats.rs`
 
-- [ ] **Step 4: Run cargo check and cargo test to verify rename**
+- [x] **Step 4: Run cargo check and cargo test to verify rename**
 
 Run: `cargo test --all`
 Expected: All existing tests pass with the new crate name `ground-station`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .
@@ -96,7 +96,7 @@ git commit -m "refactor: noaa-stationからground-stationへの移行"
   - `MeteorConfig { enabled: bool }`
   - `SatellitesConfig` containing `meteor`, `cubesats`, and `iss`.
 
-- [ ] **Step 1: Write the failing unit tests for new config fields**
+- [x] **Step 1: Write the failing unit tests for new config fields**
 
 In `apps/ground-station/tests/unit/config_test.rs`, add tests for parsing `[satellites.cubesats]` and `[satellites.iss]`:
 ```rust
@@ -134,21 +134,21 @@ fn test_cubesat_and_iss_config_parsing() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test unit_config test_cubesat_and_iss_config_parsing`
 Expected: FAIL with compilation error (fields do not exist).
 
-- [ ] **Step 3: Implement new structs in `src/config.rs` and update `config.toml`**
+- [x] **Step 3: Implement new structs in `src/config.rs` and update `config.toml`**
 
 Add `CubeSatTargetConfig`, `CubeSatsConfig`, `IssConfig`, `MeteorConfig` to `src/config.rs` with `serde::{Serialize, Deserialize}` and sensible defaults. Update `config.toml` with the complete satellite list.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test unit_config`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/config.rs apps/ground-station/config.toml apps/ground-station/tests/unit/config_test.rs
@@ -175,7 +175,7 @@ git commit -m "feat: CubeSatおよびISSの設定スキーマを追加"
   - `HealthReport::print_table(&self)`
   - `HealthReport::is_fatal(&self) -> bool`
 
-- [ ] **Step 1: Write the failing unit test for health report logic**
+- [x] **Step 1: Write the failing unit test for health report logic**
 
 In `apps/ground-station/tests/unit/health_test.rs`:
 ```rust
@@ -204,12 +204,12 @@ fn test_health_report_fatal_check() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test unit_health`
 Expected: FAIL (module does not exist).
 
-- [ ] **Step 3: Implement `src/health.rs` and register CLI command `check`**
+- [x] **Step 3: Implement `src/health.rs` and register CLI command `check`**
 
 Implement probes:
 1. RTL-SDR check (`which rtl_test`, test open via `rtl_test -t` with 1 sec timeout).
@@ -218,12 +218,12 @@ Implement probes:
 4. Storage check (`std::fs::create_dir_all` and write test to `output_dir`).
 Expose `Commands::Check` in `src/main.rs`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test unit_health`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/health.rs apps/ground-station/src/lib.rs apps/ground-station/src/main.rs apps/ground-station/tests/unit/health_test.rs apps/ground-station/Cargo.toml
@@ -245,7 +245,7 @@ git commit -m "feat: 起動時事前ヘルスチェック機能とcheckコマン
   - Fetches both weather group and amateur group TLEs from CelesTrak.
   - Matches configured targets (`Meteor-M`, `targets` from `cubesats`, and `iss`).
 
-- [ ] **Step 1: Write the failing unit test for multi-satellite TLE matching**
+- [x] **Step 1: Write the failing unit test for multi-satellite TLE matching**
 
 In `apps/ground-station/tests/unit/orbit_test.rs`:
 ```rust
@@ -256,12 +256,12 @@ fn test_signal_type_display_and_parsing() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test unit_orbit test_signal_type_display_and_parsing`
 Expected: FAIL (enum variant does not exist).
 
-- [ ] **Step 3: Implement expanded SignalType and fetch_all_tles in `src/orbit.rs`**
+- [x] **Step 3: Implement expanded SignalType and fetch_all_tles in `src/orbit.rs`**
 
 - Add variants to `SignalType`: `CubeSatSsdv`, `CubeSatTelemetry`, `MorseCw`, `IssSstv`.
 - Implement `fetch_all_tles`:
@@ -270,12 +270,12 @@ Expected: FAIL (enum variant does not exist).
   - Parse 3-line TLE format and construct `SatelliteInfo`.
 - Keep existing SGP4 ENU coordinate and conflict resolution logic.
 
-- [ ] **Step 4: Run tests to verify it passes**
+- [x] **Step 4: Run tests to verify it passes**
 
 Run: `cargo test --test unit_orbit`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/orbit.rs apps/ground-station/tests/unit/orbit_test.rs
@@ -299,7 +299,7 @@ git commit -m "feat: 多種衛星TLE取得とSignalTypeの拡張"
   - `worker::run_worker(rx: mpsc::Receiver<DecodeJob>, discord: Arc<DiscordClient>, voicevox: Arc<VoicevoxClient>)`
   - `receiver::record_pass_raw(pass: &SatellitePass, config: &SdrConfig, output_dir: &Path) -> Result<PathBuf>`
 
-- [ ] **Step 1: Write the failing unit test for DecoderEngine routing**
+- [x] **Step 1: Write the failing unit test for DecoderEngine routing**
 
 In `apps/ground-station/tests/unit/worker_test.rs`:
 ```rust
@@ -321,12 +321,12 @@ async fn test_decoder_routing_for_cubesat_ssdv() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test unit_worker`
 Expected: FAIL (types or routing missing).
 
-- [ ] **Step 3: Implement pluggable decoder routing and async worker**
+- [x] **Step 3: Implement pluggable decoder routing and async worker**
 
 In `src/decoder.rs`:
 - Implement `DecoderEngine::decode`:
@@ -337,12 +337,12 @@ In `src/decoder.rs`:
 In `src/worker.rs`:
 - Asynchronously pulls `DecodeJob` from `mpsc::Receiver`, calls `DecoderEngine`, then notifies Discord and VOICEVOX.
 
-- [ ] **Step 4: Run tests to verify it passes**
+- [x] **Step 4: Run tests to verify it passes**
 
 Run: `cargo test --test unit_worker`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/decoder.rs apps/ground-station/src/worker.rs apps/ground-station/src/receiver.rs apps/ground-station/tests/unit/worker_test.rs
@@ -366,17 +366,17 @@ git commit -m "feat: 非同期デコードワーカとプラグイン型デコ�
   - `ground-station test-voice`: Tests VOICEVOX.
   - `ground-station test-discord`: Tests Discord Webhook.
 
-- [ ] **Step 1: Wire Preflight Check into `daemon` and `check` command**
+- [x] **Step 1: Wire Preflight Check into `daemon` and `check` command**
 
 In `src/main.rs` and `src/scheduler.rs`:
 - When `Commands::Check` is invoked: call `health::run_preflight_checks(&config)` and print formatted summary table.
 - When `Commands::Daemon` is invoked: run preflight check first. If `is_fatal()`, print clear remedy and abort before acquiring SDR.
 
-- [ ] **Step 2: Update `schedule` command to output multi-satellite pass table**
+- [x] **Step 2: Update `schedule` command to output multi-satellite pass table**
 
 Ensure `show_schedule` prints satellite category, frequency, pass time (JST), max elevation, and direction.
 
-- [ ] **Step 3: Run cargo check and run CLI commands**
+- [x] **Step 3: Run cargo check and run CLI commands**
 
 ```bash
 cargo run --bin ground-station -- check
@@ -386,12 +386,12 @@ Expected:
 1. `check` displays status of RTL-SDR, tools, VOICEVOX, Discord, storage.
 2. `schedule` displays upcoming Meteor-M, CubeSat, and ISS passes.
 
-- [ ] **Step 4: Run full test suite**
+- [x] **Step 4: Run full test suite**
 
 Run: `cargo test --all`
 Expected: All unit and integration tests PASS.
 
-- [ ] **Step 5: Commit and update README.md**
+- [x] **Step 5: Commit and update README.md**
 
 ```bash
 git add apps/ground-station/src/main.rs apps/ground-station/src/scheduler.rs README.md
