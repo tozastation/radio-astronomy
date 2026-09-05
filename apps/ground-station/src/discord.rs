@@ -65,6 +65,9 @@ pub struct SatelliteTelemetry {
     pub status: PassStatus,
 }
 
+/// Discord Webhook に添付可能な最大音声バイト数 (8MB 安全マージン)
+pub const MAX_DISCORD_AUDIO_BYTES: usize = 8 * 1024 * 1024;
+
 /// 衛星通過観測レポート
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PassReport {
@@ -76,6 +79,8 @@ pub struct PassReport {
     pub pass_time_str: String,
     pub telemetry: Option<SatelliteTelemetry>,
     pub has_image: bool,
+    #[serde(default)]
+    pub has_audio: bool,
     pub next_pass_info: Option<String>,
 }
 
@@ -119,6 +124,29 @@ impl DiscordClient {
     /// テスト用のサンプル衛星画像バイナリを生成
     pub fn create_test_sample_image() -> Vec<u8> {
         SAMPLE_PNG_BYTES.to_vec()
+    }
+
+    /// テスト用のサンプル衛星音声バイナリ (2400Hz APT風正弦波 WAV) を生成
+    pub fn create_test_sample_wav() -> Vec<u8> {
+        let sample_rate = 11025u32;
+        let duration_secs = 0.5f32;
+        let num_samples = (sample_rate as f32 * duration_secs) as usize;
+        let data_size = (num_samples * 2) as u32;
+
+        let header = crate::receiver::create_wav_header(data_size);
+        let mut wav_bytes = Vec::with_capacity(44 + data_size as usize);
+        wav_bytes.extend_from_slice(&header);
+
+        // 2400Hz の APT 風ピープ音
+        let freq = 2400.0f32;
+        for i in 0..num_samples {
+            let t = i as f32 / sample_rate as f32;
+            let sample = (t * freq * 2.0 * std::f32::consts::PI).sin();
+            let sample_i16 = (sample * 8000.0) as i16;
+            wav_bytes.extend_from_slice(&sample_i16.to_le_bytes());
+        }
+
+        wav_bytes
     }
 
     /// Discord Embed JSON オブジェクトを構築
@@ -209,6 +237,14 @@ impl DiscordClient {
             }));
         }
 
+        if report.has_audio {
+            fields.push(serde_json::json!({
+                "name": "🎵 受信音声 (WAV)",
+                "value": "添付プレーヤーでインライン再生可能",
+                "inline": true
+            }));
+        }
+
         let mut embed = serde_json::json!({
             "title": title,
             "color": status.color_code(),
@@ -227,11 +263,12 @@ impl DiscordClient {
         embed
     }
 
-    /// リッチな観測レポート（Embed＋画像）を送信
+    /// リッチな観測レポート（Embed＋画像＋受信音声WAV）を送信
     pub async fn send_pass_report(
         &self,
         report: &PassReport,
         image_bytes: Option<Vec<u8>>,
+        audio_bytes: Option<Vec<u8>>,
     ) -> Result<()> {
         if !self.config.enabled {
             return Ok(());
@@ -262,6 +299,7 @@ impl DiscordClient {
         });
 
         let mut form = Form::new().text("payload_json", payload_json.to_string());
+        let mut file_index = 0;
 
         // 画像バイナリが存在する場合は添付
         if let Some(bytes) = image_bytes {
@@ -269,8 +307,29 @@ impl DiscordClient {
                 let part = Part::bytes(bytes)
                     .file_name("satellite_image.png")
                     .mime_str("image/png")
-                    .context("MIME設定エラー")?;
-                form = form.part("files[0]", part);
+                    .context("画像MIME設定エラー")?;
+                form = form.part(format!("files[{}]", file_index), part);
+                file_index += 1;
+            }
+        }
+
+        // 音声バイナリ (WAV) が存在し、かつ8MB以内なら添付
+        if let Some(bytes) = audio_bytes {
+            if !bytes.is_empty() {
+                if bytes.len() <= MAX_DISCORD_AUDIO_BYTES {
+                    let audio_len = bytes.len();
+                    let part = Part::bytes(bytes)
+                        .file_name("satellite_audio.wav")
+                        .mime_str("audio/wav")
+                        .context("音声MIME設定エラー")?;
+                    form = form.part(format!("files[{}]", file_index), part);
+                    info!("🎵 Discord に受信音声WAVを添付しました (files[{}], {} bytes)", file_index, audio_len);
+                } else {
+                    warn!(
+                        "受信音声WAVのサイズが Discord 制限（8MB）を超過しているため添付をスキップしました ({} bytes)",
+                        bytes.len()
+                    );
+                }
             }
         }
 
@@ -342,10 +401,11 @@ impl DiscordClient {
                 },
             }),
             has_image,
+            has_audio: false,
             next_pass_info: next_pass_info.map(|s| s.to_string()),
         };
 
-        self.send_pass_report(&report, image_bytes).await
+        self.send_pass_report(&report, image_bytes, None).await
     }
 
     /// テキストメッセージを Discord に送信

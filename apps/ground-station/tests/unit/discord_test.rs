@@ -21,6 +21,7 @@ fn test_build_embed_with_image_and_telemetry() {
         pass_time_str: "2026-09-04 12:13:00 〜 12:20:00 (7分00秒)".to_string(),
         telemetry: Some(telemetry),
         has_image: true,
+        has_audio: true,
         next_pass_info: Some("🛰️ **NOAA 19** (22:08 〜 40.7° 西南西)".to_string()),
     };
 
@@ -49,6 +50,9 @@ fn test_build_embed_with_image_and_telemetry() {
     let snr_field = find_field("📶 信号品質 (SNR)").expect("SNRフィールドが存在すること");
     assert!(snr_field["value"].as_str().unwrap().contains("18.2 dB"));
 
+    let audio_field = find_field("🎵 受信音声 (WAV)").expect("音声フィールドが存在すること");
+    assert!(audio_field["value"].as_str().unwrap().contains("インライン再生可能"));
+
     let telemetry_field = find_field("⚡ 衛星ヘルス・テレメトリ").expect("テレメトリフィールドが存在すること");
     assert!(telemetry_field["value"].as_str().unwrap().contains("8.24 V"));
     assert!(telemetry_field["value"].as_str().unwrap().contains("+14.2°C"));
@@ -75,6 +79,7 @@ fn test_build_embed_without_image_does_not_have_image_url() {
         pass_time_str: "2026-09-04 15:00:00 〜 15:08:00".to_string(),
         telemetry: Some(telemetry),
         has_image: false,
+        has_audio: false,
         next_pass_info: None,
     };
 
@@ -92,4 +97,15 @@ fn test_create_test_sample_image_returns_valid_png() {
     assert!(!image_bytes.is_empty());
     // PNG マジックナンバー (8バイト: 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A)
     assert_eq!(&image_bytes[0..8], b"\x89PNG\r\n\x1a\n");
+}
+
+#[test]
+fn test_create_test_sample_wav_returns_valid_wav() {
+    let wav_bytes = DiscordClient::create_test_sample_wav();
+    assert!(wav_bytes.len() > 44);
+    // RIFF / WAVE マジックナンバーの検証
+    assert_eq!(&wav_bytes[0..4], b"RIFF");
+    assert_eq!(&wav_bytes[8..12], b"WAVE");
+    assert_eq!(&wav_bytes[12..16], b"fmt ");
+    assert_eq!(&wav_bytes[36..40], b"data");
 }

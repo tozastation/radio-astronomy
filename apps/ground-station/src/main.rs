@@ -114,6 +114,7 @@ async fn test_discord(config: &Config) -> Result<()> {
     }
 
     let sample_image = ground_station::discord::DiscordClient::create_test_sample_image();
+    let sample_wav = ground_station::discord::DiscordClient::create_test_sample_wav();
     let report = ground_station::discord::PassReport {
         satellite_name: "NOAA 18 (テスト通知)".to_string(),
         signal_type_name: "APT (2.4kHz AM)".to_string(),
@@ -132,10 +133,11 @@ async fn test_discord(config: &Config) -> Result<()> {
             status: ground_station::discord::PassStatus::ImageDecoded,
         }),
         has_image: true,
+        has_audio: true,
         next_pass_info: Some("🛰️ **NOAA 19** (22:08 〜 40.7° 西南西 (WSW))".to_string()),
     };
 
-    client.send_pass_report(&report, Some(sample_image)).await?;
+    client.send_pass_report(&report, Some(sample_image), Some(sample_wav)).await?;
 
     println!("✨ Discord 通知リクエストが完了しました！スマホまたはPCのDiscordを確認してください。");
     Ok(())

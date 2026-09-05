@@ -314,10 +314,11 @@ impl Decoder {
 
 use crate::discord::{PassStatus, SatelliteTelemetry};
 
-/// デコード結果 (画像パス、要約テキスト、テレメトリ情報)
+/// デコード結果 (画像パス、音声パス、要約テキスト、テレメトリ情報)
 #[derive(Debug, Clone)]
 pub struct DecodeResult {
     pub image_path: Option<PathBuf>,
+    pub audio_path: Option<PathBuf>,
     pub telemetry_summary: Option<String>,
     pub telemetry: Option<SatelliteTelemetry>,
 }
@@ -335,9 +336,15 @@ impl DecoderEngine {
         match pass.signal_type {
             SignalType::Apt => {
                 let png_path = session_dir.join("image.png");
+                let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
+                    Some(raw_path.to_path_buf())
+                } else {
+                    None
+                };
                 match Decoder::decode_apt(raw_path, &png_path).await {
                     Ok(()) => Ok(DecodeResult {
                         image_path: Some(png_path),
+                        audio_path,
                         telemetry_summary: Some("NOAA APT 画像デコード成功".to_string()),
                         telemetry: Some(SatelliteTelemetry {
                             snr_db: Some(16.5),
@@ -353,6 +360,7 @@ impl DecoderEngine {
                         log::warn!("NOAA APTデコード失敗 (生データ保存): {}", e);
                         Ok(DecodeResult {
                             image_path: None,
+                            audio_path,
                             telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: None,
@@ -368,6 +376,7 @@ impl DecoderEngine {
                 match Decoder::decode_meteor_lrpt(raw_path, session_dir).await {
                     Ok(Some(img)) => Ok(DecodeResult {
                         image_path: Some(img),
+                        audio_path: None,
                         telemetry_summary: Some("Meteor-M LRPT デジタル画像復調成功".to_string()),
                         telemetry: Some(SatelliteTelemetry {
                             snr_db: Some(18.0),
@@ -381,6 +390,7 @@ impl DecoderEngine {
                     }),
                     Ok(None) => Ok(DecodeResult {
                         image_path: None,
+                        audio_path: None,
                         telemetry_summary: Some("電波微弱または未送信のため画像生成スキップ (生IQ・CADU保存完了)".to_string()),
                         telemetry: Some(SatelliteTelemetry {
                             snr_db: Some(4.8),
@@ -393,6 +403,7 @@ impl DecoderEngine {
                         log::warn!("Meteor LRPTデコード失敗 (生データ保存): {}", e);
                         Ok(DecodeResult {
                             image_path: None,
+                            audio_path: None,
                             telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: None,
@@ -420,6 +431,7 @@ impl DecoderEngine {
                         };
                         Ok(DecodeResult {
                             image_path: if is_img { Some(p) } else { None },
+                            audio_path: None,
                             telemetry_summary: Some(format!(
                                 "CubeSat {} ({}) データ取得完了",
                                 pass.satellite_name,
@@ -440,6 +452,7 @@ impl DecoderEngine {
                         log::warn!("CubeSatデコード失敗 (生データ保存): {}", e);
                         Ok(DecodeResult {
                             image_path: None,
+                            audio_path: None,
                             telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: None,
@@ -452,11 +465,17 @@ impl DecoderEngine {
                 }
             }
             SignalType::IssSstv => {
+                let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
+                    Some(raw_path.to_path_buf())
+                } else {
+                    None
+                };
                 match Decoder::decode_iss_sstv(raw_path, session_dir).await {
                     Ok(p) => {
                         let is_img = p.extension().is_some_and(|ext| ext == "png" || ext == "jpg");
                         Ok(DecodeResult {
                             image_path: if is_img { Some(p) } else { None },
+                            audio_path,
                             telemetry_summary: Some("ISS SSTV 宇宙画像デコード完了".to_string()),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: Some(17.2),
@@ -477,6 +496,7 @@ impl DecoderEngine {
                         log::warn!("ISS SSTVデコード失敗 (生データ保存): {}", e);
                         Ok(DecodeResult {
                             image_path: None,
+                            audio_path,
                             telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: None,
