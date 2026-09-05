@@ -461,13 +461,101 @@ impl DiscordClient {
             }));
         }
 
+        let footer_text = if passes.len() > 25 {
+            format!(
+                "Radio Astronomy • GPD Pocket3 自律地上局 (全 {} 件中 25 件を表示 / 他 {} 件)",
+                passes.len(),
+                passes.len() - 25
+            )
+        } else {
+            format!("Radio Astronomy • GPD Pocket3 自律地上局 (全 {} 件)", passes.len())
+        };
+
         serde_json::json!({
             "title": title,
             "description": description,
             "color": 0x3498DB, // 宇宙ブルー (3447003)
             "fields": fields,
             "footer": {
-                "text": "Radio Astronomy • GPD Pocket3 自律地上局"
+                "text": footer_text
+            }
+        })
+    }
+
+    /// 今後24時間の通過予定一覧 Embed を構築 (手動CLI / オンデマンド用)
+    pub fn build_24h_schedule_embed(
+        passes: &[crate::orbit::SatellitePass],
+        observer_lat: f64,
+        observer_lon: f64,
+        min_elev: f64,
+    ) -> serde_json::Value {
+        let title = "📡 【今後24時間の衛星通過予定】 (JST)".to_string();
+        let description = if passes.is_empty() {
+            format!(
+                "今後24時間に仰角 {:.1}° 以上の観測対象パスはありません。\n観測地: 北緯 {:.2}°, 東経 {:.2}°",
+                min_elev, observer_lat, observer_lon
+            )
+        } else {
+            format!(
+                "現在から24時間以内に到来する予定の観測パス（全 {} 件）です。\n観測地: 北緯 {:.2}°, 東経 {:.2}° | 最小仰角: {:.1}° 以上",
+                passes.len(), observer_lat, observer_lon, min_elev
+            )
+        };
+
+        let today_jst = chrono::Local::now().date_naive();
+        let mut fields = Vec::new();
+        for (i, pass) in passes.iter().take(25).enumerate() {
+            let aos_local: chrono::DateTime<chrono::Local> = chrono::DateTime::from(pass.aos);
+            let los_local: chrono::DateTime<chrono::Local> = chrono::DateTime::from(pass.los);
+            let duration_min = (pass.los - pass.aos).num_minutes();
+            let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
+            let dir = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg);
+
+            let time_str = if aos_local.date_naive() == today_jst {
+                format!("{} 〜 {}", aos_local.format("%H:%M"), los_local.format("%H:%M"))
+            } else {
+                format!("{} 〜 {}", aos_local.format("%m/%d %H:%M"), los_local.format("%H:%M"))
+            };
+
+            let field_name = format!(
+                "{}. 🛰️ {} [{}]",
+                i + 1,
+                pass.satellite_name,
+                pass.signal_type.name()
+            );
+            let field_value = format!(
+                "⏱️ {} ({}分間)\n📐 最大 {:.1}° ({}) | 📡 {:.4} MHz",
+                time_str,
+                duration_min,
+                pass.max_elevation_deg,
+                dir,
+                freq_mhz
+            );
+
+            fields.push(serde_json::json!({
+                "name": field_name,
+                "value": field_value,
+                "inline": false
+            }));
+        }
+
+        let footer_text = if passes.len() > 25 {
+            format!(
+                "Radio Astronomy • GPD Pocket3 自律地上局 (全 {} 件中 25 件を表示 / 他 {} 件)",
+                passes.len(),
+                passes.len() - 25
+            )
+        } else {
+            format!("Radio Astronomy • GPD Pocket3 自律地上局 (全 {} 件)", passes.len())
+        };
+
+        serde_json::json!({
+            "title": title,
+            "description": description,
+            "color": 0x3498DB,
+            "fields": fields,
+            "footer": {
+                "text": footer_text
             }
         })
     }
@@ -510,19 +598,73 @@ impl DiscordClient {
             Ok(resp) => {
                 if resp.status().is_success() {
                     info!("✨ Discord へのデイリースケジュール送信が完了しました！");
+                    Ok(())
                 } else {
                     let status = resp.status();
                     let text = resp.text().await.unwrap_or_default();
                     warn!("Discord 送信失敗 (HTTP {}): {}", status, text);
+                    anyhow::bail!("Discord 送信失敗 (HTTP {}): {}", status, text);
                 }
             }
             Err(e) => {
-                warn!("Discord 送信エラー (スキップして処理継続): {}", e);
+                warn!("Discord 送信エラー: {}", e);
+                Err(anyhow::anyhow!("Discord 送信エラー: {}", e))
             }
         }
-
-        Ok(())
     }
+
+    /// 今後24時間の通過予定一覧を Discord に送信 (手動CLI / オンデマンド用)
+    pub async fn send_24h_schedule(
+        &self,
+        passes: &[crate::orbit::SatellitePass],
+        observer_lat: f64,
+        observer_lon: f64,
+        min_elev: f64,
+    ) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        let webhook_url = match &self.config.webhook_url {
+            Some(url) if !url.trim().is_empty() => url.trim(),
+            _ => {
+                warn!("Discord通知が有効化されていますが、Webhook URL が未設定です");
+                return Ok(());
+            }
+        };
+
+        info!("Discord に今後24時間の通過予定を送信中 (対象パス: {} 件)", passes.len());
+
+        let embed = Self::build_24h_schedule_embed(passes, observer_lat, observer_lon, min_elev);
+        let content_text = format!(
+            "📡 今後24時間の衛星通過予定をお届けするのだ！（予定パス: {}件）",
+            passes.len()
+        );
+
+        let payload = serde_json::json!({
+            "content": content_text,
+            "embeds": [embed]
+        });
+
+        match self.http_client.post(webhook_url).json(&payload).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    info!("✨ Discord への24時間通過予定送信が完了しました！");
+                    Ok(())
+                } else {
+                    let status = resp.status();
+                    let text = resp.text().await.unwrap_or_default();
+                    warn!("Discord 送信失敗 (HTTP {}): {}", status, text);
+                    anyhow::bail!("Discord 送信失敗 (HTTP {}): {}", status, text);
+                }
+            }
+            Err(e) => {
+                warn!("Discord 送信エラー: {}", e);
+                Err(anyhow::anyhow!("Discord 送信エラー: {}", e))
+            }
+        }
+    }
+
 
     /// テキストメッセージを Discord に送信
     pub async fn send_text(&self, text: &str) -> Result<()> {
