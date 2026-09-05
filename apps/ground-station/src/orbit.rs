@@ -1,9 +1,11 @@
 use crate::config::{ObserverConfig, SatellitesConfig};
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use log::info;
+use log::{info, warn};
 use reqwest::Client;
 use sgp4::{Constants, Elements};
+use std::path::{Path, PathBuf};
+use std::time::Duration as StdDuration;
 
 // =============================================================================
 // 🛰️ 軌道計算 & パス予測モジュール (Orbit / SGP4)
@@ -259,6 +261,45 @@ impl OrbitPredictor {
     }
 }
 
+/// 相対パスから存在するデータファイルのパスを探索
+pub fn resolve_data_path(relative_path: &str) -> PathBuf {
+    let candidates = [
+        PathBuf::from(relative_path),
+        PathBuf::from("apps/ground-station").join(relative_path),
+    ];
+    for p in candidates {
+        if p.exists() {
+            return p;
+        }
+    }
+    PathBuf::from(relative_path)
+}
+
+/// TLEローカルキャッシュファイルのパスを解決（親ディレクトリを自動生成）
+pub fn resolve_cache_path() -> PathBuf {
+    let target = if Path::new("apps/ground-station").exists() {
+        PathBuf::from("apps/ground-station/data/cache/tles.txt")
+    } else {
+        PathBuf::from("data/cache/tles.txt")
+    };
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    target
+}
+
+/// キャッシュファイルが存在し、指定された TTL 以内か判定
+pub fn is_cache_valid(cache_file: &Path, ttl: StdDuration) -> bool {
+    if let Ok(metadata) = std::fs::metadata(cache_file) {
+        if let Ok(modified) = metadata.modified() {
+            if let Ok(elapsed) = modified.elapsed() {
+                return elapsed < ttl;
+            }
+        }
+    }
+    false
+}
+
 /// 3行フォーマットのTLEテキストをパースして NORAD ID をキーとしてマップに格納
 pub fn parse_3line_tles(
     text: &str,
@@ -290,7 +331,32 @@ pub fn parse_3line_tles(
     }
 }
 
-/// CelesTrak から対象の全衛星（気象衛星、キューブサット、ISS等）の TLE を一括・個別取得
+/// 抽出済み TLE マップから設定対象の衛星構造体リストを生成
+pub fn build_satellite_infos_from_db(
+    targets: &[(String, u32, u64, SignalType)],
+    tle_db: &std::collections::HashMap<u32, (String, String, String)>,
+) -> Vec<SatelliteInfo> {
+    let mut results = Vec::new();
+    for (name, norad_id, freq, sig_type) in targets {
+        if let Some((_tle_name, line1, line2)) = tle_db.get(norad_id) {
+            results.push(SatelliteInfo {
+                name: name.clone(),
+                norad_id: *norad_id,
+                frequency_hz: *freq,
+                signal_type: *sig_type,
+                line1: line1.clone(),
+                line2: line2.clone(),
+            });
+        }
+    }
+    results
+}
+
+/// CelesTrak / ミラー API / ローカルキャッシュ / 同梱静的ファイルから多段フォールバックで TLE を取得
+/// 【CelesTrak Acceptable Use Policy 遵守設計】
+/// 1. ローカルキャッシュ (TTL: 24時間) が有効な場合は外部通信を一切行わない (0ms)
+/// 2. 外部通信には 3秒 のタイムアウトを設定し、ファイアウォールによるパケットDROP時のハングを防止
+/// 3. CelesTrak が不通・ブロック時はミラー API ──► 同梱静的TLE (default_tles.txt) へ安全にフォールバック
 pub async fn fetch_all_tles(
     client: &Client,
     satellites_config: &SatellitesConfig,
@@ -333,67 +399,118 @@ pub async fn fetch_all_tles(
         return Ok(Vec::new());
     }
 
-    // CelesTrak からグループ TLE を取得してメモリ上にインデックス化
+    let cache_path = resolve_cache_path();
+    let default_tle_path = resolve_data_path("data/default_tles.txt");
+    let cache_ttl = StdDuration::from_secs(24 * 3600); // 24時間キャッシュ (CelesTrak規約の最低2時間以上を遵守)
+
+    // =========================================================================
+    // ステップ 1: 有効なローカルキャッシュのチェック (最優先・最速)
+    // -------------------------------------------------------------------------
+    // CelesTrak の「2時間に1回以上ダウンロードしない」「ローカルから読むこと」を厳守
+    // =========================================================================
+    if is_cache_valid(&cache_path, cache_ttl) {
+        if let Ok(content) = std::fs::read_to_string(&cache_path) {
+            let mut cache_db = std::collections::HashMap::new();
+            parse_3line_tles(&content, &mut cache_db);
+            let results = build_satellite_infos_from_db(&targets, &cache_db);
+            if results.len() == targets.len() {
+                info!(
+                    "ローカル TLE キャッシュを使用します (キャッシュファイル: {:?}, 読込: {}/{} 機)",
+                    cache_path,
+                    results.len(),
+                    targets.len()
+                );
+                return Ok(results);
+            }
+        }
+    }
+
+    // =========================================================================
+    // ステップ 2: 外部からの TLE 取得 (CelesTrak 一括取得 ＆ タイムアウト 3秒)
+    // =========================================================================
+    let mut fetched_texts = Vec::new();
     let mut tle_db: std::collections::HashMap<u32, (String, String, String)> =
         std::collections::HashMap::new();
 
-    // 4-1. 気象衛星グループ TLE
+    // 2-1. 気象衛星グループ TLE
     if satellites_config.is_meteor_enabled() || satellites_config.is_noaa_enabled() {
         let weather_url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle";
-        if let Ok(resp) = client.get(weather_url).send().await {
+        let fetch = client.get(weather_url).send();
+        if let Ok(Ok(resp)) = tokio::time::timeout(tokio::time::Duration::from_secs(3), fetch).await {
             if let Ok(text) = resp.text().await {
                 parse_3line_tles(&text, &mut tle_db);
+                fetched_texts.push(text);
             }
         }
     }
 
-    // 4-2. アマチュア衛星グループ TLE (CubeSat, ISS)
+    // 2-2. アマチュア衛星グループ TLE (CubeSat, ISS)
     if satellites_config.cubesats.enabled || satellites_config.iss.enabled {
         let amateur_url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle";
-        if let Ok(resp) = client.get(amateur_url).send().await {
+        let fetch = client.get(amateur_url).send();
+        if let Ok(Ok(resp)) = tokio::time::timeout(tokio::time::Duration::from_secs(3), fetch).await {
             if let Ok(text) = resp.text().await {
                 parse_3line_tles(&text, &mut tle_db);
+                fetched_texts.push(text);
             }
         }
     }
 
-    let mut results = Vec::new();
-    for (name, norad_id, freq, sig_type) in targets {
-        // グループ TLE から探索
-        if let Some((_tle_name, line1, line2)) = tle_db.get(&norad_id) {
-            results.push(SatelliteInfo {
-                name,
-                norad_id,
-                frequency_hz: freq,
-                signal_type: sig_type,
-                line1: line1.clone(),
-                line2: line2.clone(),
-            });
-        } else {
-            // グループに含まれていない場合は個別 CATNR クエリで取得
-            let url = format!(
-                "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle",
-                norad_id
-            );
-            info!("TLE 個別取得中: {} (NORAD ID: {})", name, norad_id);
-            if let Ok(resp) = client.get(&url).send().await {
-                if let Ok(text) = resp.text().await {
-                    let lines: Vec<&str> = text
-                        .lines()
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .collect();
-                    if lines.len() >= 3 && lines[1].starts_with("1 ") && lines[2].starts_with("2 ") {
-                        results.push(SatelliteInfo {
-                            name,
-                            norad_id,
-                            frequency_hz: freq,
-                            signal_type: sig_type,
-                            line1: lines[1].to_string(),
-                            line2: lines[2].to_string(),
-                        });
+    // 2-3. 未取得の衛星があれば、ミラー API (ivanstanojevic.me) から単発取得 (タイムアウト 2秒)
+    for (_name, norad_id, _freq, _sig_type) in &targets {
+        if !tle_db.contains_key(norad_id) {
+            let mirror_url = format!("https://tle.ivanstanojevic.me/api/tle/{}", norad_id);
+            let fetch = client.get(&mirror_url).send();
+            if let Ok(Ok(resp)) = tokio::time::timeout(tokio::time::Duration::from_secs(2), fetch).await {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let (Some(sat_name), Some(l1), Some(l2)) = (
+                        val.get("name").and_then(|v| v.as_str()),
+                        val.get("line1").and_then(|v| v.as_str()),
+                        val.get("line2").and_then(|v| v.as_str()),
+                    ) {
+                        tle_db.insert(*norad_id, (sat_name.to_string(), l1.to_string(), l2.to_string()));
+                        fetched_texts.push(format!("{}\n{}\n{}", sat_name, l1, l2));
                     }
                 }
+            }
+        }
+    }
+
+    // 外部から取得できたテキストがあればキャッシュファイルへ保存
+    if !fetched_texts.is_empty() {
+        let full_text = fetched_texts.join("\n");
+        if let Err(e) = std::fs::write(&cache_path, &full_text) {
+            warn!("TLE キャッシュの保存に失敗しました ({:?}): {}", cache_path, e);
+        } else {
+            info!("最新 TLE をローカルキャッシュに保存しました: {:?}", cache_path);
+        }
+    }
+
+    // =========================================================================
+    // ステップ 3: 欠損衛星のフォールバック補完 (古いキャッシュ ──► 同梱静的TLE)
+    // =========================================================================
+    let mut results = build_satellite_infos_from_db(&targets, &tle_db);
+
+    if results.len() < targets.len() {
+        // フォールバック 1: 期限切れでもローカルキャッシュがあれば補完
+        if cache_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cache_path) {
+                parse_3line_tles(&content, &mut tle_db);
+                results = build_satellite_infos_from_db(&targets, &tle_db);
+            }
+        }
+
+        // フォールバック 2: 同梱の静的 TLE (default_tles.txt) から補完 (最終防衛ライン)
+        if results.len() < targets.len() && default_tle_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&default_tle_path) {
+                parse_3line_tles(&content, &mut tle_db);
+                results = build_satellite_infos_from_db(&targets, &tle_db);
+                warn!(
+                    "一部または全ての外部TLE取得が不通のため、同梱の静的TLE ({:?}) で補完しました (利用可能: {}/{} 機)",
+                    default_tle_path,
+                    results.len(),
+                    targets.len()
+                );
             }
         }
     }
@@ -401,6 +518,7 @@ pub async fn fetch_all_tles(
     info!("合計 {} 機の衛星 TLE を読み込みました", results.len());
     Ok(results)
 }
+
 
 /// 下位互換用エイリアス
 pub async fn fetch_weather_tles(
