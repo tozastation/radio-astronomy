@@ -113,17 +113,29 @@ async fn test_discord(config: &Config) -> Result<()> {
         return Ok(());
     }
 
-    client
-        .send_satellite_pass_report(
-            "NOAA 18 (テスト通知)",
-            52.5,
-            "東南東 (ESE)",
-            137_912_500,
-            "2026-09-04 12:13:00 〜 12:20:00",
-            None,
-            Some("🛰️ **NOAA 19**\n時間: 22:08:30 〜 22:17:00\n最大仰角: 40.7° (西南西 (WSW))"),
-        )
-        .await?;
+    let sample_image = ground_station::discord::DiscordClient::create_test_sample_image();
+    let report = ground_station::discord::PassReport {
+        satellite_name: "NOAA 18 (テスト通知)".to_string(),
+        signal_type_name: "APT (2.4kHz AM)".to_string(),
+        max_elevation_deg: 52.5,
+        direction: "東南東 (ESE)".to_string(),
+        frequency_hz: 137_912_500,
+        pass_time_str: "2026-09-05 17:15:00 〜 17:22:00 (7分00秒)".to_string(),
+        telemetry: Some(ground_station::discord::SatelliteTelemetry {
+            snr_db: Some(18.5),
+            lines_or_packets: Some("2,180 有効走査線 (同期率 98%)".to_string()),
+            housekeeping: vec![
+                ("バッテリ".to_string(), "8.24 V".to_string()),
+                ("太陽電池".to_string(), "140 mA".to_string()),
+                ("センサ温度".to_string(), "+14.2°C".to_string()),
+            ],
+            status: ground_station::discord::PassStatus::ImageDecoded,
+        }),
+        has_image: true,
+        next_pass_info: Some("🛰️ **NOAA 19** (22:08 〜 40.7° 西南西 (WSW))".to_string()),
+    };
+
+    client.send_pass_report(&report, Some(sample_image)).await?;
 
     println!("✨ Discord 通知リクエストが完了しました！スマホまたはPCのDiscordを確認してください。");
     Ok(())

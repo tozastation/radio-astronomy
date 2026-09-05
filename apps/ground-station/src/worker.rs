@@ -62,45 +62,62 @@ pub async fn run_worker(
                     chrono::DateTime::<chrono::Local>::from(job.pass.los).format("%H:%M:%S")
                 );
                 let dir_str = crate::orbit::azimuth_to_direction(job.pass.peak_azimuth_deg);
-                let freq_mhz = job.pass.frequency_hz as f64 / 1_000_000.0;
 
-                let summary = result.telemetry_summary.as_deref().unwrap_or("デコード完了");
-                let content = format!(
-                    "🛰️ **[{}] 受信・デコード完了**\n\
-                    - 方式: {}\n\
-                    - 周波数: {:.4} MHz\n\
-                    - 通過時刻: {}\n\
-                    - 最大仰角: {:.1}° ({})\n\
-                    - 概要: {}",
-                    pass_name,
-                    job.pass.signal_type.name(),
-                    freq_mhz,
-                    pass_time_str,
-                    job.pass.max_elevation_deg,
-                    dir_str,
-                    summary
-                );
-
-                if result.image_path.is_some() {
-                    let _ = discord
-                        .send_satellite_pass_report(
-                            &pass_name,
-                            job.pass.max_elevation_deg,
-                            dir_str,
-                            job.pass.frequency_hz,
-                            &pass_time_str,
-                            result.image_path.as_deref(),
-                            None,
-                        )
-                        .await;
+                let (has_image, image_bytes) = if let Some(ref path) = result.image_path {
+                    if path.exists() {
+                        match tokio::fs::read(path).await {
+                            Ok(bytes) => (true, Some(bytes)),
+                            Err(e) => {
+                                log::warn!("Discord送信用の画像読み込みに失敗しました: {}", e);
+                                (false, None)
+                            }
+                        }
+                    } else {
+                        (false, None)
+                    }
                 } else {
-                    let _ = discord.send_text(&content).await;
-                }
+                    (false, None)
+                };
+
+                let report = crate::discord::PassReport {
+                    satellite_name: pass_name.clone(),
+                    signal_type_name: job.pass.signal_type.name().to_string(),
+                    max_elevation_deg: job.pass.max_elevation_deg,
+                    direction: dir_str.to_string(),
+                    frequency_hz: job.pass.frequency_hz,
+                    pass_time_str,
+                    telemetry: result.telemetry,
+                    has_image,
+                    next_pass_info: None,
+                };
+
+                let _ = discord.send_pass_report(&report, image_bytes).await;
             }
             Err(e) => {
                 error!("デコード処理中に予期せぬエラーが発生しました: {}", e);
-                let err_msg = format!("⚠️ **[{}] デコードエラー**: {}", pass_name, e);
-                let _ = discord.send_text(&err_msg).await;
+                let pass_time_str = format!(
+                    "{} 〜 {}",
+                    chrono::DateTime::<chrono::Local>::from(job.pass.aos).format("%Y-%m-%d %H:%M:%S"),
+                    chrono::DateTime::<chrono::Local>::from(job.pass.los).format("%H:%M:%S")
+                );
+                let dir_str = crate::orbit::azimuth_to_direction(job.pass.peak_azimuth_deg);
+                let report = crate::discord::PassReport {
+                    satellite_name: pass_name.clone(),
+                    signal_type_name: job.pass.signal_type.name().to_string(),
+                    max_elevation_deg: job.pass.max_elevation_deg,
+                    direction: dir_str.to_string(),
+                    frequency_hz: job.pass.frequency_hz,
+                    pass_time_str,
+                    telemetry: Some(crate::discord::SatelliteTelemetry {
+                        snr_db: None,
+                        lines_or_packets: None,
+                        housekeeping: vec![("エラー詳細".to_string(), e.to_string())],
+                        status: crate::discord::PassStatus::DecodeError,
+                    }),
+                    has_image: false,
+                    next_pass_info: None,
+                };
+                let _ = discord.send_pass_report(&report, None).await;
             }
         }
     }
