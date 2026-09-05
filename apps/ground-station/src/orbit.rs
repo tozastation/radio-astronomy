@@ -37,6 +37,8 @@ pub enum SignalType {
     MorseCw,
     /// ISS SSTV: 国際宇宙ステーションからのカラー画像 (Robot36 / Martin1 等)
     IssSstv,
+    /// FM Repeater: アマチュア衛星クロスバンドFM音声中継器 (SO-50 等)
+    FmRepeater,
 }
 
 impl SignalType {
@@ -49,6 +51,7 @@ impl SignalType {
             SignalType::CubeSatTelemetry => "CubeSat Telemetry (テレメトリ)",
             SignalType::MorseCw => "CubeSat Morse (モールスCW)",
             SignalType::IssSstv => "ISS SSTV (宇宙ステーション画像)",
+            SignalType::FmRepeater => "FM Repeater (音声中継器)",
         }
     }
 
@@ -58,6 +61,7 @@ impl SignalType {
             "isssstv" | "iss" => SignalType::IssSstv,
             "ssdvcamera" | "ssdv" => SignalType::CubeSatSsdv,
             "morsecw" | "morse" | "cw" => SignalType::MorseCw,
+            "fmrepeater" | "fmvoice" | "repeater" => SignalType::FmRepeater,
             "lrpt" => SignalType::Lrpt,
             "apt" => SignalType::Apt,
             _ => SignalType::CubeSatTelemetry,
@@ -67,10 +71,9 @@ impl SignalType {
     /// 受信録音時の方式（FM音声 vs 生IQベースバンド）
     pub fn is_raw_iq(&self) -> bool {
         match self {
-            SignalType::Apt | SignalType::IssSstv => false,
+            SignalType::Apt | SignalType::IssSstv | SignalType::FmRepeater | SignalType::CubeSatSstv => false,
             SignalType::Lrpt
             | SignalType::CubeSatSsdv
-            | SignalType::CubeSatSstv
             | SignalType::CubeSatTelemetry
             | SignalType::MorseCw => true,
         }
