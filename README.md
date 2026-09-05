@@ -283,16 +283,19 @@ radio-astronomy/
 ├── mise.toml                          # ツールバージョン管理 (mise)
 ├── pyproject.toml / requirements.txt  # Python依存ライブラリ一覧 (Jupyter分析用)
 ├── apps/                              # 🚀 独立したツール・デーモン群 (モノレポ構成)
-│   ├── noaa-station/                  # 🛰️ [Rust] NOAA気象衛星 自律自動受信・デコード地上局
+│   ├── ground-station/                # 🛰️ [Rust] 自律型パーソナル衛星地上局 (Meteor-M, CubeSat, ISS)
 │   │   ├── Cargo.toml                 # クレート固有の依存関係
-│   │   ├── config.toml                # 観測地座標・VOICEVOX等の設定
+│   │   ├── config.toml                # 観測地座標・衛星リスト・VOICEVOX等の設定
 │   │   └── src/
-│   │       ├── main.rs                # CLIサブコマンド (schedule / test-voice / daemon)
+│   │       ├── main.rs                # CLIサブコマンド (check / schedule / test-voice / test-discord / daemon)
 │   │       ├── config.rs              # TOML設定読み込み (serde)
-│   │       ├── orbit.rs               # CelesTrak TLE取得 & sgp4軌道・仰角計算
+│   │       ├── health.rs              # 起動前ヘルスチェック (RTL-SDR / ツール群 / VOICEVOX / ストレージ)
+│   │       ├── orbit.rs               # CelesTrak 多衛星TLE取得 & sgp4軌道・仰角計算
 │   │       ├── scheduler.rs           # tokio非同期タイマーループ & ステートマシン
-│   │       ├── receiver.rs            # rtl_fm プロセス制御 (WAV録音・安全停止)
-│   │       ├── decoder.rs             # noaa-apt CLI 呼び出し & PNG画像生成
+│   │       ├── receiver.rs            # rtl_fm / rtl_sdr プロセス制御 (WAV / 生IQベースバンド録音)
+│   │       ├── decoder.rs             # プラグイン型デコーダ (satdump / noaa-apt)
+│   │       ├── worker.rs              # 非同期デコードワーカ (MPSC時分割パイプライン)
+│   │       ├── discord.rs             # Discord Webhook 通知
 │   │       └── voicevox.rs            # VOICEVOX API 連携 & ずんだもん音声通知
 │   ├── sdr-collector/                 # ⚡ [Rust] (今後) 2.4MSPS 高速IQ受信・FFT・1秒積算エッジデーモン
 │   └── meteor-detector/               # 🌠 [Python/Rust] (今後) 流星電波反射エコー検知
