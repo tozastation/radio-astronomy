@@ -186,3 +186,42 @@ async fn test_decoder_engine_apt_audio_path_setting() {
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
+
+#[tokio::test]
+async fn test_decoder_engine_fm_repeater_audio_path_and_telemetry() {
+    use chrono::{Duration, Utc};
+    use ground_station::decoder::DecoderEngine;
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    let pass = SatellitePass {
+        satellite_name: "SO-50".to_string(),
+        frequency_hz: 436_795_000,
+        signal_type: SignalType::FmRepeater,
+        aos: Utc::now(),
+        los: Utc::now() + Duration::minutes(5),
+        max_elevation_deg: 70.1,
+        peak_azimuth_deg: 90.0,
+    };
+
+    let session_dir = std::env::temp_dir().join("test_ground_station_fm_repeater");
+    let _ = std::fs::remove_dir_all(&session_dir);
+    std::fs::create_dir_all(&session_dir).unwrap();
+
+    let wav_path = session_dir.join("raw.wav");
+    std::fs::write(&wav_path, b"dummy wav header").unwrap();
+
+    let result = DecoderEngine::decode(&pass, &wav_path, &session_dir).await;
+    assert!(result.is_ok());
+    let res = result.unwrap();
+    assert_eq!(res.audio_path, Some(wav_path));
+    assert!(res.image_path.is_none());
+    assert!(res.telemetry.is_some());
+    let tel = res.telemetry.unwrap();
+    assert_eq!(tel.status, ground_station::discord::PassStatus::TelemetryDecoded);
+    assert!(tel.lines_or_packets.as_deref().unwrap_or("").contains("FM 音声復調完了"));
+    let hk_map: std::collections::HashMap<_, _> = tel.housekeeping.into_iter().collect();
+    assert_eq!(hk_map.get("中継方式").map(|s| s.as_str()), Some("FM ボイストランスポンダー"));
+    assert!(hk_map.contains_key("アクセス仕様"));
+
+    let _ = std::fs::remove_dir_all(&session_dir);
+}
