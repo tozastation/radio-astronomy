@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::decoder::Decoder;
-use crate::orbit::{azimuth_to_direction, fetch_weather_tles, OrbitPredictor, SignalType};
+use crate::orbit::{azimuth_to_direction, fetch_weather_tles, OrbitPredictor};
 use crate::receiver::ReceiverSession;
 use crate::voicevox::VoicevoxClient;
 use anyhow::Result;
@@ -36,9 +35,9 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
     )?;
 
     println!("\n=====================================================================================================================");
-    println!("📡 気象衛星 通過予定スケジュール (今後24時間 / 観測地: 緯度 {:.4}, 経度 {:.4})", config.observer.latitude, config.observer.longitude);
+    println!("📡 地上局 衛星通過予定スケジュール (今後24時間 / 観測地: 緯度 {:.4}, 経度 {:.4})", config.observer.latitude, config.observer.longitude);
     println!("=====================================================================================================================");
-    println!("{:<15} | {:<12} | {:<24} | {:<20} | {:<20} | {:<18}", "衛星名", "周波数", "信号方式", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
+    println!("{:<15} | {:<12} | {:<28} | {:<20} | {:<20} | {:<18}", "衛星名", "周波数", "信号方式", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
     println!("---------------------------------------------------------------------------------------------------------------------");
 
     if passes.is_empty() {
@@ -51,7 +50,7 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
             let dir = azimuth_to_direction(pass.peak_azimuth_deg);
 
             println!(
-                "{:<15} | {:>7.4} MHz | {:<24} | {} | {} | {:>4.1}° ({})",
+                "{:<15} | {:>7.4} MHz | {:<28} | {} | {} | {:>4.1}° ({})",
                 pass.satellite_name,
                 freq_mhz,
                 pass.signal_type.name(),
@@ -74,11 +73,17 @@ pub async fn run_daemon(config: Config) -> Result<()> {
     let http_client = Client::new();
     let voice_client = VoicevoxClient::new(config.voicevox.clone());
 
-    info!("NOAA 自律地上局デーモンを起動しました");
+    info!("パーソナル自律衛星地上局デーモンを起動しました");
     info!(
         "観測地: 緯度 {}, 経度 {}, 最小仰角 {}°",
         config.observer.latitude, config.observer.longitude, config.scheduler.min_elevation_deg
     );
+
+    // 非同期デコードワーカの起動 (時分割並行パイプライン: 録音完了直後にSDRを解放)
+    let (decode_tx, decode_rx) = tokio::sync::mpsc::channel::<crate::worker::DecodeJob>(32);
+    let discord_arc = std::sync::Arc::new(crate::discord::DiscordClient::new(config.discord.clone()));
+    let voice_arc = std::sync::Arc::new(voice_client.clone());
+    tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc, voice_arc));
 
     let mut last_tle_update = Utc::now() - Duration::hours(25);
     let mut cached_satellites = Vec::new();
@@ -207,11 +212,11 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             pass.satellite_name.replace(' ', "")
         ));
 
-        let record_path = match pass.signal_type {
-            SignalType::Apt => session_dir.join("raw.wav"),
-            SignalType::Lrpt => session_dir.join("raw.u8"),
+        let record_path = if pass.signal_type.is_raw_iq() {
+            session_dir.join("raw.u8")
+        } else {
+            session_dir.join("raw.wav")
         };
-        let png_path = session_dir.join("image.png");
 
         // AOS 受信開始アナウンス
         let aos_text = format!(
@@ -259,82 +264,18 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         let _ = voice_client.speak(&los_text).await;
 
         // ---------------------------------------------------------------------
-        // 9. 画像デコード & ずんだもん事後通知 & Discord画像自動送信
+        // 9. 非同期デコードワーカへジョブ投入 (時分割並行パイプライン)
         // ---------------------------------------------------------------------
-        info!("画像デコード処理を実行中: {:?}", saved_record);
-        let discord_client = crate::discord::DiscordClient::new(config.discord.clone());
-        let pass_time_str = format!(
-            "{} 〜 {}",
-            aos_local.format("%Y-%m-%d %H:%M:%S"),
-            los_local.format("%H:%M:%S")
-        );
-
-        let decode_result = match pass.signal_type {
-            SignalType::Apt => {
-                match Decoder::decode_apt(&saved_record, &png_path).await {
-                    Ok(()) => Ok(png_path.clone()),
-                    Err(e) => Err(e),
-                }
-            }
-            SignalType::Lrpt => {
-                Decoder::decode_meteor_lrpt(&saved_record, &session_dir).await
-            }
-        };
-
-        match decode_result {
-            Ok(image_path) => {
-                info!("画像生成完了: {:?}", image_path);
-                let success_text = format!(
-                    "{}の受信とデコードに成功したのだ！新しい画像を確認するのだ！",
-                    pass.satellite_name
-                );
-                let _ = voice_client.speak(&success_text).await;
-
-                // 次の通過パス（未来のパス）を検索
-                let next_upcoming_pass = passes.iter().find(|p| p.aos > pass.los);
-                let next_pass_str = next_upcoming_pass.map(|np| {
-                    let np_aos: DateTime<Local> = DateTime::from(np.aos);
-                    let np_los: DateTime<Local> = DateTime::from(np.los);
-                    let np_dir = azimuth_to_direction(np.peak_azimuth_deg);
-                    format!(
-                        "🛰️ **{}** (周波数: {:.4} MHz / {})\n時間: {} 〜 {}\n最大仰角: {:.1}° ({})",
-                        np.satellite_name,
-                        np.frequency_hz as f64 / 1_000_000.0,
-                        np.signal_type.name(),
-                        np_aos.format("%H:%M:%S"),
-                        np_los.format("%H:%M:%S"),
-                        np.max_elevation_deg,
-                        np_dir
-                    )
-                });
-
-                // Discord Webhook へ画像付きレポートを送信
-                if config.discord.enabled {
-                    let _ = discord_client
-                        .send_satellite_pass_report(
-                            &format!("{} ({})", pass.satellite_name, pass.signal_type.name()),
-                            pass.max_elevation_deg,
-                            peak_dir,
-                            pass.frequency_hz,
-                            &pass_time_str,
-                            Some(&image_path),
-                            next_pass_str.as_deref(),
-                        )
-                        .await;
-
-                    let _ = voice_client
-                        .speak("Discordに雲画像を送信したのだ！スマホを確認してみてほしいのだ！")
-                        .await;
-                }
-            }
-            Err(e) => {
-                warn!("デコード失敗: {}", e);
-                let fail_text = format!(
-                    "画像のデコードに失敗したのだ…電波が弱かったかもしれないのだ (詳細: {})",
-                    e
-                );
-                let _ = voice_client.speak(&fail_text).await;
-            }
+        info!("非同期ワーカへデコードジョブを投入: {:?}", saved_record);
+        if let Err(e) = decode_tx
+            .send(crate::worker::DecodeJob {
+                pass: pass.clone(),
+                raw_path: saved_record,
+                session_dir: session_dir.clone(),
+            })
+            .await
+        {
+            error!("ワーカへのジョブ投入に失敗しました: {}", e);
         }
 
         // 次のパス待機へ向けて少し休止 (10秒)

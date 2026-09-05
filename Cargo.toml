@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "apps/noaa-station",
+    "apps/ground-station",
 ]
 resolver = "2"

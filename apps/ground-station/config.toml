@@ -1,0 +1,46 @@
+[observer]
+latitude = 35.7903    # 東京都青梅市
+longitude = 139.2584  # 東経 139.2584
+altitude_m = 200.0    # 標高 (m)
+
+
+[scheduler]
+min_elevation_deg = 20.0
+pre_alert_minutes = 3.0
+tle_update_interval_hours = 24
+
+[voicevox]
+enabled = true
+host = "http://localhost:50021"
+speaker_id = 3
+timeout_secs = 60
+
+
+[storage]
+output_dir = "data/noaa"
+
+[sdr]
+gain = 45.0          # チューナー利得 (dB)。宇宙からの微弱信号には 40.0〜49.6 の高利得が必須
+sample_rate = 60000  # SDRサンプリングレート (60kHz)
+ppm_error = 0        # 周波数偏差補正 (PPM)
+
+[satellites.meteor]
+enabled = true   # ロシア極軌道気象衛星 Meteor-M (N2-3, N2-4: 2026年現役 LRPTデジタル画像)
+
+[satellites.noaa]
+enabled = false  # 米国 NOAA (15, 18, 19: 2025年8月に全機退役・停波済み)
+
+[satellites.cubesats]
+enabled = true
+targets = [
+    { name = "FUNcube-1", norad_id = 39444, freq = 145935000, type = "BpskTelemetry" }, # 145MHz VHF高感度テレメトリ
+    { name = "UmKA-1", norad_id = 57172, freq = 437625000, type = "CameraSstv" },       # 437MHz 望遠鏡カメラ SSTV画像
+    { name = "SONATE-2", norad_id = 59112, freq = 437025000, type = "SsdvCamera" },     # 437MHz 2024年打上 AIカメラ画像
+    { name = "SO-50", norad_id = 27559, freq = 436795000, type = "CubeSatTelemetry" }, # 436MHz 常時活発なFMレピータ・テレメトリ
+    { name = "CAS-4A", norad_id = 42761, freq = 435220000, type = "MorseCw" },          # 435MHz 超高SNR 定番CWモールスビーコン
+]
+
+[satellites.iss]
+enabled = true
+norad_id = 25544
+freq = 145800000
