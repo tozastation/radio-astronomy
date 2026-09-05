@@ -408,6 +408,122 @@ impl DiscordClient {
         self.send_pass_report(&report, image_bytes, None).await
     }
 
+    /// デイリーの衛星受信スケジュール Embed を構築
+    pub fn build_daily_schedule_embed(
+        passes: &[crate::orbit::SatellitePass],
+        date_str: &str,
+        observer_lat: f64,
+        observer_lon: f64,
+        min_elev: f64,
+    ) -> serde_json::Value {
+        let title = format!("📅 【本日の衛星受信スケジュール】 {} (JST)", date_str);
+        let description = if passes.is_empty() {
+            format!(
+                "本日は仰角 {:.1}° 以上の観測対象パスはありません。\n観測地: 北緯 {:.2}°, 東経 {:.2}°",
+                min_elev, observer_lat, observer_lon
+            )
+        } else {
+            format!(
+                "本日ベランダ上空を通過する予定の観測パス（全 {} 件）です。\n観測地: 北緯 {:.2}°, 東経 {:.2}° | 最小仰角: {:.1}° 以上",
+                passes.len(), observer_lat, observer_lon, min_elev
+            )
+        };
+
+        let mut fields = Vec::new();
+        // Discord Embed のフィールド数上限（25件）に対応
+        for (i, pass) in passes.iter().take(25).enumerate() {
+            let aos_local: chrono::DateTime<chrono::Local> = chrono::DateTime::from(pass.aos);
+            let los_local: chrono::DateTime<chrono::Local> = chrono::DateTime::from(pass.los);
+            let duration_min = (pass.los - pass.aos).num_minutes();
+            let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
+            let dir = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg);
+
+            let field_name = format!(
+                "{}. 🛰️ {} [{}]",
+                i + 1,
+                pass.satellite_name,
+                pass.signal_type.name()
+            );
+            let field_value = format!(
+                "⏱️ {} 〜 {} ({}分間)\n📐 最大 {:.1}° ({}) | 📡 {:.4} MHz",
+                aos_local.format("%H:%M"),
+                los_local.format("%H:%M"),
+                duration_min,
+                pass.max_elevation_deg,
+                dir,
+                freq_mhz
+            );
+
+            fields.push(serde_json::json!({
+                "name": field_name,
+                "value": field_value,
+                "inline": false
+            }));
+        }
+
+        serde_json::json!({
+            "title": title,
+            "description": description,
+            "color": 0x3498DB, // 宇宙ブルー (3447003)
+            "fields": fields,
+            "footer": {
+                "text": "Radio Astronomy • GPD Pocket3 自律地上局"
+            }
+        })
+    }
+
+    /// デイリーの衛星受信スケジュールを Discord に送信
+    pub async fn send_daily_schedule(
+        &self,
+        passes: &[crate::orbit::SatellitePass],
+        date_str: &str,
+        observer_lat: f64,
+        observer_lon: f64,
+        min_elev: f64,
+    ) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        let webhook_url = match &self.config.webhook_url {
+            Some(url) if !url.trim().is_empty() => url.trim(),
+            _ => {
+                warn!("Discord通知が有効化されていますが、Webhook URL が未設定です");
+                return Ok(());
+            }
+        };
+
+        info!("Discord に本日の受信スケジュールを送信中 (対象パス: {} 件)", passes.len());
+
+        let embed = Self::build_daily_schedule_embed(passes, date_str, observer_lat, observer_lon, min_elev);
+        let content_text = format!(
+            "🌅 おはようございますなのだ！本日の衛星受信スケジュールをお届けするのだ！（予定パス: {}件）",
+            passes.len()
+        );
+
+        let payload = serde_json::json!({
+            "content": content_text,
+            "embeds": [embed]
+        });
+
+        match self.http_client.post(webhook_url).json(&payload).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    info!("✨ Discord へのデイリースケジュール送信が完了しました！");
+                } else {
+                    let status = resp.status();
+                    let text = resp.text().await.unwrap_or_default();
+                    warn!("Discord 送信失敗 (HTTP {}): {}", status, text);
+                }
+            }
+            Err(e) => {
+                warn!("Discord 送信エラー (スキップして処理継続): {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
     /// テキストメッセージを Discord に送信
     pub async fn send_text(&self, text: &str) -> Result<()> {
         if !self.config.enabled {

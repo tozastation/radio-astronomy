@@ -41,6 +41,8 @@ enum Commands {
     Check,
     /// 今後24時間の通過予定一覧をテーブル表示 (パス予測の即時確認)
     Schedule,
+    /// 今後24時間の通過予定一覧を Discord へ送信 (デイリースケジュールの即時テスト)
+    ScheduleDiscord,
     /// ずんだもん音声発話の疎通テスト (VOICEVOX 連携確認)
     TestVoice,
     /// Discord Webhook 通知の疎通テスト (スマホ通知確認)
@@ -74,6 +76,9 @@ async fn main() -> Result<()> {
         }
         Commands::Schedule => {
             show_schedule(&config).await?;
+        }
+        Commands::ScheduleDiscord => {
+            ground_station::scheduler::send_schedule_to_discord(&config).await?;
         }
         Commands::TestVoice => {
             test_voice(&config).await?;
