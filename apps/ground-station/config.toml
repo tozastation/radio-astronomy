@@ -41,8 +41,8 @@ targets = [
     { name = "FUNcube-1", norad_id = 39444, freq = 145935000, type = "BpskTelemetry" }, # 145MHz VHF高感度テレメトリ
     { name = "UmKA-1", norad_id = 57172, freq = 437625000, type = "CameraSstv" },       # 437MHz 望遠鏡カメラ SSTV画像
     { name = "SONATE-2", norad_id = 59112, freq = 437025000, type = "SsdvCamera" },     # 437MHz 2024年打上 AIカメラ画像
-    { name = "SO-50", norad_id = 27559, freq = 436795000, type = "CubeSatTelemetry" }, # 436MHz 常時活発なFMレピータ・テレメトリ
-    { name = "CAS-4A", norad_id = 42761, freq = 435220000, type = "MorseCw" },          # 435MHz 超高SNR 定番CWモールスビーコン
+    { name = "SO-50", norad_id = 27559, freq = 436795000, type = "FmRepeater" },       # 436MHz 常時活発なFMボイストランスポンダー (交信音声)
+    { name = "CAS-4A", norad_id = 42761, freq = 145855000, type = "MorseCw" },        # 145MHz 超高SNR 定番CWモールステレメトリビーコン (ダウンリンク: 145.855MHz)
 ]
 
 [satellites.iss]
