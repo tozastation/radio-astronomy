@@ -13,7 +13,7 @@ tle_update_interval_hours = 24
 enabled = true
 host = "http://localhost:50021"
 speaker_id = 3
-timeout_secs = 15
+timeout_secs = 60
 
 
 [storage]
