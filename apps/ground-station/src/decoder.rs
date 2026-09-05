@@ -1,6 +1,7 @@
+use crate::orbit::{SatellitePass, SignalType};
 use anyhow::{bail, Context, Result};
 use log::info;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 // =============================================================================
@@ -205,5 +206,98 @@ impl Decoder {
         }
 
         Ok(input_wav.to_path_buf())
+    }
+}
+
+/// デコード結果 (画像パス、要約テキスト)
+#[derive(Debug, Clone)]
+pub struct DecodeResult {
+    pub image_path: Option<PathBuf>,
+    pub telemetry_summary: Option<String>,
+}
+
+/// プラグイン型デコードエンジン
+pub struct DecoderEngine;
+
+impl DecoderEngine {
+    /// 衛星パスと生録音データから適切なデコーダをルーティング実行
+    pub async fn decode(
+        pass: &SatellitePass,
+        raw_path: &Path,
+        session_dir: &Path,
+    ) -> Result<DecodeResult> {
+        match pass.signal_type {
+            SignalType::Apt => {
+                let png_path = session_dir.join("image.png");
+                match Decoder::decode_apt(raw_path, &png_path).await {
+                    Ok(()) => Ok(DecodeResult {
+                        image_path: Some(png_path),
+                        telemetry_summary: Some("NOAA APT 画像デコード成功".to_string()),
+                    }),
+                    Err(e) => {
+                        log::warn!("NOAA APTデコード失敗 (生データ保存): {}", e);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                        })
+                    }
+                }
+            }
+            SignalType::Lrpt => {
+                match Decoder::decode_meteor_lrpt(raw_path, session_dir).await {
+                    Ok(img) => Ok(DecodeResult {
+                        image_path: Some(img),
+                        telemetry_summary: Some("Meteor-M LRPT デジタル画像復調成功".to_string()),
+                    }),
+                    Err(e) => {
+                        log::warn!("Meteor LRPTデコード失敗 (生データ保存): {}", e);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                        })
+                    }
+                }
+            }
+            SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry | SignalType::MorseCw => {
+                match Decoder::decode_cubesat(pass, raw_path, session_dir).await {
+                    Ok(p) => {
+                        let is_img = p.extension().map_or(false, |ext| ext == "png" || ext == "jpg");
+                        Ok(DecodeResult {
+                            image_path: if is_img { Some(p) } else { None },
+                            telemetry_summary: Some(format!(
+                                "CubeSat {} ({}) データ取得完了",
+                                pass.satellite_name,
+                                pass.signal_type.name()
+                            )),
+                        })
+                    }
+                    Err(e) => {
+                        log::warn!("CubeSatデコード失敗 (生データ保存): {}", e);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                        })
+                    }
+                }
+            }
+            SignalType::IssSstv => {
+                match Decoder::decode_iss_sstv(raw_path, session_dir).await {
+                    Ok(p) => {
+                        let is_img = p.extension().map_or(false, |ext| ext == "png" || ext == "jpg");
+                        Ok(DecodeResult {
+                            image_path: if is_img { Some(p) } else { None },
+                            telemetry_summary: Some("ISS SSTV 宇宙画像デコード完了".to_string()),
+                        })
+                    }
+                    Err(e) => {
+                        log::warn!("ISS SSTVデコード失敗 (生データ保存): {}", e);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                        })
+                    }
+                }
+            }
+        }
     }
 }

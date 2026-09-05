@@ -6,5 +6,6 @@ pub mod orbit;
 pub mod receiver;
 pub mod scheduler;
 pub mod voicevox;
+pub mod worker;
 
 
