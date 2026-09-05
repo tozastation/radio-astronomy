@@ -3,7 +3,9 @@ target/
 **/*.rs.bk
 
 # Data and artifacts
-data/
+/data/
+apps/ground-station/data/cache/
+apps/ground-station/data/noaa/
 
 # Python
 __pycache__/

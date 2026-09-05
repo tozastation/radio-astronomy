@@ -114,3 +114,38 @@ fn test_signal_type_display_and_parsing() {
     assert!(ground_station::orbit::SignalType::MorseCw.is_raw_iq());
 }
 
+#[test]
+fn test_default_tles_loading_and_fallback() {
+    use ground_station::orbit::{build_satellite_infos_from_db, parse_3line_tles, resolve_data_path, SignalType};
+    use std::collections::HashMap;
+
+    let path = resolve_data_path("data/default_tles.txt");
+    assert!(path.exists(), "同梱の default_tles.txt が見つかりません: {:?}", path);
+
+    let content = std::fs::read_to_string(&path).expect("default_tles.txtの読み込みに失敗しました");
+    let mut db = HashMap::new();
+    parse_3line_tles(&content, &mut db);
+
+    // 必須主要衛星が含まれているか確認
+    assert!(db.contains_key(&59051), "Meteor-M N2-4 (59051) が含まれている必要があります");
+    assert!(db.contains_key(&57166), "Meteor-M N2-3 (57166) が含まれている必要があります");
+    assert!(db.contains_key(&25544), "ISS (25544) が含まれている必要があります");
+    assert!(db.contains_key(&39444), "FUNcube-1 (39444) が含まれている必要があります");
+    assert!(db.contains_key(&57172), "UmKA-1 (57172) が含まれている必要があります");
+    assert!(db.contains_key(&59112), "SONATE-2 (59112) が含まれている必要があります");
+    assert!(db.contains_key(&27607) || db.contains_key(&27559), "SO-50 が含まれている必要があります");
+    assert!(db.contains_key(&42761), "CAS-4A (42761) が含まれている必要があります");
+
+    // SatelliteInfoの構築テスト
+    let targets = vec![
+        ("Meteor-M N2-4".to_string(), 59051, 137_900_000, SignalType::Lrpt),
+        ("ISS (ZARYA)".to_string(), 25544, 145_800_000, SignalType::IssSstv),
+        ("SO-50".to_string(), 27607, 436_795_000, SignalType::FmRepeater),
+    ];
+    let infos = build_satellite_infos_from_db(&targets, &db);
+    assert_eq!(infos.len(), 3);
+    assert_eq!(infos[0].name, "Meteor-M N2-4");
+    assert!(infos[0].line1.starts_with("1 "));
+    assert!(infos[0].line2.starts_with("2 "));
+}
+
