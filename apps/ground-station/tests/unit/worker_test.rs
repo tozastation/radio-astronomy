@@ -149,6 +149,9 @@ async fn test_meteor_lrpt_decoder_routing_and_fallback() {
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.telemetry_summary.is_some());
+    assert!(res.telemetry.is_some());
+    let tel = res.telemetry.unwrap();
+    assert_eq!(tel.status, ground_station::discord::PassStatus::DecodeError);
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
