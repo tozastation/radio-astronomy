@@ -72,7 +72,6 @@ async fn test_decoder_engine_routing() {
     use chrono::{Duration, Utc};
     use ground_station::decoder::DecoderEngine;
     use ground_station::orbit::{SatellitePass, SignalType};
-    use std::path::Path;
 
     let pass = SatellitePass {
         satellite_name: "UmKA-1".to_string(),
@@ -84,10 +83,23 @@ async fn test_decoder_engine_routing() {
         peak_azimuth_deg: 90.0,
     };
 
-    let raw_path = Path::new("tests/fixtures/nonexistent.raw");
-    let session_dir = Path::new("tests/fixtures/session");
-    let result = DecoderEngine::decode(&pass, raw_path, session_dir).await;
+    let test_dir = std::env::temp_dir().join("test_ground_station_cubesat_routing");
+    let _ = std::fs::remove_dir_all(&test_dir);
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let raw_path = test_dir.join("raw.wav");
+    std::fs::write(&raw_path, b"dummy audio raw").unwrap();
+
+    let result = DecoderEngine::decode(&pass, &raw_path, &test_dir).await;
     assert!(result.is_ok());
+    let res = result.unwrap();
+    let tel = res.telemetry.expect("telemetry が存在すること");
+    assert_eq!(tel.status, ground_station::discord::PassStatus::RawPreserved);
+    assert_eq!(tel.snr_db, None);
+    assert!(tel.housekeeping.iter().any(|(k, v)| k == "生データ" && v.contains("保全完了")));
+    assert!(tel.housekeeping.iter().any(|(k, v)| k == "デコード状況" && v.contains("未復調")));
+    assert!(!tel.housekeeping.iter().any(|(_, v)| v == "復調成功"));
+
+    let _ = std::fs::remove_dir_all(&test_dir);
 }
 
 #[test]

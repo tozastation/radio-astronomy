@@ -184,3 +184,50 @@ fn test_build_24h_schedule_embed_with_next_day_passes() {
     assert!(fields[0]["name"].as_str().unwrap().contains("Meteor-M N2-4"));
 }
 
+#[test]
+fn test_build_embed_with_raw_preserved_status() {
+    let telemetry = SatelliteTelemetry {
+        snr_db: None,
+        lines_or_packets: Some("生録音データ保存完了 (デコード未実施)".to_string()),
+        housekeeping: vec![
+            ("生データ".to_string(), "保全完了 (ディスク保存)".to_string()),
+            ("デコード状況".to_string(), "未復調 (生IQ/音声アーカイブ)".to_string()),
+        ],
+        status: PassStatus::RawPreserved,
+    };
+
+    let report = PassReport {
+        satellite_name: "UmKA-1".to_string(),
+        signal_type_name: "CubeSat SSTV (カメラ画像)".to_string(),
+        max_elevation_deg: 73.4,
+        direction: "西北西 (WNW)".to_string(),
+        frequency_hz: 437_625_000,
+        pass_time_str: "2026-09-06 09:37:29 〜 09:42:29".to_string(),
+        telemetry: Some(telemetry),
+        has_image: false,
+        has_audio: true,
+        next_pass_info: None,
+    };
+
+    let embed = DiscordClient::build_embed(&report);
+
+    // 生データ保存カラー: アメジスト紫 (0x9B59B6 = 10180918)
+    assert_eq!(embed["color"], 0x9B59B6);
+    // デコード完了ではなく「受信・生データ保存完了」となること
+    assert_eq!(
+        embed["title"],
+        "🛰️ UmKA-1 [CubeSat SSTV (カメラ画像)] 受信・生データ保存完了"
+    );
+
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    let find_field = |name: &str| fields.iter().find(|f| f["name"].as_str() == Some(name));
+
+    // SNRがNoneの場合、信号品質フィールドが存在しないこと (偽の13.5dBを出さない)
+    assert!(find_field("📶 信号品質 (SNR)").is_none());
+
+    // 衛星ヘルス・テレメトリに「生データ保全完了」および「未復調」が記載されていること
+    let telemetry_field = find_field("⚡ 衛星ヘルス・テレメトリ").expect("テレメトリフィールドが存在すること");
+    assert!(telemetry_field["value"].as_str().unwrap().contains("保全完了"));
+    assert!(telemetry_field["value"].as_str().unwrap().contains("未復調"));
+}
+
