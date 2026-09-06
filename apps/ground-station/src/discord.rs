@@ -30,6 +30,8 @@ pub enum PassStatus {
     ImageDecoded,
     /// テレメトリ/パケット復調成功 (0x3498DB: 宇宙ブルー)
     TelemetryDecoded,
+    /// FM交信音声録音完了 (0x1ABC9C: ターコイズグリーン)
+    AudioRecorded,
     /// 生データ保全完了・未復調 (0x9B59B6: アメジスト紫)
     RawPreserved,
     /// 電波微弱・生データ保全 (0xF39C12: アンバーオレンジ)
@@ -43,6 +45,7 @@ impl PassStatus {
         match self {
             PassStatus::ImageDecoded => 0x2ECC71,
             PassStatus::TelemetryDecoded => 0x3498DB,
+            PassStatus::AudioRecorded => 0x1ABC9C,
             PassStatus::RawPreserved => 0x9B59B6,
             PassStatus::WeakSignal => 0xF39C12,
             PassStatus::DecodeError => 0xE74C3C,
@@ -53,10 +56,73 @@ impl PassStatus {
         match self {
             PassStatus::ImageDecoded => "画像デコード成功",
             PassStatus::TelemetryDecoded => "テレメトリ取得完了",
+            PassStatus::AudioRecorded => "交信音声録音完了",
             PassStatus::RawPreserved => "生データ保存完了 (未復調)",
             PassStatus::WeakSignal => "電波微弱 (生データ保存)",
             PassStatus::DecodeError => "デコード異常",
         }
+    }
+
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            PassStatus::ImageDecoded => "🟢",
+            PassStatus::TelemetryDecoded => "🔵",
+            PassStatus::AudioRecorded => "🟢",
+            PassStatus::RawPreserved => "🟣",
+            PassStatus::WeakSignal => "🟠",
+            PassStatus::DecodeError => "🔴",
+        }
+    }
+}
+
+/// 仰角に応じた幾何学評価テキスト
+pub fn elevation_evaluation(el_deg: f64) -> &'static str {
+    if el_deg >= 70.0 {
+        "天頂付近・極めて良好"
+    } else if el_deg >= 45.0 {
+        "高仰角・良好"
+    } else if el_deg >= 20.0 {
+        "中仰角"
+    } else {
+        "低仰角 (建物遮蔽に注意)"
+    }
+}
+
+/// 周波数に応じた無線バンド区分テキスト
+pub fn frequency_band_desc(freq_hz: u64) -> &'static str {
+    let mhz = freq_hz as f64 / 1_000_000.0;
+    if (137.0..138.5).contains(&mhz) {
+        "137MHz 気象衛星帯"
+    } else if (144.0..146.0).contains(&mhz) {
+        "VHF 2m アマチュア宇宙無線帯"
+    } else if (435.0..438.0).contains(&mhz) {
+        "UHF 70cm アマチュア宇宙無線帯"
+    } else {
+        "宇宙無線帯"
+    }
+}
+
+/// 衛星名に基づく概要・役割テキスト
+pub fn satellite_summary_desc(sat_name: &str) -> &'static str {
+    let lower = sat_name.to_lowercase();
+    if lower.contains("meteor") {
+        "極軌道ロシア気象衛星 (MSU-MR デジタル地球観測)"
+    } else if lower.contains("noaa") {
+        "極軌道米国気象衛星 (AVHRR アナログ雲画像)"
+    } else if lower.contains("umka") {
+        "超小型反射望遠鏡搭載 3U CubeSat (RS40S / NORAD 57172)"
+    } else if lower.contains("funcube") {
+        "高感度VHFビーコン・宇宙環境WODテレメトリ CubeSat (AO-73 / NORAD 39444)"
+    } else if lower.contains("sonate") {
+        "AI画像認識実証 6U CubeSat (NORAD 59112)"
+    } else if lower.contains("so-50") {
+        "FMボイストランスポンダー中継器 (SaudiSat 1C / NORAD 27607)"
+    } else if lower.contains("cas-4") {
+        "高利得CWモールステレメトリビーコン CubeSat (NORAD 42761)"
+    } else if lower.contains("iss") || lower.contains("zarya") {
+        "国際宇宙ステーション (ARISS アマチュア無線局 / NORAD 25544)"
+    } else {
+        "軌道周回宇宙機 (Radio Astronomy 自律地上局追尾)"
     }
 }
 
@@ -175,6 +241,10 @@ impl DiscordClient {
                 "🛰️ {} [{}] テレメトリ復調完了",
                 report.satellite_name, report.signal_type_name
             ),
+            PassStatus::AudioRecorded => format!(
+                "🛰️ {} [{}] 交信音声録音完了",
+                report.satellite_name, report.signal_type_name
+            ),
             PassStatus::RawPreserved => format!(
                 "🛰️ {} [{}] 受信・生データ保存完了",
                 report.satellite_name, report.signal_type_name
@@ -189,30 +259,44 @@ impl DiscordClient {
             ),
         };
 
+        let status_desc = format!(
+            "> {} **ステータス**: {}\n> **{}**: {}",
+            status.emoji(),
+            status.label(),
+            report.satellite_name,
+            satellite_summary_desc(&report.satellite_name)
+        );
+
         let mut fields = vec![
             serde_json::json!({
-                "name": "🛰️ 衛星・方式",
-                "value": format!("{} [{}]", report.satellite_name, report.signal_type_name),
+                "name": "📐 軌道ジオメトリ",
+                "value": format!(
+                    "• **最大仰角**: {:.1}° ({})\n• **ピーク方位**: {}\n• **通過時間**: {}",
+                    report.max_elevation_deg,
+                    elevation_evaluation(report.max_elevation_deg),
+                    report.direction,
+                    report.pass_time_str
+                ),
                 "inline": true
             }),
             serde_json::json!({
-                "name": "📡 受信周波数",
-                "value": format!("{:.4} MHz", freq_mhz),
-                "inline": true
-            }),
-            serde_json::json!({
-                "name": "📐 最大仰角 / 方角",
-                "value": format!("{:.1}° ({})", report.max_elevation_deg, report.direction),
-                "inline": true
-            }),
-            serde_json::json!({
-                "name": "⏱️ 通過時間 (JST)",
-                "value": report.pass_time_str,
+                "name": "📡 無線・SDR諸元",
+                "value": format!(
+                    "• **受信周波数**: `{:.4} MHz`\n• **周波数帯**: {}\n• **信号方式**: {}",
+                    freq_mhz,
+                    frequency_band_desc(report.frequency_hz),
+                    report.signal_type_name
+                ),
                 "inline": true
             }),
         ];
 
+        // ⚡ 復調成果 & ヘルス (全幅・yamlコードブロック)
+        let mut yaml_lines = Vec::new();
         if let Some(ref tel) = report.telemetry {
+            if let Some(ref lines_packets) = tel.lines_or_packets {
+                yaml_lines.push(format!("復調実績: {}", lines_packets));
+            }
             if let Some(snr) = tel.snr_db {
                 let quality_desc = if snr >= 15.0 {
                     "極めて明瞭"
@@ -221,34 +305,29 @@ impl DiscordClient {
                 } else {
                     "微弱"
                 };
-                fields.push(serde_json::json!({
-                    "name": "📶 信号品質 (SNR)",
-                    "value": format!("{:.1} dB ({})", snr, quality_desc),
-                    "inline": true
-                }));
+                yaml_lines.push(format!("信号品質 (SNR): {:.1} dB ({})", snr, quality_desc));
             }
+            for (k, v) in &tel.housekeeping {
+                yaml_lines.push(format!("{}: {}", k, v));
+            }
+        }
+        let yaml_content = if yaml_lines.is_empty() {
+            "```yaml\nデコード状況: 未復調 (生データ保存完了)\n```".to_string()
+        } else {
+            format!("```yaml\n{}\n```", yaml_lines.join("\n"))
+        };
+        fields.push(serde_json::json!({
+            "name": "⚡ 復調成果 & ヘルス",
+            "value": yaml_content,
+            "inline": false
+        }));
 
-            if let Some(ref lines_packets) = tel.lines_or_packets {
-                fields.push(serde_json::json!({
-                    "name": "📊 復調実績",
-                    "value": lines_packets,
-                    "inline": true
-                }));
-            }
-
-            if !tel.housekeeping.is_empty() {
-                let hk_str = tel
-                    .housekeeping
-                    .iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
-                    .collect::<Vec<_>>()
-                    .join(" | ");
-                fields.push(serde_json::json!({
-                    "name": "⚡ 衛星ヘルス・テレメトリ",
-                    "value": hk_str,
-                    "inline": false
-                }));
-            }
+        if report.has_audio {
+            fields.push(serde_json::json!({
+                "name": "🎵 受信音声 (WAV)",
+                "value": "添付プレーヤーでインライン再生可能",
+                "inline": true
+            }));
         }
 
         if let Some(ref next_info) = report.next_pass_info {
@@ -259,17 +338,11 @@ impl DiscordClient {
             }));
         }
 
-        if report.has_audio {
-            fields.push(serde_json::json!({
-                "name": "🎵 受信音声 (WAV)",
-                "value": "添付プレーヤーでインライン再生可能",
-                "inline": true
-            }));
-        }
-
         let mut embed = serde_json::json!({
             "title": title,
+            "description": status_desc,
             "color": status.color_code(),
+            "timestamp": chrono::Utc::now().to_rfc3339(),
             "fields": fields,
             "footer": {
                 "text": "Radio Astronomy • GPD Pocket3 自律地上局"
@@ -326,6 +399,10 @@ impl DiscordClient {
             ),
             PassStatus::TelemetryDecoded => format!(
                 "🛰️ **{}** のテレメトリ復調が完了したのだ！宇宙からの最新観測データをお届けするのだ！",
+                report.satellite_name
+            ),
+            PassStatus::AudioRecorded => format!(
+                "🛰️ **{}** の交信音声の録音・復調が完了したのだ！音声を確認するのだ！",
                 report.satellite_name
             ),
             PassStatus::RawPreserved => format!(
