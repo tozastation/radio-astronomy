@@ -30,6 +30,8 @@ pub enum PassStatus {
     ImageDecoded,
     /// テレメトリ/パケット復調成功 (0x3498DB: 宇宙ブルー)
     TelemetryDecoded,
+    /// 生データ保全完了・未復調 (0x9B59B6: アメジスト紫)
+    RawPreserved,
     /// 電波微弱・生データ保全 (0xF39C12: アンバーオレンジ)
     WeakSignal,
     /// デコード異常 (0xE74C3C: コーラルレッド)
@@ -41,6 +43,7 @@ impl PassStatus {
         match self {
             PassStatus::ImageDecoded => 0x2ECC71,
             PassStatus::TelemetryDecoded => 0x3498DB,
+            PassStatus::RawPreserved => 0x9B59B6,
             PassStatus::WeakSignal => 0xF39C12,
             PassStatus::DecodeError => 0xE74C3C,
         }
@@ -50,6 +53,7 @@ impl PassStatus {
         match self {
             PassStatus::ImageDecoded => "画像デコード成功",
             PassStatus::TelemetryDecoded => "テレメトリ取得完了",
+            PassStatus::RawPreserved => "生データ保存完了 (未復調)",
             PassStatus::WeakSignal => "電波微弱 (生データ保存)",
             PassStatus::DecodeError => "デコード異常",
         }
@@ -162,10 +166,28 @@ impl DiscordClient {
             });
 
         let freq_mhz = report.frequency_hz as f64 / 1_000_000.0;
-        let title = format!(
-            "🛰️ {} [{}] 受信・デコード完了",
-            report.satellite_name, report.signal_type_name
-        );
+        let title = match status {
+            PassStatus::ImageDecoded => format!(
+                "🛰️ {} [{}] 受信・デコード完了",
+                report.satellite_name, report.signal_type_name
+            ),
+            PassStatus::TelemetryDecoded => format!(
+                "🛰️ {} [{}] テレメトリ復調完了",
+                report.satellite_name, report.signal_type_name
+            ),
+            PassStatus::RawPreserved => format!(
+                "🛰️ {} [{}] 受信・生データ保存完了",
+                report.satellite_name, report.signal_type_name
+            ),
+            PassStatus::WeakSignal => format!(
+                "🛰️ {} [{}] 電波微弱 (生データ保存)",
+                report.satellite_name, report.signal_type_name
+            ),
+            PassStatus::DecodeError => format!(
+                "🛰️ {} [{}] デコード異常",
+                report.satellite_name, report.signal_type_name
+            ),
+        };
 
         let mut fields = vec![
             serde_json::json!({
@@ -287,10 +309,38 @@ impl DiscordClient {
             report.satellite_name, report.signal_type_name, report.max_elevation_deg, report.direction
         );
 
-        let content_text = format!(
-            "🛰️ **{}** の受信・デコードが完了したのだ！宇宙からの最新観測データをお届けするのだ！",
-            report.satellite_name
-        );
+        let status = report
+            .telemetry
+            .as_ref()
+            .map(|t| t.status)
+            .unwrap_or(if report.has_image {
+                PassStatus::ImageDecoded
+            } else {
+                PassStatus::TelemetryDecoded
+            });
+
+        let content_text = match status {
+            PassStatus::ImageDecoded => format!(
+                "🛰️ **{}** の画像デコードが完了したのだ！宇宙からの最新観測データをお届けするのだ！",
+                report.satellite_name
+            ),
+            PassStatus::TelemetryDecoded => format!(
+                "🛰️ **{}** のテレメトリ復調が完了したのだ！宇宙からの最新観測データをお届けするのだ！",
+                report.satellite_name
+            ),
+            PassStatus::RawPreserved => format!(
+                "🛰️ **{}** の通過録音が完了したのだ！生データを保存したのだ！",
+                report.satellite_name
+            ),
+            PassStatus::WeakSignal => format!(
+                "🛰️ **{}** の信号を受信したが微弱だったのだ。生データを保存したのだ！",
+                report.satellite_name
+            ),
+            PassStatus::DecodeError => format!(
+                "🛰️ **{}** のデコード中に異常が発生したのだ。ログを確認してほしいのだ！",
+                report.satellite_name
+            ),
+        };
 
         let embed = Self::build_embed(report);
         let payload_json = serde_json::json!({
