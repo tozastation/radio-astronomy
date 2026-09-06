@@ -31,31 +31,42 @@ fn test_build_embed_with_image_and_telemetry() {
     assert_eq!(embed["color"], 0x2ECC71);
     assert_eq!(embed["title"], "🛰️ NOAA 18 [APT (2.4kHz AM)] 受信・デコード完了");
 
+    // description にステータス要約が含まれること
+    let desc = embed["description"].as_str().expect("description が存在すること");
+    assert!(desc.contains("画像デコード成功"));
+    assert!(desc.contains("NOAA 18"));
+
+    // timestamp が設定されていること
+    assert!(embed["timestamp"].is_string());
+
     // 画像URLが設定されていること
     assert_eq!(embed["image"]["url"], "attachment://satellite_image.png");
 
     let fields = embed["fields"].as_array().expect("fields は配列であること");
-    
-    // フィールドの存在検証
-    let find_field = |name: &str| {
-        fields.iter().find(|f| f["name"].as_str() == Some(name))
-    };
+    let find_field = |name: &str| fields.iter().find(|f| f["name"].as_str() == Some(name));
 
-    let sat_field = find_field("🛰️ 衛星・方式").expect("衛星・方式フィールドが存在すること");
-    assert!(sat_field["value"].as_str().unwrap().contains("NOAA 18"));
+    // 軌道ジオメトリフィールド (inline: true)
+    let geom_field = find_field("📐 軌道ジオメトリ").expect("軌道ジオメトリフィールドが存在すること");
+    assert_eq!(geom_field["inline"], true);
+    assert!(geom_field["value"].as_str().unwrap().contains("52.5°"));
+    assert!(geom_field["value"].as_str().unwrap().contains("東南東 (ESE)"));
 
-    let freq_field = find_field("📡 受信周波数").expect("周波数フィールドが存在すること");
-    assert_eq!(freq_field["value"], "137.9125 MHz");
+    // 無線・SDR諸元フィールド (inline: true)
+    let sdr_field = find_field("📡 無線・SDR諸元").expect("無線諸元フィールドが存在すること");
+    assert_eq!(sdr_field["inline"], true);
+    assert!(sdr_field["value"].as_str().unwrap().contains("137.9125 MHz"));
 
-    let snr_field = find_field("📶 信号品質 (SNR)").expect("SNRフィールドが存在すること");
-    assert!(snr_field["value"].as_str().unwrap().contains("18.2 dB"));
+    // 復調成果 & ヘルスフィールド (inline: false, yamlコードブロック)
+    let telemetry_field = find_field("⚡ 復調成果 & ヘルス").expect("復調成果フィールドが存在すること");
+    assert_eq!(telemetry_field["inline"], false);
+    let tel_val = telemetry_field["value"].as_str().unwrap();
+    assert!(tel_val.contains("```yaml"));
+    assert!(tel_val.contains("バッテリ: 8.24 V"));
+    assert!(tel_val.contains("センサ温度: +14.2°C"));
+    assert!(tel_val.contains("18.2 dB"));
 
     let audio_field = find_field("🎵 受信音声 (WAV)").expect("音声フィールドが存在すること");
     assert!(audio_field["value"].as_str().unwrap().contains("インライン再生可能"));
-
-    let telemetry_field = find_field("⚡ 衛星ヘルス・テレメトリ").expect("テレメトリフィールドが存在すること");
-    assert!(telemetry_field["value"].as_str().unwrap().contains("8.24 V"));
-    assert!(telemetry_field["value"].as_str().unwrap().contains("+14.2°C"));
 
     let next_field = find_field("⏰ 次の通過予定").expect("次回パスフィールドが存在すること");
     assert!(next_field["value"].as_str().unwrap().contains("NOAA 19"));
@@ -219,15 +230,61 @@ fn test_build_embed_with_raw_preserved_status() {
         "🛰️ UmKA-1 [CubeSat SSTV (カメラ画像)] 受信・生データ保存完了"
     );
 
+    let desc = embed["description"].as_str().expect("description が存在すること");
+    assert!(desc.contains("生データ保存完了"));
+
     let fields = embed["fields"].as_array().expect("fields は配列であること");
     let find_field = |name: &str| fields.iter().find(|f| f["name"].as_str() == Some(name));
 
-    // SNRがNoneの場合、信号品質フィールドが存在しないこと (偽の13.5dBを出さない)
-    assert!(find_field("📶 信号品質 (SNR)").is_none());
+    // 復調成果 & ヘルスフィールドに「保全完了」および「未復調」が記載されていること
+    let telemetry_field = find_field("⚡ 復調成果 & ヘルス").expect("復調成果フィールドが存在すること");
+    let val = telemetry_field["value"].as_str().unwrap();
+    assert!(val.contains("保全完了"));
+    assert!(val.contains("未復調"));
+}
 
-    // 衛星ヘルス・テレメトリに「生データ保全完了」および「未復調」が記載されていること
-    let telemetry_field = find_field("⚡ 衛星ヘルス・テレメトリ").expect("テレメトリフィールドが存在すること");
-    assert!(telemetry_field["value"].as_str().unwrap().contains("保全完了"));
-    assert!(telemetry_field["value"].as_str().unwrap().contains("未復調"));
+#[test]
+fn test_build_embed_with_audio_recorded_status() {
+    let telemetry = SatelliteTelemetry {
+        snr_db: None,
+        lines_or_packets: Some("FM 音声復調完了 (WAV 添付)".to_string()),
+        housekeeping: vec![
+            ("中継方式".to_string(), "FM ボイストランスポンダー".to_string()),
+            ("アクセス仕様".to_string(), "Uplink: 145.850MHz / Downlink: 436.795MHz".to_string()),
+        ],
+        status: PassStatus::AudioRecorded,
+    };
+
+    let report = PassReport {
+        satellite_name: "SO-50".to_string(),
+        signal_type_name: "FM Repeater (音声中継器)".to_string(),
+        max_elevation_deg: 70.1,
+        direction: "東 (E)".to_string(),
+        frequency_hz: 436_795_000,
+        pass_time_str: "2026-09-06 10:00:00 〜 10:10:00".to_string(),
+        telemetry: Some(telemetry),
+        has_image: false,
+        has_audio: true,
+        next_pass_info: None,
+    };
+
+    let embed = DiscordClient::build_embed(&report);
+
+    // 音声録音カラー: ターコイズ (0x1ABC9C = 1752220)
+    assert_eq!(embed["color"], 0x1ABC9C);
+    assert_eq!(
+        embed["title"],
+        "🛰️ SO-50 [FM Repeater (音声中継器)] 交信音声録音完了"
+    );
+
+    let desc = embed["description"].as_str().expect("description が存在すること");
+    assert!(desc.contains("交信音声録音完了"));
+
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    let find_field = |name: &str| fields.iter().find(|f| f["name"].as_str() == Some(name));
+
+    assert!(find_field("🎵 受信音声 (WAV)").is_some());
+    let telemetry_field = find_field("⚡ 復調成果 & ヘルス").expect("復調成果フィールドが存在すること");
+    assert!(telemetry_field["value"].as_str().unwrap().contains("FM ボイストランスポンダー"));
 }
 

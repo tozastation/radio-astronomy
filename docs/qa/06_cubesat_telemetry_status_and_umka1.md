@@ -133,28 +133,41 @@ $$g(t) = \frac{1}{2T} \left[ Q\left( 2\pi B \frac{t - T/2}{\sqrt{\ln 2}} \right)
 
 ---
 
-## 5. UmKA-1 の本物のテレメトリを取得するための技術ロードマップ
+## 5. 全デコーダ対象の実装完了と真実の復調判定アーキテクチャ
 
-GPD Pocket3 自律地上局で UmKA-1 のバッテリ電圧や温度データを実際に復調・可視化するための改修手順は以下の通りです：
+本改修では、UmKA-1 のみならず **「地上局が扱うすべてのデコーダ（NOAA APT, Meteor LRPT, 各種CubeSat, ISS SSTV, FM Repeater）」** を対象として、架空の復調成功やダミーSNR（13.5dB, 16.5dB, 18.0dB等）を完全撤廃し、実際の成果物（画像・JSONテレメトリ・パケット・交信音声）に基づいた厳密なステータス判定と情報密度の高い Discord 通知レイアウトを実装しました。
 
-```mermaid
-flowchart TD
-    A["衛星通過予測 (AOS)"] --> B["scheduler.rs: 録音方式の判定"]
-    B -->|"CubeSatTelemetry (GMSK)"| C["rtl_sdr: raw.u8 (240kSPS IQベースバンド)"]
-    B -->|"CameraSstv (イベント時)"| D["rtl_fm: raw.wav (48kHz FM音声)"]
-    C --> E["SatDump umka_1_dump または gr-satellites"]
-    E --> F["フレーム同期 & ビタビ復号 & CRC検証"]
-    F --> G["KISS / JSON パケット抽出"]
-    G --> H["decoder.rs: テレメトリ構造体パース (バッテリ 8.2V / OBC 18℃)"]
-    H --> I["Discord: ⚡ 衛星ヘルス・テレメトリ表示 (PassStatus::TelemetryDecoded)"]
-    D --> J["SSTV デコーダ (Robot36)"]
-    J --> K["Discord: 望遠鏡カメラ画像添付 (PassStatus::ImageDecoded)"]
+### 5.1 全衛星・通信方式のデコード仕様とマッピング表
+
+| 衛星名 / 対象 | 信号方式 (`SignalType`) | 録音フォーマット | 外部デコーダ | SatDump パイプライン / コマンド | 判定基準・成果物 | 返却ステータス (`PassStatus`) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **NOAA 15/18/19** | `Apt` | 60 kSPS WAV (`raw.wav`) | `noaa-apt` | `noaa-apt <wav> -o <png>` | 生成PNG画像の存在 | 画像有: `ImageDecoded`<br>ツール未導入: `RawPreserved` |
+| **Meteor-M N2-3/4**| `Lrpt` | 240 kSPS cu8 (`raw.u8`) | `satdump` | `satdump meteor_m2-x_lrpt_80k baseband ...` | 生成画像 / telemetry.json / CADU | 画像有: `ImageDecoded`<br>JSON有: `TelemetryDecoded`<br>微弱: `WeakSignal`<br>未導入: `RawPreserved` |
+| **UmKA-1** | `CubeSatTelemetry` | 240 kSPS cu8 (`raw.u8`) | `satdump` | `satdump umka_1_dump baseband ...` | telemetry.json / 画像 / 0 packets | JSON有: `TelemetryDecoded`<br>微弱: `WeakSignal`<br>未導入: `RawPreserved` |
+| **FUNcube-1** | `CubeSatTelemetry` | 240 kSPS cu8 (`raw.u8`) | `satdump` | `satdump funcube_1 baseband ...` | telemetry.json / CADU | JSON有: `TelemetryDecoded`<br>未導入: `RawPreserved` |
+| **SONATE-2** | `CubeSatSsdv` | 240 kSPS cu8 (`raw.u8`) | `satdump` | `satdump sonate_2 baseband ...` | SSDV JPEG / PNG 画像 | 画像有: `ImageDecoded`<br>未導入: `RawPreserved` |
+| **CAS-4A** | `MorseCw` | 240 kSPS cu8 (`raw.u8`) | `satdump` | `satdump cas_4a baseband ...` | telemetry.json / パケット | パケット有: `TelemetryDecoded`<br>未導入: `RawPreserved` |
+| **ISS SSTV** | `IssSstv` | 48/60 kSPS WAV (`raw.wav`)| `satdump` | `satdump iss_sstv audio <wav> ...` | 復調画像 (Robot36) | 画像有: `ImageDecoded`<br>未検出: `RawPreserved` |
+| **SO-50** | `FmRepeater` | 60 kSPS WAV (`raw.wav`) | 内蔵FM復調器 | なし（アナログ中継音声） | 交信音声WAVファイルの保存 | `AudioRecorded` (交信音声添付) |
+
+### 5.2 テレメトリ JSON 自動抽出と YAML 構造化表示
+SatDump 等が復調した `telemetry.json` がセッションディレクトリに生成された場合、`extract_telemetry_from_dir` 関数が JSON を自動走査・平坦化（flatten）し、最大10項目の重要センサ値（バッテリ電圧、温度、フレーム番号、送信機状態等）を抽出します。
+
+抽出されたデータは Discord Embed の `⚡ 復調成果 & ヘルス` フィールド内に ````yaml ```` コードブロックとして美しくフォーマットされ、ユーザーは Discord の画面上から即座に衛星ヘルスを把握できます。
+
+```yaml
+battery_voltage: "3.98"
+callsign: "RS40S"
+frame_id: "142"
+temp_c: "15.4"
+transmitter_on: "true"
 ```
 
-### 次のステップ
-1. **`config.toml` の変更**:
-   UmKA-1 を `type = "CubeSatTelemetry"` に変更し、録音を `raw.u8`（生IQベースバンド）にする。
-2. **GMSK パケットパーサーの実装**:
-   GPD Pocket3 上で `satdump`（または軽量な `gr-satellites` / Python デコーダスクリプト）を呼び出し、保存された `raw.u8` からテレメトリ JSON を出力させる。
-3. **テレメトリ表示の連携**:
-   抽出された JSON から実際のセンサ値を取り出し、Discord に真のヘルスデータを送信する。
+### 5.3 Discord 通知レイアウトの刷新（情報密度と可読性の両立）
+1. **ステータス引用サマリー (`description`)**:
+   Embed の最上部に、衛星通過結果の結論（「画像復元完了」「テレメトリ復調成功」「交信音声録音完了」「生データ保全完了」「電波微弱」）を 1 行引用ブロックで分かりやすく提示。
+2. **2カラム並行グリッド**:
+   - `📐 軌道ジオメトリ`: 最大仰角（$El_{max}$）、方角（Azimuth 方位角 + 方角記号）、通過時間（JST）。
+   - `📡 無線・SDR諸元`: 受信周波数（MHz）、信号品質（測定された真の SNR、または未測定時の「未測定 / 判定中」表示）。
+3. **ネイティブ UTC タイムスタンプ**:
+   Discord ネイティブの時刻表示（`<t:TIMESTAMP:R>` 形式および ISO-8601 `timestamp`）により、クライアント側でローカルタイムに自動変換。
