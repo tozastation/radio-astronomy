@@ -5,15 +5,13 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 // =============================================================================
-// 🖼️ 画像デコードモジュール (Decoder)
+// 🖼️ 画像・テレメトリデコードモジュール (Decoder)
 // -----------------------------------------------------------------------------
 // 【背景と処理内容】
-// NOAA気象衛星が送信する APT (Automatic Picture Transmission) は、2400Hzの搬送波に
-// 振幅変調(AM)された可視光と赤外線の2チャンネルのアナログファクシミリ信号です。
-// `noaa-apt` CLI は、音声WAVから以下の処理を一括で行い、高品質なPNG地球画像を生成します：
-// 1. 同期パルス（各ラインの先頭にある白黒バー）を検知して歪み・水平同期を補正
-// 2. 衛星のセンサ較正データ（テレメトリ）を読み取り、赤外線温度・コントラストを正規化
-// 3. 地形データ・昼夜判定に基づき、カラーパレットで美しいフォルスカラー着色
+// 衛星から受信した電波（生IQデータ または 音声WAV）を各衛星の通信方式に合わせて復調し、
+// 画像（PNG/JPG）やテレメトリ（JSON/パケット）、交信音声（WAV）を生成します。
+// 各種外部デコーダ（noaa-apt, satdump）の有無を検知し、未導入時や電波微弱時も
+// 誤った「復調成功」を表示せず、真実の受信ステータスを返します。
 // =============================================================================
 
 /// noaa-apt CLI 呼び出し用引数を構築
@@ -44,6 +42,55 @@ pub fn build_satdump_lrpt_args_with_pipeline(pipeline: &str, input_raw: &Path, o
     ]
 }
 
+/// 衛星名から SatDump の対応パイプライン名を判定
+pub fn satdump_pipeline_for_satellite(sat_name: &str) -> Option<&'static str> {
+    let s = sat_name.to_lowercase();
+    if s.contains("umka") || s.contains("rs40") || s.contains("rs-40") {
+        Some("umka_1_dump")
+    } else if s.contains("funcube") || s.contains("ao-73") || s.contains("ao73") {
+        Some("funcube_1")
+    } else if s.contains("sonate") {
+        Some("sonate_2")
+    } else if s.contains("cas-4a") || s.contains("cas_4a") {
+        Some("cas_4a")
+    } else if s.contains("meteor") {
+        Some("meteor_m2-x_lrpt_80k")
+    } else if s.contains("iss") {
+        Some("iss_sstv")
+    } else {
+        None
+    }
+}
+
+/// SatDump CLI 呼び出し用引数を構築 (CubeSat用: baseband または audio モード自動判定)
+pub fn build_satdump_cubesat_args(
+    pipeline: &str,
+    input_file: &Path,
+    output_dir: &Path,
+    samplerate: u32,
+) -> Vec<String> {
+    let ext = input_file.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext.eq_ignore_ascii_case("wav") {
+        vec![
+            pipeline.to_string(),
+            "audio".to_string(),
+            input_file.to_string_lossy().to_string(),
+            output_dir.to_string_lossy().to_string(),
+        ]
+    } else {
+        vec![
+            pipeline.to_string(),
+            "baseband".to_string(),
+            input_file.to_string_lossy().to_string(),
+            output_dir.to_string_lossy().to_string(),
+            "--samplerate".to_string(),
+            samplerate.to_string(),
+            "--baseband_format".to_string(),
+            "cu8".to_string(),
+        ]
+    }
+}
+
 /// 指定ディレクトリ（およびサブディレクトリ）から最もサイズの大きい復調画像（PNG/JPG）を探索
 pub fn find_best_image_in_dir(dir: &Path) -> Option<std::path::PathBuf> {
     let mut best_image: Option<(std::path::PathBuf, u64)> = None;
@@ -68,6 +115,59 @@ fn search_images_recursive(dir: &Path, best: &mut Option<(std::path::PathBuf, u6
                     }
                 }
             }
+        }
+    }
+}
+
+/// 指定ディレクトリから telemetry.json を探索・解析し、キーと値のペアを抽出
+pub fn extract_telemetry_from_dir(dir: &Path) -> Option<Vec<(String, String)>> {
+    let tlm_path = dir.join("telemetry.json");
+    if tlm_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&tlm_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                let mut items = Vec::new();
+                flatten_json_value("", &val, &mut items);
+                if !items.is_empty() {
+                    if items.len() > 10 {
+                        items.truncate(10);
+                    }
+                    return Some(items);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn flatten_json_value(prefix: &str, val: &serde_json::Value, out: &mut Vec<(String, String)>) {
+    match val {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{}", prefix, k)
+                };
+                flatten_json_value(&key, v, out);
+                if out.len() >= 10 {
+                    return;
+                }
+            }
+        }
+        serde_json::Value::String(s) => {
+            out.push((prefix.to_string(), s.clone()));
+        }
+        serde_json::Value::Number(n) => {
+            out.push((prefix.to_string(), n.to_string()));
+        }
+        serde_json::Value::Bool(b) => {
+            out.push((prefix.to_string(), b.to_string()));
+        }
+        serde_json::Value::Array(arr) => {
+            out.push((prefix.to_string(), format!("[{} elements]", arr.len())));
+        }
+        serde_json::Value::Null => {
+            out.push((prefix.to_string(), "null".to_string()));
         }
     }
 }
@@ -97,6 +197,18 @@ pub fn extract_error_snippet(stderr: &str, stdout: &str) -> String {
     }
 }
 
+/// CubeSat のデコード結果状態
+#[derive(Debug, Clone)]
+pub enum CubeSatDecodeOutcome {
+    Image(PathBuf),
+    Telemetry(Vec<(String, String)>),
+    PacketsSaved,
+    WeakSignal,
+    DecoderNotInstalled,
+    NoPipelineConfigured,
+    Error(String),
+}
+
 pub struct Decoder;
 
 impl Decoder {
@@ -111,7 +223,6 @@ impl Decoder {
             bail!("入力WAVファイルが存在しません: {:?}", input_wav);
         }
 
-        // 出力先ディレクトリの自動作成
         if let Some(parent) = output_png.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("ディレクトリ作成失敗: {:?}", parent))?;
@@ -119,7 +230,6 @@ impl Decoder {
 
         let args = build_noaa_apt_args(input_wav, output_png);
 
-        // noaa-apt CLI を実行
         let output = Command::new("noaa-apt")
             .args(&args)
             .output()
@@ -156,8 +266,6 @@ impl Decoder {
         std::fs::create_dir_all(output_dir)
             .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
 
-        // 現行の Meteor-M N2-3 / N2-4 は 80k OQPSK が標準。
-        // 運用状況によって 72k OQPSK に切り替わる場合があるため、80k -> 72k の順に自動適応試行
         let pipelines = ["meteor_m2-x_lrpt_80k", "meteor_m2-x_lrpt"];
         let mut last_error = None;
         let mut executed_pipeline = false;
@@ -182,7 +290,6 @@ impl Decoder {
                     return Ok(Some(image_path));
                 }
             } else {
-                // SatDump は復調処理が完走しても有効走査線が 0 行 (Lines: 0) だと status 1 で終了する
                 let is_low_snr = stdout_str.contains("Lines  : 0")
                     || stderr_str.contains("Lines  : 0")
                     || stdout_str.contains("Skipping")
@@ -206,12 +313,10 @@ impl Decoder {
             }
         }
 
-        // 画像が生成されているか確認
         if let Some(image_path) = find_best_image_in_dir(output_dir) {
             info!("Meteor-M デコード画像確認: {:?}", image_path);
             Ok(Some(image_path))
         } else if output_dir.join("telemetry.json").exists() || has_cadu_files(output_dir) || executed_pipeline {
-            // パイプラインは動作したが画像生成に至らなかった場合（電波微弱・未送信）
             info!("Meteor-M デコード完了: 有効走査線なし (生IQおよびCADUパケット保全)");
             Ok(None)
         } else if let Some(err) = last_error {
@@ -221,64 +326,88 @@ impl Decoder {
         }
     }
 
-    /// キューブサット生IQ信号のデコード (satdump / gr-satellites)
+    /// キューブサット生IQ / 音声信号のデコード (SatDump)
     pub async fn decode_cubesat(
         pass: &crate::orbit::SatellitePass,
-        input_raw: &Path,
+        input_file: &Path,
         output_dir: &Path,
-    ) -> Result<std::path::PathBuf> {
+    ) -> Result<CubeSatDecodeOutcome> {
         info!(
             "CubeSat デコード開始: 衛星 {}, 方式 {:?}, 入力 {:?} -> 出力 {:?}",
-            pass.satellite_name, pass.signal_type, input_raw, output_dir
+            pass.satellite_name, pass.signal_type, input_file, output_dir
         );
 
-        if !input_raw.exists() {
-            bail!("入力生IQファイルが存在しません: {:?}", input_raw);
+        if !input_file.exists() {
+            bail!("入力生データファイルが存在しません: {:?}", input_file);
         }
 
         std::fs::create_dir_all(output_dir)
             .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
 
-        // satdump または gr-satellites がインストールされていれば実行
-        if crate::health::check_command_exists("satdump") {
-            let output = Command::new("satdump")
-                .arg("live")
-                .arg(&pass.satellite_name)
-                .arg(input_raw)
-                .arg(output_dir)
-                .output()
-                .await;
-            if let Ok(out) = output {
-                if out.status.success() {
-                    if let Ok(entries) = std::fs::read_dir(output_dir) {
-                        for entry in entries.flatten() {
-                            let p = entry.path();
-                            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                                if ext == "png" || ext == "jpg" {
-                                    return Ok(p);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    let err = extract_error_snippet(
-                        &String::from_utf8_lossy(&out.stderr),
-                        &String::from_utf8_lossy(&out.stdout),
-                    );
-                    warn!("CubeSat SatDump 終了 (status {}): {}", out.status, err);
-                }
-            }
+        // 1. 外部デコーダ satdump の存在確認
+        if !crate::health::check_command_exists("satdump") {
+            info!("satdump 未導入のため CubeSat 生データを保全: {:?}", input_file);
+            return Ok(CubeSatDecodeOutcome::DecoderNotInstalled);
         }
 
-        // 外部デコーダ未導入または画像未生成時は生IQファイルのパスを返す (Graceful Degradation)
-        Ok(input_raw.to_path_buf())
+        // 2. パイプラインの有無確認
+        let pipeline = match satdump_pipeline_for_satellite(&pass.satellite_name) {
+            Some(p) => p,
+            None => {
+                info!("衛星 {} 用の SatDump パイプライン未定義のため生データを保全", pass.satellite_name);
+                return Ok(CubeSatDecodeOutcome::NoPipelineConfigured);
+            }
+        };
+
+        // 3. SatDump 実行
+        let args = build_satdump_cubesat_args(pipeline, input_file, output_dir, 240000);
+        info!("SatDump 実行: satdump {}", args.join(" "));
+
+        let output = Command::new("satdump")
+            .args(&args)
+            .output()
+            .await
+            .context("satdump コマンドの実行に失敗しました")?;
+
+        // 4. 生成成果物の確認
+        if let Some(img) = find_best_image_in_dir(output_dir) {
+            info!("CubeSat デコード画像検出: {:?}", img);
+            return Ok(CubeSatDecodeOutcome::Image(img));
+        }
+
+        if let Some(tlm) = extract_telemetry_from_dir(output_dir) {
+            info!("CubeSat テレメトリ JSON 検出 ({} 項目)", tlm.len());
+            return Ok(CubeSatDecodeOutcome::Telemetry(tlm));
+        }
+
+        if has_cadu_files(output_dir) {
+            info!("CubeSat CADU パケット検出");
+            return Ok(CubeSatDecodeOutcome::PacketsSaved);
+        }
+
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+        let is_weak_signal = stdout_str.contains("0 packets")
+            || stdout_str.contains("Lines  : 0")
+            || stdout_str.contains("Skipping")
+            || stderr_str.contains("Skipping")
+            || output.status.success();
+
+        if is_weak_signal {
+            info!("CubeSat デコード完了: パケット未検出 (電波微弱または未送信)");
+            Ok(CubeSatDecodeOutcome::WeakSignal)
+        } else {
+            let err_snippet = extract_error_snippet(&stderr_str, &stdout_str);
+            warn!("CubeSat SatDump 異常終了 (status {}): {}", output.status, err_snippet);
+            Ok(CubeSatDecodeOutcome::Error(err_snippet))
+        }
     }
 
     /// ISS SSTV (音声WAVから画像復調)
     pub async fn decode_iss_sstv(
         input_wav: &Path,
         output_dir: &Path,
-    ) -> Result<std::path::PathBuf> {
+    ) -> Result<Option<PathBuf>> {
         info!("ISS SSTV デコード開始: 入力 {:?} -> 出力 {:?}", input_wav, output_dir);
 
         if !input_wav.exists() {
@@ -288,27 +417,27 @@ impl Decoder {
         std::fs::create_dir_all(output_dir)
             .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
 
-        let out_png = output_dir.join("iss_sstv.png");
-        if crate::health::check_command_exists("satdump") {
-            let output = Command::new("satdump")
-                .args(["iss_sstv", "audio", &input_wav.to_string_lossy(), &output_dir.to_string_lossy()])
-                .output()
-                .await;
-            if let Ok(out) = output {
-                if !out.status.success() {
-                    let err = extract_error_snippet(
-                        &String::from_utf8_lossy(&out.stderr),
-                        &String::from_utf8_lossy(&out.stdout),
-                    );
-                    warn!("ISS SSTV SatDump 終了 (status {}): {}", out.status, err);
-                }
-            }
-            if out_png.exists() {
-                return Ok(out_png);
+        if !crate::health::check_command_exists("satdump") {
+            info!("satdump 未導入のため ISS SSTV 音声WAVを保全: {:?}", input_wav);
+            return Ok(None);
+        }
+
+        let output = Command::new("satdump")
+            .args(["iss_sstv", "audio", &input_wav.to_string_lossy(), &output_dir.to_string_lossy()])
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            if !out.status.success() {
+                let err = extract_error_snippet(
+                    &String::from_utf8_lossy(&out.stderr),
+                    &String::from_utf8_lossy(&out.stdout),
+                );
+                warn!("ISS SSTV SatDump 終了 (status {}): {}", out.status, err);
             }
         }
 
-        Ok(input_wav.to_path_buf())
+        Ok(find_best_image_in_dir(output_dir))
     }
 }
 
@@ -341,31 +470,59 @@ impl DecoderEngine {
                 } else {
                     None
                 };
+
+                // noaa-apt CLI の存在確認
+                if !crate::health::check_command_exists("noaa-apt") {
+                    info!("noaa-apt 未導入のためデコードをスキップし生WAVを保全: {:?}", raw_path);
+                    return Ok(DecodeResult {
+                        image_path: None,
+                        audio_path,
+                        telemetry_summary: Some(format!(
+                            "{} APT 音声WAV保全完了 (noaa-apt未導入)",
+                            pass.satellite_name
+                        )),
+                        telemetry: Some(SatelliteTelemetry {
+                            snr_db: None,
+                            lines_or_packets: Some("WAV 音声ファイル保存完了".to_string()),
+                            housekeeping: vec![
+                                ("生データ保存".to_string(), "保全完了 (WAV 60kSPS)".to_string()),
+                                ("デコード状況".to_string(), "noaa-apt CLI 未導入 (手動解析待機)".to_string()),
+                                ("保存ファイル".to_string(), raw_path.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                            ],
+                            status: PassStatus::RawPreserved,
+                        }),
+                    });
+                }
+
                 match Decoder::decode_apt(raw_path, &png_path).await {
                     Ok(()) => Ok(DecodeResult {
-                        image_path: Some(png_path),
+                        image_path: Some(png_path.clone()),
                         audio_path,
-                        telemetry_summary: Some("NOAA APT 画像デコード成功".to_string()),
+                        telemetry_summary: Some(format!("{} APT 画像デコード成功", pass.satellite_name)),
                         telemetry: Some(SatelliteTelemetry {
-                            snr_db: Some(16.5),
-                            lines_or_packets: Some("2,048 有効走査線 (同期完了)".to_string()),
+                            snr_db: None,
+                            lines_or_packets: Some("APT スキャン同期完了 (Ch A/B 可視光・赤外線)".to_string()),
                             housekeeping: vec![
-                                ("復調方式".to_string(), "AM 2.4kHz Subcarrier".to_string()),
+                                ("復調方式".to_string(), "AM 2.4kHz Subcarrier (WAV 60kSPS)".to_string()),
                                 ("チャンネル".to_string(), "Ch A (可視光) / Ch B (赤外線)".to_string()),
+                                ("生成画像".to_string(), png_path.file_name().unwrap_or_default().to_string_lossy().to_string()),
                             ],
                             status: PassStatus::ImageDecoded,
                         }),
                     }),
                     Err(e) => {
-                        log::warn!("NOAA APTデコード失敗 (生データ保存): {}", e);
+                        warn!("NOAA APT デコード失敗 (生WAV保全): {}", e);
                         Ok(DecodeResult {
                             image_path: None,
                             audio_path,
-                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                            telemetry_summary: Some(format!("生データ保存済み (デコード未完: {})", e)),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: None,
-                                lines_or_packets: None,
-                                housekeeping: vec![("エラー詳細".to_string(), e.to_string())],
+                                lines_or_packets: Some("画像未生成 (電波微弱または同期未確立)".to_string()),
+                                housekeeping: vec![
+                                    ("生データ保存".to_string(), "保全完了 (WAV 60kSPS)".to_string()),
+                                    ("エラー詳細".to_string(), e.to_string()),
+                                ],
                                 status: PassStatus::WeakSignal,
                             }),
                         })
@@ -373,34 +530,103 @@ impl DecoderEngine {
                 }
             }
             SignalType::Lrpt => {
-                match Decoder::decode_meteor_lrpt(raw_path, session_dir).await {
-                    Ok(Some(img)) => Ok(DecodeResult {
-                        image_path: Some(img),
-                        audio_path: None,
-                        telemetry_summary: Some("Meteor-M LRPT デジタル画像復調成功".to_string()),
-                        telemetry: Some(SatelliteTelemetry {
-                            snr_db: Some(18.0),
-                            lines_or_packets: Some("MSU-MR デジタル走査線 復元完了".to_string()),
-                            housekeeping: vec![
-                                ("変調方式".to_string(), "72k/80k OQPSK".to_string()),
-                                ("フレーム同期".to_string(), "CADUロック完了".to_string()),
-                            ],
-                            status: PassStatus::ImageDecoded,
-                        }),
-                    }),
-                    Ok(None) => Ok(DecodeResult {
+                // satdump CLI の存在確認
+                if !crate::health::check_command_exists("satdump") {
+                    info!("SatDump 未導入のためデコードをスキップし生IQを保全: {:?}", raw_path);
+                    return Ok(DecodeResult {
                         image_path: None,
                         audio_path: None,
-                        telemetry_summary: Some("電波微弱または未送信のため画像生成スキップ (生IQ・CADU保存完了)".to_string()),
+                        telemetry_summary: Some(format!(
+                            "{} LRPT 生IQ保全完了 (SatDump未導入)",
+                            pass.satellite_name
+                        )),
                         telemetry: Some(SatelliteTelemetry {
-                            snr_db: Some(4.8),
-                            lines_or_packets: Some("0 lines (電波微弱)".to_string()),
-                            housekeeping: vec![("生データ保全".to_string(), "生IQおよびCADUパケット保存済み".to_string())],
-                            status: PassStatus::WeakSignal,
+                            snr_db: None,
+                            lines_or_packets: Some("生IQ (240kSPS cu8) 保存完了".to_string()),
+                            housekeeping: vec![
+                                ("生データ保存".to_string(), "保全完了 (生IQ cu8 240kSPS)".to_string()),
+                                ("デコード状況".to_string(), "SatDump CLI 未導入 (手動解析待機)".to_string()),
+                                ("保存ファイル".to_string(), raw_path.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                            ],
+                            status: PassStatus::RawPreserved,
                         }),
-                    }),
+                    });
+                }
+
+                match Decoder::decode_meteor_lrpt(raw_path, session_dir).await {
+                    Ok(Some(img)) => {
+                        let mut hk = vec![
+                            ("変調方式".to_string(), "72k/80k OQPSK".to_string()),
+                            ("フレーム同期".to_string(), "CADU ロック完了".to_string()),
+                            ("復調画像".to_string(), img.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                        ];
+                        if let Some(items) = extract_telemetry_from_dir(session_dir) {
+                            hk.extend(items);
+                        }
+                        Ok(DecodeResult {
+                            image_path: Some(img),
+                            audio_path: None,
+                            telemetry_summary: Some(format!("{} LRPT デジタル画像復調成功", pass.satellite_name)),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("MSU-MR デジタル走査線 復元完了".to_string()),
+                                housekeeping: hk,
+                                status: PassStatus::ImageDecoded,
+                            }),
+                        })
+                    }
+                    Ok(None) => {
+                        if let Some(tlm_items) = extract_telemetry_from_dir(session_dir) {
+                            let mut hk = vec![
+                                ("変調方式".to_string(), "72k/80k OQPSK".to_string()),
+                                ("テレメトリ".to_string(), "telemetry.json 抽出完了".to_string()),
+                            ];
+                            hk.extend(tlm_items);
+                            Ok(DecodeResult {
+                                image_path: None,
+                                audio_path: None,
+                                telemetry_summary: Some(format!("{} テレメトリパケット復元完了 (画像未生成)", pass.satellite_name)),
+                                telemetry: Some(SatelliteTelemetry {
+                                    snr_db: None,
+                                    lines_or_packets: Some("テレメトリデータ抽出完了".to_string()),
+                                    housekeeping: hk,
+                                    status: PassStatus::TelemetryDecoded,
+                                }),
+                            })
+                        } else if has_cadu_files(session_dir) {
+                            Ok(DecodeResult {
+                                image_path: None,
+                                audio_path: None,
+                                telemetry_summary: Some(format!("{} 有効走査線なし (CADUパケット保存完了)", pass.satellite_name)),
+                                telemetry: Some(SatelliteTelemetry {
+                                    snr_db: None,
+                                    lines_or_packets: Some("0 lines (CADU部分取得 / 走査線未生成)".to_string()),
+                                    housekeeping: vec![
+                                        ("フレーム同期".to_string(), "不完全 (電波微弱)".to_string()),
+                                        ("生データ保全".to_string(), "生IQおよびCADUパケット保存済み".to_string()),
+                                    ],
+                                    status: PassStatus::WeakSignal,
+                                }),
+                            })
+                        } else {
+                            Ok(DecodeResult {
+                                image_path: None,
+                                audio_path: None,
+                                telemetry_summary: Some(format!("{} 有効走査線なし (電波微弱または未送信)", pass.satellite_name)),
+                                telemetry: Some(SatelliteTelemetry {
+                                    snr_db: None,
+                                    lines_or_packets: Some("0 lines (電波微弱)".to_string()),
+                                    housekeeping: vec![
+                                        ("復調状況".to_string(), "有効走査線 0 行 (同期未確立)".to_string()),
+                                        ("生データ保全".to_string(), "生IQデータ保存済み".to_string()),
+                                    ],
+                                    status: PassStatus::WeakSignal,
+                                }),
+                            })
+                        }
+                    }
                     Err(e) => {
-                        log::warn!("Meteor LRPTデコード失敗 (生データ保存): {}", e);
+                        warn!("Meteor LRPT デコード失敗 (生データ保存): {}", e);
                         Ok(DecodeResult {
                             image_path: None,
                             audio_path: None,
@@ -416,65 +642,154 @@ impl DecoderEngine {
                 }
             }
             SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry | SignalType::MorseCw => {
+                let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
+                    Some(raw_path.to_path_buf())
+                } else {
+                    None
+                };
+
                 match Decoder::decode_cubesat(pass, raw_path, session_dir).await {
-                    Ok(p) => {
-                        let is_img = p.extension().is_some_and(|ext| ext == "png" || ext == "jpg");
-                        let status = if is_img {
-                            PassStatus::ImageDecoded
-                        } else {
-                            PassStatus::RawPreserved
-                        };
-                        let lines_or_packets = if is_img {
-                            Some("SSDV カメラ画像パケット復元完了".to_string())
-                        } else {
-                            Some("生録音データ保存完了 (デコード未実施)".to_string())
-                        };
-                        let housekeeping = if is_img {
-                            vec![
-                                ("ダウンリンク".to_string(), "復調成功".to_string()),
-                                ("画像形式".to_string(), "SSDV JPEG/PNG".to_string()),
-                            ]
-                        } else {
-                            vec![
-                                ("生データ".to_string(), "保全完了 (ディスク保存)".to_string()),
-                                ("デコード状況".to_string(), "未復調 (生IQ/音声アーカイブ)".to_string()),
-                            ]
-                        };
+                    Ok(CubeSatDecodeOutcome::Image(img)) => {
+                        let mut hk = vec![
+                            ("プロダクト".to_string(), "カメラ画像復元完了".to_string()),
+                            ("画像形式".to_string(), img.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                        ];
+                        if let Some(items) = extract_telemetry_from_dir(session_dir) {
+                            hk.extend(items);
+                        }
                         Ok(DecodeResult {
-                            image_path: if is_img { Some(p) } else { None },
-                            audio_path: None,
-                            telemetry_summary: Some(if is_img {
-                                format!(
-                                    "CubeSat {} ({}) 画像復元完了",
-                                    pass.satellite_name,
-                                    pass.signal_type.name()
-                                )
-                            } else {
-                                format!(
-                                    "CubeSat {} ({}) 生データ保存完了",
-                                    pass.satellite_name,
-                                    pass.signal_type.name()
-                                )
-                            }),
+                            image_path: Some(img),
+                            audio_path,
+                            telemetry_summary: Some(format!("CubeSat {} 画像復元完了", pass.satellite_name)),
                             telemetry: Some(SatelliteTelemetry {
-                                snr_db: if is_img { Some(13.5) } else { None },
-                                lines_or_packets,
-                                housekeeping,
-                                status,
+                                snr_db: None,
+                                lines_or_packets: Some("画像パケット復元完了".to_string()),
+                                housekeeping: hk,
+                                status: PassStatus::ImageDecoded,
+                            }),
+                        })
+                    }
+                    Ok(CubeSatDecodeOutcome::Telemetry(tlm_items)) => {
+                        let pipeline = satdump_pipeline_for_satellite(&pass.satellite_name).unwrap_or("cubesat");
+                        let mut hk = vec![("復調方式".to_string(), format!("SatDump [{}]", pipeline))];
+                        hk.extend(tlm_items);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!("CubeSat {} テレメトリ復調成功", pass.satellite_name)),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("テレメトリパケット取得完了".to_string()),
+                                housekeeping: hk,
+                                status: PassStatus::TelemetryDecoded,
+                            }),
+                        })
+                    }
+                    Ok(CubeSatDecodeOutcome::PacketsSaved) => {
+                        let pipeline = satdump_pipeline_for_satellite(&pass.satellite_name).unwrap_or("cubesat");
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!("CubeSat {} パケットフレーム取得完了", pass.satellite_name)),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("パケットフレーム保全完了".to_string()),
+                                housekeeping: vec![
+                                    ("復調方式".to_string(), format!("SatDump [{}]", pipeline)),
+                                    ("パケット保全".to_string(), "CADU/フレーム保存完了".to_string()),
+                                ],
+                                status: PassStatus::TelemetryDecoded,
+                            }),
+                        })
+                    }
+                    Ok(CubeSatDecodeOutcome::WeakSignal) => {
+                        let pipeline = satdump_pipeline_for_satellite(&pass.satellite_name).unwrap_or("cubesat");
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!("CubeSat {} パケット未検出 (電波微弱または未送信)", pass.satellite_name)),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("0 packets (同期未確立)".to_string()),
+                                housekeeping: vec![
+                                    ("復調方式".to_string(), format!("SatDump [{}]", pipeline)),
+                                    ("パケット検出".to_string(), "0 パケット (信号微弱または未送信)".to_string()),
+                                    ("生データ".to_string(), "保全完了 (生IQ保存)".to_string()),
+                                ],
+                                status: PassStatus::WeakSignal,
+                            }),
+                        })
+                    }
+                    Ok(CubeSatDecodeOutcome::DecoderNotInstalled) => {
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!(
+                                "CubeSat {} ({}) 生データ保存完了 (SatDump未導入)",
+                                pass.satellite_name,
+                                pass.signal_type.name()
+                            )),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("生録音データ保存完了 (外部デコーダ未導入)".to_string()),
+                                housekeeping: vec![
+                                    ("生データ".to_string(), "保全完了 (ディスク保存)".to_string()),
+                                    ("デコード状況".to_string(), "SatDump CLI 未導入のためスキップ (手動解析可能)".to_string()),
+                                    ("保存ファイル".to_string(), raw_path.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                                ],
+                                status: PassStatus::RawPreserved,
+                            }),
+                        })
+                    }
+                    Ok(CubeSatDecodeOutcome::NoPipelineConfigured) => {
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!(
+                                "CubeSat {} ({}) 生データ保存完了 (専用デコーダ未定義)",
+                                pass.satellite_name,
+                                pass.signal_type.name()
+                            )),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("生録音データ保存完了".to_string()),
+                                housekeeping: vec![
+                                    ("生データ".to_string(), "保全完了 (ディスク保存)".to_string()),
+                                    ("デコード状況".to_string(), format!("{} 用パイプライン未設定 (生IQ保全)", pass.satellite_name)),
+                                    ("保存ファイル".to_string(), raw_path.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                                ],
+                                status: PassStatus::RawPreserved,
+                            }),
+                        })
+                    }
+                    Ok(CubeSatDecodeOutcome::Error(err)) => {
+                        warn!("CubeSat デコードエラー (生データ保存): {}", err);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!("CubeSat {} 生データ保存済み (デコードエラー: {})", pass.satellite_name, err)),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: None,
+                                housekeeping: vec![
+                                    ("生データ".to_string(), "保全完了 (ディスク保存)".to_string()),
+                                    ("エラー詳細".to_string(), err),
+                                ],
+                                status: PassStatus::DecodeError,
                             }),
                         })
                     }
                     Err(e) => {
-                        log::warn!("CubeSatデコード失敗 (生データ保存): {}", e);
+                        warn!("CubeSat 処理エラー: {}", e);
                         Ok(DecodeResult {
                             image_path: None,
-                            audio_path: None,
-                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                            audio_path,
+                            telemetry_summary: Some(format!("生データ保存済み (エラー: {})", e)),
                             telemetry: Some(SatelliteTelemetry {
                                 snr_db: None,
                                 lines_or_packets: None,
                                 housekeeping: vec![("エラー詳細".to_string(), e.to_string())],
-                                status: PassStatus::WeakSignal,
+                                status: PassStatus::DecodeError,
                             }),
                         })
                     }
@@ -486,45 +801,58 @@ impl DecoderEngine {
                 } else {
                     None
                 };
+
+                if !crate::health::check_command_exists("satdump") {
+                    info!("SatDump 未導入のためデコードをスキップし音声WAVを保全: {:?}", raw_path);
+                    return Ok(DecodeResult {
+                        image_path: None,
+                        audio_path,
+                        telemetry_summary: Some("ISS SSTV 音声録音完了 (SatDump未導入)".to_string()),
+                        telemetry: Some(SatelliteTelemetry {
+                            snr_db: None,
+                            lines_or_packets: Some("FM音声WAV保全完了 (外部デコーダ未導入)".to_string()),
+                            housekeeping: vec![
+                                ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                ("録音状態".to_string(), "WAV保全完了 (Discord添付)".to_string()),
+                                ("デコード状況".to_string(), "SatDump 未導入 (手動復調可能)".to_string()),
+                            ],
+                            status: PassStatus::RawPreserved,
+                        }),
+                    });
+                }
+
                 match Decoder::decode_iss_sstv(raw_path, session_dir).await {
-                    Ok(p) => {
-                        let is_img = p.extension().is_some_and(|ext| ext == "png" || ext == "jpg");
-                        Ok(DecodeResult {
-                            image_path: if is_img { Some(p) } else { None },
-                            audio_path,
-                            telemetry_summary: Some(if is_img {
-                                "ISS SSTV 宇宙画像デコード完了".to_string()
-                            } else {
-                                "ISS SSTV 音声録音完了 (画像未検出)".to_string()
-                            }),
-                            telemetry: Some(SatelliteTelemetry {
-                                snr_db: if is_img { Some(17.2) } else { None },
-                                lines_or_packets: if is_img {
-                                    Some("Robot36 カラースキャン同期完了".to_string())
-                                } else {
-                                    Some("FM音声録音完了 (画像信号なし/無音)".to_string())
-                                },
-                                housekeeping: if is_img {
-                                    vec![
-                                        ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
-                                        ("復調モード".to_string(), "SSTV Robot36".to_string()),
-                                    ]
-                                } else {
-                                    vec![
-                                        ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
-                                        ("録音状態".to_string(), "WAV保全完了 (画像未検出)".to_string()),
-                                    ]
-                                },
-                                status: if is_img {
-                                    PassStatus::ImageDecoded
-                                } else {
-                                    PassStatus::RawPreserved
-                                },
-                            }),
-                        })
-                    }
+                    Ok(Some(p)) => Ok(DecodeResult {
+                        image_path: Some(p.clone()),
+                        audio_path,
+                        telemetry_summary: Some("ISS SSTV 宇宙画像デコード完了".to_string()),
+                        telemetry: Some(SatelliteTelemetry {
+                            snr_db: None,
+                            lines_or_packets: Some("Robot36 カラースキャン同期完了".to_string()),
+                            housekeeping: vec![
+                                ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                ("復調モード".to_string(), "SSTV Robot36".to_string()),
+                                ("生成画像".to_string(), p.file_name().unwrap_or_default().to_string_lossy().to_string()),
+                            ],
+                            status: PassStatus::ImageDecoded,
+                        }),
+                    }),
+                    Ok(None) => Ok(DecodeResult {
+                        image_path: None,
+                        audio_path,
+                        telemetry_summary: Some("ISS SSTV 音声録音完了 (画像未検出)".to_string()),
+                        telemetry: Some(SatelliteTelemetry {
+                            snr_db: None,
+                            lines_or_packets: Some("FM音声録音完了 (画像信号なし/無音)".to_string()),
+                            housekeeping: vec![
+                                ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                ("録音状態".to_string(), "WAV保全完了 (画像信号未検出)".to_string()),
+                            ],
+                            status: PassStatus::RawPreserved,
+                        }),
+                    }),
                     Err(e) => {
-                        log::warn!("ISS SSTVデコード失敗 (生データ保存): {}", e);
+                        warn!("ISS SSTV デコード失敗: {}", e);
                         Ok(DecodeResult {
                             image_path: None,
                             audio_path,
@@ -533,7 +861,7 @@ impl DecoderEngine {
                                 snr_db: None,
                                 lines_or_packets: None,
                                 housekeeping: vec![("エラー詳細".to_string(), e.to_string())],
-                                status: PassStatus::WeakSignal,
+                                status: PassStatus::DecodeError,
                             }),
                         })
                     }
@@ -547,7 +875,7 @@ impl DecoderEngine {
                 };
 
                 let access_spec = if pass.satellite_name.contains("SO-50") {
-                    "Uplink: 145.850MHz (CTCSS 67.0Hz) / Downlink: 436.795MHz".to_string()
+                    "Uplink: 145.850MHz (CTCSS 67.0Hz) / Downlink: 436.795MHz FM".to_string()
                 } else {
                     format!("Downlink: {:.4} MHz FM", pass.frequency_hz as f64 / 1_000_000.0)
                 };
@@ -555,6 +883,7 @@ impl DecoderEngine {
                 let housekeeping = vec![
                     ("中継方式".to_string(), "FM ボイストランスポンダー".to_string()),
                     ("アクセス仕様".to_string(), access_spec),
+                    ("音声データ".to_string(), "Discord添付 / ローカル保全完了".to_string()),
                 ];
 
                 Ok(DecodeResult {
@@ -565,10 +894,10 @@ impl DecoderEngine {
                         pass.satellite_name
                     )),
                     telemetry: Some(SatelliteTelemetry {
-                        snr_db: Some(15.0),
+                        snr_db: None,
                         lines_or_packets: Some("FM 音声復調完了 (WAV 添付)".to_string()),
                         housekeeping,
-                        status: PassStatus::TelemetryDecoded,
+                        status: PassStatus::AudioRecorded,
                     }),
                 })
             }

@@ -96,7 +96,7 @@ async fn test_decoder_engine_routing() {
     assert_eq!(tel.status, ground_station::discord::PassStatus::RawPreserved);
     assert_eq!(tel.snr_db, None);
     assert!(tel.housekeeping.iter().any(|(k, v)| k == "生データ" && v.contains("保全完了")));
-    assert!(tel.housekeeping.iter().any(|(k, v)| k == "デコード状況" && v.contains("未復調")));
+    assert!(tel.housekeeping.iter().any(|(k, v)| k == "デコード状況" && (v.contains("未導入") || v.contains("スキップ"))));
     assert!(!tel.housekeeping.iter().any(|(_, v)| v == "復調成功"));
 
     let _ = std::fs::remove_dir_all(&test_dir);
@@ -163,7 +163,8 @@ async fn test_meteor_lrpt_decoder_routing_and_fallback() {
     assert!(res.telemetry_summary.is_some());
     assert!(res.telemetry.is_some());
     let tel = res.telemetry.unwrap();
-    assert_eq!(tel.status, ground_station::discord::PassStatus::DecodeError);
+    assert_eq!(tel.status, ground_station::discord::PassStatus::RawPreserved);
+    assert_eq!(tel.snr_db, None);
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
@@ -195,6 +196,9 @@ async fn test_decoder_engine_apt_audio_path_setting() {
     assert!(result.is_ok());
     let res = result.unwrap();
     assert_eq!(res.audio_path, Some(wav_path));
+    let tel = res.telemetry.unwrap();
+    assert_eq!(tel.status, ground_station::discord::PassStatus::RawPreserved);
+    assert_eq!(tel.snr_db, None);
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
@@ -229,11 +233,89 @@ async fn test_decoder_engine_fm_repeater_audio_path_and_telemetry() {
     assert!(res.image_path.is_none());
     assert!(res.telemetry.is_some());
     let tel = res.telemetry.unwrap();
-    assert_eq!(tel.status, ground_station::discord::PassStatus::TelemetryDecoded);
+    assert_eq!(tel.status, ground_station::discord::PassStatus::AudioRecorded);
+    assert_eq!(tel.snr_db, None);
     assert!(tel.lines_or_packets.as_deref().unwrap_or("").contains("FM 音声復調完了"));
     let hk_map: std::collections::HashMap<_, _> = tel.housekeeping.into_iter().collect();
     assert_eq!(hk_map.get("中継方式").map(|s| s.as_str()), Some("FM ボイストランスポンダー"));
     assert!(hk_map.contains_key("アクセス仕様"));
 
     let _ = std::fs::remove_dir_all(&session_dir);
+}
+
+#[test]
+fn test_satdump_pipeline_for_all_target_satellites() {
+    use ground_station::decoder::satdump_pipeline_for_satellite;
+
+    assert_eq!(satdump_pipeline_for_satellite("UmKA-1"), Some("umka_1_dump"));
+    assert_eq!(satdump_pipeline_for_satellite("RS40S"), Some("umka_1_dump"));
+    assert_eq!(satdump_pipeline_for_satellite("FUNcube-1"), Some("funcube_1"));
+    assert_eq!(satdump_pipeline_for_satellite("AO-73"), Some("funcube_1"));
+    assert_eq!(satdump_pipeline_for_satellite("SONATE-2"), Some("sonate_2"));
+    assert_eq!(satdump_pipeline_for_satellite("CAS-4A"), Some("cas_4a"));
+    assert_eq!(satdump_pipeline_for_satellite("Meteor-M N2-4"), Some("meteor_m2-x_lrpt_80k"));
+    assert_eq!(satdump_pipeline_for_satellite("ISS (ZARYA)"), Some("iss_sstv"));
+    assert_eq!(satdump_pipeline_for_satellite("UNKNOWN_SAT"), None);
+}
+
+#[test]
+fn test_build_satdump_cubesat_args_baseband_and_audio() {
+    use ground_station::decoder::build_satdump_cubesat_args;
+
+    // baseband モード (.u8)
+    let raw_file = Path::new("data/session/raw.u8");
+    let out_dir = Path::new("data/session");
+    let args = build_satdump_cubesat_args("umka_1_dump", raw_file, out_dir, 240000);
+    assert_eq!(args[0], "umka_1_dump");
+    assert_eq!(args[1], "baseband");
+    assert_eq!(args[2], "data/session/raw.u8");
+    assert_eq!(args[3], "data/session");
+    assert!(args.contains(&"--samplerate".to_string()));
+    assert!(args.contains(&"240000".to_string()));
+    assert!(args.contains(&"--baseband_format".to_string()));
+    assert!(args.contains(&"cu8".to_string()));
+
+    // audio モード (.wav)
+    let wav_file = Path::new("data/session/raw.wav");
+    let args_wav = build_satdump_cubesat_args("umka_1_dump", wav_file, out_dir, 60000);
+    assert_eq!(args_wav[0], "umka_1_dump");
+    assert_eq!(args_wav[1], "audio");
+    assert_eq!(args_wav[2], "data/session/raw.wav");
+    assert_eq!(args_wav[3], "data/session");
+}
+
+#[test]
+fn test_extract_telemetry_from_dir_parses_json() {
+    use ground_station::decoder::extract_telemetry_from_dir;
+    use std::io::Write;
+
+    let test_dir = std::env::temp_dir().join("test_ground_station_extract_tlm");
+    let _ = std::fs::remove_dir_all(&test_dir);
+    std::fs::create_dir_all(&test_dir).unwrap();
+
+    let json_path = test_dir.join("telemetry.json");
+    let mut f = std::fs::File::create(&json_path).unwrap();
+    write!(
+        f,
+        r#"{{
+            "battery_voltage": 3.98,
+            "temp_c": 15.4,
+            "transmitter_on": true,
+            "callsign": "RS40S",
+            "frame_id": 142
+        }}"#
+    ).unwrap();
+
+    let tlm = extract_telemetry_from_dir(&test_dir);
+    assert!(tlm.is_some());
+    let items = tlm.unwrap();
+    let map: std::collections::HashMap<_, _> = items.into_iter().collect();
+
+    assert_eq!(map.get("battery_voltage").map(|s| s.as_str()), Some("3.98"));
+    assert_eq!(map.get("temp_c").map(|s| s.as_str()), Some("15.4"));
+    assert_eq!(map.get("transmitter_on").map(|s| s.as_str()), Some("true"));
+    assert_eq!(map.get("callsign").map(|s| s.as_str()), Some("RS40S"));
+    assert_eq!(map.get("frame_id").map(|s| s.as_str()), Some("142"));
+
+    let _ = std::fs::remove_dir_all(&test_dir);
 }
