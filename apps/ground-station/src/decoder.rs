@@ -62,7 +62,7 @@ fn search_images_recursive(dir: &Path, best: &mut Option<(std::path::PathBuf, u6
                 if ext_lower == "png" || ext_lower == "jpg" || ext_lower == "jpeg" {
                     if let Ok(meta) = entry.metadata() {
                         let len = meta.len();
-                        if best.as_ref().map_or(true, |(_, max_len)| len > *max_len) {
+                        if best.as_ref().is_none_or(|(_, max_len)| len > *max_len) {
                             *best = Some((path, len));
                         }
                     }
@@ -291,7 +291,7 @@ impl Decoder {
         let out_png = output_dir.join("iss_sstv.png");
         if crate::health::check_command_exists("satdump") {
             let output = Command::new("satdump")
-                .args(&["iss_sstv", "audio", &input_wav.to_string_lossy(), &output_dir.to_string_lossy()])
+                .args(["iss_sstv", "audio", &input_wav.to_string_lossy(), &output_dir.to_string_lossy()])
                 .output()
                 .await;
             if let Ok(out) = output {
@@ -422,28 +422,44 @@ impl DecoderEngine {
                         let status = if is_img {
                             PassStatus::ImageDecoded
                         } else {
-                            PassStatus::TelemetryDecoded
+                            PassStatus::RawPreserved
                         };
                         let lines_or_packets = if is_img {
                             Some("SSDV カメラ画像パケット復元完了".to_string())
                         } else {
-                            Some("テレメトリビーコン パケット取得完了".to_string())
+                            Some("生録音データ保存完了 (デコード未実施)".to_string())
+                        };
+                        let housekeeping = if is_img {
+                            vec![
+                                ("ダウンリンク".to_string(), "復調成功".to_string()),
+                                ("画像形式".to_string(), "SSDV JPEG/PNG".to_string()),
+                            ]
+                        } else {
+                            vec![
+                                ("生データ".to_string(), "保全完了 (ディスク保存)".to_string()),
+                                ("デコード状況".to_string(), "未復調 (生IQ/音声アーカイブ)".to_string()),
+                            ]
                         };
                         Ok(DecodeResult {
                             image_path: if is_img { Some(p) } else { None },
                             audio_path: None,
-                            telemetry_summary: Some(format!(
-                                "CubeSat {} ({}) データ取得完了",
-                                pass.satellite_name,
-                                pass.signal_type.name()
-                            )),
+                            telemetry_summary: Some(if is_img {
+                                format!(
+                                    "CubeSat {} ({}) 画像復元完了",
+                                    pass.satellite_name,
+                                    pass.signal_type.name()
+                                )
+                            } else {
+                                format!(
+                                    "CubeSat {} ({}) 生データ保存完了",
+                                    pass.satellite_name,
+                                    pass.signal_type.name()
+                                )
+                            }),
                             telemetry: Some(SatelliteTelemetry {
-                                snr_db: Some(13.5),
+                                snr_db: if is_img { Some(13.5) } else { None },
                                 lines_or_packets,
-                                housekeeping: vec![
-                                    ("ダウンリンク".to_string(), "復調成功".to_string()),
-                                    ("生IQ保存".to_string(), "保全完了".to_string()),
-                                ],
+                                housekeeping,
                                 status,
                             }),
                         })
@@ -476,18 +492,33 @@ impl DecoderEngine {
                         Ok(DecodeResult {
                             image_path: if is_img { Some(p) } else { None },
                             audio_path,
-                            telemetry_summary: Some("ISS SSTV 宇宙画像デコード完了".to_string()),
+                            telemetry_summary: Some(if is_img {
+                                "ISS SSTV 宇宙画像デコード完了".to_string()
+                            } else {
+                                "ISS SSTV 音声録音完了 (画像未検出)".to_string()
+                            }),
                             telemetry: Some(SatelliteTelemetry {
-                                snr_db: Some(17.2),
-                                lines_or_packets: Some("Robot36 カラースキャン同期完了".to_string()),
-                                housekeeping: vec![
-                                    ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
-                                    ("復調モード".to_string(), "SSTV Robot36".to_string()),
-                                ],
+                                snr_db: if is_img { Some(17.2) } else { None },
+                                lines_or_packets: if is_img {
+                                    Some("Robot36 カラースキャン同期完了".to_string())
+                                } else {
+                                    Some("FM音声録音完了 (画像信号なし/無音)".to_string())
+                                },
+                                housekeeping: if is_img {
+                                    vec![
+                                        ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                        ("復調モード".to_string(), "SSTV Robot36".to_string()),
+                                    ]
+                                } else {
+                                    vec![
+                                        ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                        ("録音状態".to_string(), "WAV保全完了 (画像未検出)".to_string()),
+                                    ]
+                                },
                                 status: if is_img {
                                     PassStatus::ImageDecoded
                                 } else {
-                                    PassStatus::TelemetryDecoded
+                                    PassStatus::RawPreserved
                                 },
                             }),
                         })
