@@ -39,6 +39,8 @@ pub enum SignalType {
     MorseCw,
     /// ISS SSTV: 国際宇宙ステーションからのカラー画像 (Robot36 / Martin1 等)
     IssSstv,
+    /// ISS / CubeSat APRS: 1200bps AFSK AX.25 パケット通信 (FM復調音声)
+    AprsPacket,
     /// FM Repeater: アマチュア衛星クロスバンドFM音声中継器 (SO-50 等)
     FmRepeater,
 }
@@ -53,6 +55,7 @@ impl SignalType {
             SignalType::CubeSatTelemetry => "CubeSat Telemetry (テレメトリ)",
             SignalType::MorseCw => "CubeSat Morse (モールスCW)",
             SignalType::IssSstv => "ISS SSTV (宇宙ステーション画像)",
+            SignalType::AprsPacket => "ISS APRS (1200bps パケット)",
             SignalType::FmRepeater => "FM Repeater (音声中継器)",
         }
     }
@@ -61,6 +64,7 @@ impl SignalType {
         match s.to_lowercase().as_str() {
             "camerasstv" | "sstv" | "cubesatsstv" => SignalType::CubeSatSstv,
             "isssstv" | "iss" => SignalType::IssSstv,
+            "aprspacket" | "aprs" | "issaprs" | "packet" => SignalType::AprsPacket,
             "ssdvcamera" | "ssdv" => SignalType::CubeSatSsdv,
             "morsecw" | "morse" | "cw" => SignalType::MorseCw,
             "fmrepeater" | "fmvoice" | "repeater" => SignalType::FmRepeater,
@@ -73,7 +77,11 @@ impl SignalType {
     /// 受信録音時の方式（FM音声 vs 生IQベースバンド）
     pub fn is_raw_iq(&self) -> bool {
         match self {
-            SignalType::Apt | SignalType::IssSstv | SignalType::FmRepeater | SignalType::CubeSatSstv => false,
+            SignalType::Apt
+            | SignalType::IssSstv
+            | SignalType::AprsPacket
+            | SignalType::FmRepeater
+            | SignalType::CubeSatSstv => false,
             SignalType::Lrpt
             | SignalType::CubeSatSsdv
             | SignalType::CubeSatTelemetry
@@ -103,6 +111,25 @@ pub struct SatellitePass {
     pub los: DateTime<Utc>,           // Loss of Signal: 観測終了時刻（地平線下へ沈む）
     pub max_elevation_deg: f64,       // ピーク仰角（アンテナに最も電波が強く入る瞬間）
     pub peak_azimuth_deg: f64,        // ピーク時の方位角 (0度=北, 90度=東, 180度=南, 270度=西)
+}
+
+impl SatellitePass {
+    /// マンション5階・東向きベランダにおける見通し良好（東側通過: 0°〜180°）判定
+    /// 西側通過（180°〜360°）は鉄筋コンクリート躯体により30〜50dB減衰するため、
+    /// 東側通過こそが直達波を受信できる最大のチャンスとなります。
+    pub fn is_east_view_favorable(&self) -> bool {
+        let norm = self.peak_azimuth_deg.rem_euclid(360.0);
+        (0.0..=180.0).contains(&norm)
+    }
+
+    /// ベランダ幾何学に基づく受信見通し評価テキスト
+    pub fn view_geometry_desc(&self) -> &'static str {
+        if self.is_east_view_favorable() {
+            "☀️ 見通し良好 (東側通過)"
+        } else {
+            "🏢 建物遮蔽注意 (西側通過)"
+        }
+    }
 }
 
 /// 方位角（度）を16方位の日本語方角名に変換
@@ -376,13 +403,14 @@ pub async fn fetch_all_tles(
         targets.push(("NOAA 19".to_string(), 33591, 137_100_000, SignalType::Apt));
     }
 
-    // 3. 国際宇宙ステーション (ISS SSTV/FM)
+    // 3. 国際宇宙ステーション (ISS APRS / SSTV / FM)
     if satellites_config.iss.enabled {
+        let sig_type = SignalType::from_str_type(&satellites_config.iss.signal_type);
         targets.push((
             "ISS (ZARYA)".to_string(),
             satellites_config.iss.norad_id,
             satellites_config.iss.freq,
-            SignalType::IssSstv,
+            sig_type,
         ));
     }
 

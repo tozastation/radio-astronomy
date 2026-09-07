@@ -97,21 +97,63 @@ fn test_signal_type_display_and_parsing() {
     assert_eq!(ground_station::orbit::SignalType::CubeSatTelemetry.name(), "CubeSat Telemetry (テレメトリ)");
     assert_eq!(ground_station::orbit::SignalType::MorseCw.name(), "CubeSat Morse (モールスCW)");
     assert_eq!(ground_station::orbit::SignalType::IssSstv.name(), "ISS SSTV (宇宙ステーション画像)");
+    assert_eq!(ground_station::orbit::SignalType::AprsPacket.name(), "ISS APRS (1200bps パケット)");
     assert_eq!(ground_station::orbit::SignalType::FmRepeater.name(), "FM Repeater (音声中継器)");
 
     assert_eq!(ground_station::orbit::SignalType::from_str_type("FmRepeater"), ground_station::orbit::SignalType::FmRepeater);
     assert_eq!(ground_station::orbit::SignalType::from_str_type("fmvoice"), ground_station::orbit::SignalType::FmRepeater);
     assert_eq!(ground_station::orbit::SignalType::from_str_type("repeater"), ground_station::orbit::SignalType::FmRepeater);
+    assert_eq!(ground_station::orbit::SignalType::from_str_type("aprs"), ground_station::orbit::SignalType::AprsPacket);
+    assert_eq!(ground_station::orbit::SignalType::from_str_type("issaprs"), ground_station::orbit::SignalType::AprsPacket);
+    assert_eq!(ground_station::orbit::SignalType::from_str_type("packet"), ground_station::orbit::SignalType::AprsPacket);
 
     // is_raw_iq check
     assert!(!ground_station::orbit::SignalType::Apt.is_raw_iq());
     assert!(!ground_station::orbit::SignalType::IssSstv.is_raw_iq());
+    assert!(!ground_station::orbit::SignalType::AprsPacket.is_raw_iq());
     assert!(!ground_station::orbit::SignalType::FmRepeater.is_raw_iq());
     assert!(!ground_station::orbit::SignalType::CubeSatSstv.is_raw_iq());
     assert!(ground_station::orbit::SignalType::Lrpt.is_raw_iq());
     assert!(ground_station::orbit::SignalType::CubeSatTelemetry.is_raw_iq());
     assert!(ground_station::orbit::SignalType::CubeSatSsdv.is_raw_iq());
     assert!(ground_station::orbit::SignalType::MorseCw.is_raw_iq());
+}
+
+#[test]
+fn test_east_view_favorable_and_geometry() {
+    use chrono::Utc;
+    use ground_station::orbit::SatellitePass;
+
+    let now = Utc::now();
+    let make_pass = |az: f64| SatellitePass {
+        satellite_name: "ISS (ZARYA)".to_string(),
+        frequency_hz: 145_825_000,
+        signal_type: ground_station::orbit::SignalType::AprsPacket,
+        aos: now,
+        los: now + chrono::Duration::minutes(10),
+        max_elevation_deg: 65.0,
+        peak_azimuth_deg: az,
+    };
+
+    // 東側パス（0°〜180°: 北〜東〜南）は見通し良好
+    let pass_north = make_pass(0.0);
+    assert!(pass_north.is_east_view_favorable());
+    assert!(pass_north.view_geometry_desc().contains("見通し良好"));
+
+    let pass_east = make_pass(90.0);
+    assert!(pass_east.is_east_view_favorable());
+    assert!(pass_east.view_geometry_desc().contains("見通し良好"));
+
+    let pass_south = make_pass(180.0);
+    assert!(pass_south.is_east_view_favorable());
+
+    // 西側パス（180.1°〜359.9°: 南西〜西〜北西）は建物遮蔽
+    let pass_west = make_pass(270.0);
+    assert!(!pass_west.is_east_view_favorable());
+    assert!(pass_west.view_geometry_desc().contains("建物遮蔽"));
+
+    let pass_northwest = make_pass(315.0);
+    assert!(!pass_northwest.is_east_view_favorable());
 }
 
 #[test]
@@ -135,6 +177,7 @@ fn test_default_tles_loading_and_fallback() {
     assert!(db.contains_key(&59112), "SONATE-2 (59112) が含まれている必要があります");
     assert!(db.contains_key(&27607) || db.contains_key(&27559), "SO-50 が含まれている必要があります");
     assert!(db.contains_key(&42761), "CAS-4A (42761) が含まれている必要があります");
+    assert!(db.contains_key(&40903), "XW-2A (40903) が含まれている必要があります");
 
     // SatelliteInfoの構築テスト
     let targets = vec![

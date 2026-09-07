@@ -91,6 +91,35 @@ pub fn build_satdump_cubesat_args(
     }
 }
 
+/// multimon-ng CLI 呼び出し用引数を構築 (APRS 1200bps AFSK 用)
+pub fn build_multimon_aprs_args(input_wav: &Path) -> Vec<String> {
+    vec![
+        "-t".to_string(),
+        "wav".to_string(),
+        "-a".to_string(),
+        "AFSK1200".to_string(),
+        "-A".to_string(),
+        input_wav.to_string_lossy().to_string(),
+    ]
+}
+
+/// multimon-ng の標準出力から APRS パケット行を抽出
+pub fn parse_multimon_aprs_output(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("APRS: ") {
+                Some(rest.trim().to_string())
+            } else if let Some(rest) = trimmed.strip_prefix("APRS:") {
+                Some(rest.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// 指定ディレクトリ（およびサブディレクトリ）から最もサイズの大きい復調画像（PNG/JPG）を探索
 pub fn find_best_image_in_dir(dir: &Path) -> Option<std::path::PathBuf> {
     let mut best_image: Option<(std::path::PathBuf, u64)> = None;
@@ -438,6 +467,31 @@ impl Decoder {
         }
 
         Ok(find_best_image_in_dir(output_dir))
+    }
+
+    /// 録音された WAV 音声から APRS (1200bps AFSK AX.25) パケットを復調
+    pub async fn decode_aprs(input_wav: &Path) -> Result<Vec<String>> {
+        info!("APRS パケットデコード開始: 入力 {:?}", input_wav);
+
+        if !input_wav.exists() {
+            bail!("入力WAVファイルが存在しません: {:?}", input_wav);
+        }
+
+        if !crate::health::check_command_exists("multimon-ng") {
+            bail!("multimon-ng コマンドが見つかりません。sudo apt install multimon-ng で導入してください");
+        }
+
+        let args = build_multimon_aprs_args(input_wav);
+        let output = Command::new("multimon-ng")
+            .args(&args)
+            .output()
+            .await
+            .context("multimon-ng コマンドの実行に失敗しました")?;
+
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        let packets = parse_multimon_aprs_output(&stdout_str);
+        info!("APRS パケットデコード完了: {} パケット検出", packets.len());
+        Ok(packets)
     }
 }
 
@@ -853,6 +907,106 @@ impl DecoderEngine {
                     }),
                     Err(e) => {
                         warn!("ISS SSTV デコード失敗: {}", e);
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!("生データ保存済み (デコードエラー: {})", e)),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: None,
+                                housekeeping: vec![("エラー詳細".to_string(), e.to_string())],
+                                status: PassStatus::DecodeError,
+                            }),
+                        })
+                    }
+                }
+            }
+            SignalType::AprsPacket => {
+                let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
+                    Some(raw_path.to_path_buf())
+                } else {
+                    None
+                };
+
+                if !crate::health::check_command_exists("multimon-ng") {
+                    info!("multimon-ng 未導入のため APRS 音声WAVを保全: {:?}", raw_path);
+                    return Ok(DecodeResult {
+                        image_path: None,
+                        audio_path,
+                        telemetry_summary: Some(format!(
+                            "{} APRS 音声WAV保全完了 (multimon-ng未導入)",
+                            pass.satellite_name
+                        )),
+                        telemetry: Some(SatelliteTelemetry {
+                            snr_db: None,
+                            lines_or_packets: Some("WAV 音声保存完了 (外部デコーダ未導入)".to_string()),
+                            housekeeping: vec![
+                                ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                ("周波数".to_string(), "145.825 MHz (AX.25 1200bps)".to_string()),
+                                ("録音状態".to_string(), "WAV保全完了 (Discord添付)".to_string()),
+                                ("デコード状況".to_string(), "multimon-ng 未導入 (sudo apt install multimon-ng で自動復調可能)".to_string()),
+                            ],
+                            status: PassStatus::RawPreserved,
+                        }),
+                    });
+                }
+
+                match Decoder::decode_aprs(raw_path).await {
+                    Ok(packets) if !packets.is_empty() => {
+                        let mut housekeeping = vec![
+                            ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                            ("周波数".to_string(), "145.825 MHz (AX.25 1200bps)".to_string()),
+                            ("復調方式".to_string(), "AFSK 1200bps (multimon-ng)".to_string()),
+                            ("復調数".to_string(), format!("{} パケット", packets.len())),
+                        ];
+                        for (i, p) in packets.iter().take(5).enumerate() {
+                            housekeeping.push((format!("Packet #{}", i + 1), p.clone()));
+                        }
+                        if packets.len() > 5 {
+                            housekeeping.push(("その他".to_string(), format!("他 {} パケット省略", packets.len() - 5)));
+                        }
+
+                        let summary_str = format!(
+                            "{} APRS パケット復調成功 ({} 件取得)",
+                            pass.satellite_name,
+                            packets.len()
+                        );
+
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(summary_str),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some(format!("{} packets decoded", packets.len())),
+                                housekeeping,
+                                status: PassStatus::TelemetryDecoded,
+                            }),
+                        })
+                    }
+                    Ok(_) => {
+                        Ok(DecodeResult {
+                            image_path: None,
+                            audio_path,
+                            telemetry_summary: Some(format!(
+                                "{} APRS パケット未検出 (電波微弱または送信なし)",
+                                pass.satellite_name
+                            )),
+                            telemetry: Some(SatelliteTelemetry {
+                                snr_db: None,
+                                lines_or_packets: Some("0 packets (パケット未検出)".to_string()),
+                                housekeeping: vec![
+                                    ("送信元".to_string(), "国際宇宙ステーション (ARISS)".to_string()),
+                                    ("周波数".to_string(), "145.825 MHz (AX.25 1200bps)".to_string()),
+                                    ("復調結果".to_string(), "有効パケット 0 件 (電波微弱/通過中無送信)".to_string()),
+                                    ("生データ".to_string(), "WAV保全完了 (Discord添付)".to_string()),
+                                ],
+                                status: PassStatus::WeakSignal,
+                            }),
+                        })
+                    }
+                    Err(e) => {
+                        warn!("APRS デコード失敗: {}", e);
                         Ok(DecodeResult {
                             image_path: None,
                             audio_path,

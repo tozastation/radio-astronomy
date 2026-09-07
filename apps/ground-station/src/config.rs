@@ -139,7 +139,11 @@ fn default_iss_norad_id() -> u32 {
 }
 
 fn default_iss_freq() -> u64 {
-    145_800_000
+    145_825_000
+}
+
+fn default_iss_signal_type() -> String {
+    "AprsPacket".to_string()
 }
 
 /// キューブサット（超小型衛星）の個別受信目標設定
@@ -204,7 +208,7 @@ impl Default for CubeSatsConfig {
     }
 }
 
-/// 国際宇宙ステーション(ISS)のSSTV/FM受信設定
+/// 国際宇宙ステーション(ISS)のAPRS/SSTV/FM受信設定
 #[derive(Debug, Clone, Deserialize)]
 pub struct IssConfig {
     #[serde(default = "default_true")]
@@ -213,6 +217,8 @@ pub struct IssConfig {
     pub norad_id: u32,
     #[serde(default = "default_iss_freq")]
     pub freq: u64,
+    #[serde(default = "default_iss_signal_type")]
+    pub signal_type: String,
 }
 
 impl Default for IssConfig {
@@ -221,6 +227,7 @@ impl Default for IssConfig {
             enabled: default_true(),
             norad_id: default_iss_norad_id(),
             freq: default_iss_freq(),
+            signal_type: default_iss_signal_type(),
         }
     }
 }
