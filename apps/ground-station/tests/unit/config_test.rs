@@ -87,9 +87,11 @@ fn test_load_real_config_file() {
         .expect("実ファイルの読み込み成功");
     assert!(config.satellites.meteor.enabled);
     assert!(config.satellites.cubesats.enabled);
-    assert_eq!(config.satellites.cubesats.targets.len(), 5);
+    assert_eq!(config.satellites.cubesats.targets.len(), 6);
     assert_eq!(config.satellites.cubesats.targets[0].name, "FUNcube-1");
     assert!(config.satellites.iss.enabled);
+    assert_eq!(config.satellites.iss.freq, 145825000);
+    assert_eq!(config.satellites.iss.signal_type, "AprsPacket");
 }
 
 #[test]

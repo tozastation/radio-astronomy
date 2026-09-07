@@ -121,6 +121,8 @@ pub fn satellite_summary_desc(sat_name: &str) -> &'static str {
         "高利得CWモールステレメトリビーコン CubeSat (NORAD 42761)"
     } else if lower.contains("iss") || lower.contains("zarya") {
         "国際宇宙ステーション (ARISS アマチュア無線局 / NORAD 25544)"
+    } else if lower.contains("xw-2") || lower.contains("cas-3") {
+        "超高SNR常時CWビーコン微小衛星 (XW-2A / NORAD 40903)"
     } else {
         "軌道周回宇宙機 (Radio Astronomy 自律地上局追尾)"
     }
@@ -564,6 +566,11 @@ impl DiscordClient {
             let duration_min = (pass.los - pass.aos).num_minutes();
             let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
             let dir = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg);
+            let view_badge = if pass.is_east_view_favorable() {
+                "☀️東見通し良好"
+            } else {
+                "🏢西遮蔽注意"
+            };
 
             let field_name = format!(
                 "{}. 🛰️ {} [{}]",
@@ -572,12 +579,13 @@ impl DiscordClient {
                 pass.signal_type.name()
             );
             let field_value = format!(
-                "⏱️ {} 〜 {} ({}分間)\n📐 最大 {:.1}° ({}) | 📡 {:.4} MHz",
+                "⏱️ {} 〜 {} ({}分間)\n📐 最大 {:.1}° ({} / {}) | 📡 {:.4} MHz",
                 aos_local.format("%H:%M"),
                 los_local.format("%H:%M"),
                 duration_min,
                 pass.max_elevation_deg,
                 dir,
+                view_badge,
                 freq_mhz
             );
 
@@ -637,6 +645,11 @@ impl DiscordClient {
             let duration_min = (pass.los - pass.aos).num_minutes();
             let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
             let dir = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg);
+            let view_badge = if pass.is_east_view_favorable() {
+                "☀️東見通し良好"
+            } else {
+                "🏢西遮蔽注意"
+            };
 
             let time_str = if aos_local.date_naive() == today_jst {
                 format!("{} 〜 {}", aos_local.format("%H:%M"), los_local.format("%H:%M"))
@@ -651,11 +664,12 @@ impl DiscordClient {
                 pass.signal_type.name()
             );
             let field_value = format!(
-                "⏱️ {} ({}分間)\n📐 最大 {:.1}° ({}) | 📡 {:.4} MHz",
+                "⏱️ {} ({}分間)\n📐 最大 {:.1}° ({} / {}) | 📡 {:.4} MHz",
                 time_str,
                 duration_min,
                 pass.max_elevation_deg,
                 dir,
+                view_badge,
                 freq_mhz
             );
 

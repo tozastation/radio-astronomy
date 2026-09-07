@@ -37,7 +37,7 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
     println!("\n=====================================================================================================================");
     println!("📡 地上局 衛星通過予定スケジュール (今後24時間 / 観測地: 緯度 {:.4}, 経度 {:.4})", config.observer.latitude, config.observer.longitude);
     println!("=====================================================================================================================");
-    println!("{:<15} | {:<12} | {:<28} | {:<20} | {:<20} | {:<18}", "衛星名", "周波数", "信号方式", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位)");
+    println!("{:<15} | {:<12} | {:<28} | {:<20} | {:<20} | {:<28}", "衛星名", "周波数", "信号方式", "通過開始 (AOS / JST)", "通過終了 (LOS / JST)", "最大仰角 (ピーク方位 / 見通し)");
     println!("---------------------------------------------------------------------------------------------------------------------");
 
     if passes.is_empty() {
@@ -47,7 +47,11 @@ pub async fn show_schedule(config: &Config) -> Result<()> {
             let aos_local: DateTime<Local> = DateTime::from(pass.aos);
             let los_local: DateTime<Local> = DateTime::from(pass.los);
             let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
-            let dir = azimuth_to_direction(pass.peak_azimuth_deg);
+            let dir = format!(
+                "{} [{}]",
+                azimuth_to_direction(pass.peak_azimuth_deg),
+                if pass.is_east_view_favorable() { "☀️東見通し良好" } else { "🏢西遮蔽注意" }
+            );
 
             println!(
                 "{:<15} | {:>7.4} MHz | {:<28} | {} | {} | {:>4.1}° ({})",
