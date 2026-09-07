@@ -319,3 +319,72 @@ fn test_extract_telemetry_from_dir_parses_json() {
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }
+
+#[test]
+fn test_build_multimon_aprs_args() {
+    use ground_station::decoder::build_multimon_aprs_args;
+    let wav = Path::new("data/session/raw.wav");
+    let args = build_multimon_aprs_args(wav);
+    assert_eq!(args, vec!["-t", "wav", "-a", "AFSK1200", "-A", "data/session/raw.wav"]);
+}
+
+#[test]
+fn test_parse_multimon_aprs_output() {
+    use ground_station::decoder::parse_multimon_aprs_output;
+    let sample_stdout = r#"
+multimon-ng 1.2.0
+Available demodulators: ...
+Enabled demodulators: AFSK1200
+APRS: JA1ABC-9>CQ,RS0ISS*:=3547.41N/13915.50E-Hello from Tokyo
+APRS: RS0ISS>CQ: ARISS packet repeater active
+Some other log line
+APRS:JH1XYZ>APRS: >Greetings from Kanagawa
+"#;
+    let packets = parse_multimon_aprs_output(sample_stdout);
+    assert_eq!(packets.len(), 3);
+    assert_eq!(packets[0], "JA1ABC-9>CQ,RS0ISS*:=3547.41N/13915.50E-Hello from Tokyo");
+    assert_eq!(packets[1], "RS0ISS>CQ: ARISS packet repeater active");
+    assert_eq!(packets[2], "JH1XYZ>APRS: >Greetings from Kanagawa");
+}
+
+#[tokio::test]
+async fn test_decoder_engine_aprs_routing() {
+    use ground_station::decoder::DecoderEngine;
+    use ground_station::discord::PassStatus;
+    use ground_station::orbit::{SatellitePass, SignalType};
+    use chrono::Utc;
+
+    let now = Utc::now();
+    let pass = SatellitePass {
+        satellite_name: "ISS (ZARYA)".to_string(),
+        frequency_hz: 145_825_000,
+        signal_type: SignalType::AprsPacket,
+        aos: now,
+        los: now + chrono::Duration::minutes(10),
+        max_elevation_deg: 55.0,
+        peak_azimuth_deg: 90.0,
+    };
+
+    let session_dir = std::env::temp_dir().join("test_ground_station_aprs_routing");
+    let _ = std::fs::remove_dir_all(&session_dir);
+    std::fs::create_dir_all(&session_dir).unwrap();
+
+    let raw_wav = session_dir.join("raw.wav");
+    std::fs::write(&raw_wav, b"dummy wav content").unwrap();
+
+    let res = DecoderEngine::decode(&pass, &raw_wav, &session_dir)
+        .await
+        .expect("decode should succeed");
+
+    assert!(res.audio_path.is_some());
+    assert!(res.telemetry.is_some());
+    let tlm = res.telemetry.unwrap();
+    // multimon-ng が導入されていない環境では RawPreserved または WeakSignal/TelemetryDecoded
+    assert!(
+        tlm.status == PassStatus::RawPreserved
+            || tlm.status == PassStatus::TelemetryDecoded
+            || tlm.status == PassStatus::WeakSignal
+    );
+
+    let _ = std::fs::remove_dir_all(&session_dir);
+}
