@@ -1,5 +1,3 @@
-use anyhow::{Context, Result};
-use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -209,3 +207,119 @@ impl AdsbCache {
             .retain(|_, state| now.duration_since(state.last_seen) < timeout);
     }
 }
+
+/// hexdb.io の JSON レスポンスからルート情報をパース
+pub fn parse_hexdb_route(callsign: &str, json_str: &str) -> Option<FlightRoute> {
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let origin_iata = v
+        .get("origin")
+        .and_then(|o| o.get("iata"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+    let origin_name = v
+        .get("origin")
+        .and_then(|o| o.get("name"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+    let destination_iata = v
+        .get("destination")
+        .and_then(|d| d.get("iata"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+    let destination_name = v
+        .get("destination")
+        .and_then(|d| d.get("name"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+
+    if origin_iata.is_none() && destination_iata.is_none() {
+        return None;
+    }
+
+    Some(FlightRoute {
+        callsign: callsign.to_string(),
+        origin_iata,
+        origin_name,
+        destination_iata,
+        destination_name,
+    })
+}
+
+/// Planespotters.net の JSON レスポンスから実機写真メタデータをパース
+pub fn parse_planespotters_photo(json_str: &str) -> Option<AircraftPhotoMeta> {
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let photos = v.get("photos")?.as_array()?;
+    let first = photos.first()?;
+
+    let thumbnail_large = first
+        .get("thumbnail_large")
+        .and_then(|t| t.get("src"))
+        .and_then(|s| s.as_str())?
+        .to_string();
+
+    let photographer = first
+        .get("photographer")
+        .and_then(|s| s.as_str())
+        .unwrap_or("Unknown Photographer")
+        .to_string();
+
+    let aircraft_type = first
+        .get("aircraft_type")
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+
+    let airline_name = first
+        .get("airline")
+        .and_then(|a| a.get("name"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+
+    Some(AircraftPhotoMeta {
+        thumbnail_large,
+        photographer,
+        aircraft_type,
+        airline_name,
+    })
+}
+
+/// hexdb.io API からフライト発着ルートを取得
+pub async fn fetch_flight_route(client: &reqwest::Client, callsign: &str) -> Option<FlightRoute> {
+    let url = format!("https://hexdb.io/api/v1/route/icao/{}", callsign);
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "radio-astronomy-ground-station/0.1.0")
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let text = resp.text().await.ok()?;
+    parse_hexdb_route(callsign, &text)
+}
+
+/// Planespotters.net API から実機写真メタデータを取得
+pub async fn fetch_aircraft_photo(client: &reqwest::Client, hex: &str) -> Option<AircraftPhotoMeta> {
+    let url = format!("https://api.planespotters.net/pub/photos/hex/{}", hex);
+    let resp = client
+        .get(&url)
+        .header(
+            "User-Agent",
+            "radio-astronomy-ground-station/0.1.0 (https://github.com/tozastation/radio-astronomy)",
+        )
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let text = resp.text().await.ok()?;
+    parse_planespotters_photo(&text)
+}
+
