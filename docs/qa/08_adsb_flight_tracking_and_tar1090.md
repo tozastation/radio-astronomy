@@ -251,7 +251,31 @@ ssh -L 8080:localhost:8080 ssh_user@ssh_host
 
 ---
 
-## 5. 参考文献・一次情報リンク
+## 5. トラブルシューティング（現場ノウハウ）
+
+### 5.1 `WARNING: No obvious data input configured` / SDR を掴みに行かない
+- **症状**: ログに `Device type is not rtlsdr, skipping...` や `autogain not supported for non rtl-sdr devices` が出力され、USB デバイスを開こうとしない。
+- **原因**: Ultrafeeder コンテナでは、直接接続された SDR を使用する場合に環境変数 `READSB_DEVICE_TYPE=rtlsdr` の指定が必須です。指定がない場合、ネットワーク経由の Beast / SBS ストリーム待受モードとして起動します。
+- **対処**: コンテナ起動オプションに `-e READSB_DEVICE_TYPE=rtlsdr` を追加します。
+
+### 5.2 `usb_claim_interface error -6` / `Device or resource busy`
+- **症状**: チューナー `Generic RTL2832U OEM` は検知されるが、直後に `usb_claim_interface error -6` で強制終了する。
+- **原因 1（DVB チューナードライバ）**: Linux（Ubuntu）カーネルが RTL2832U を地デジチューナーと認識し、カーネルモジュール `dvb_usb_rtl2832u` が自動で USB インターフェースを排他占有（claim）している。
+  ```bash
+  # 一時解除
+  sudo rmmod dvb_usb_rtl2832u rtl2832 rtl2830 dvb_usb_v2 2>/dev/null || sudo modprobe -r dvb_usb_rtl2832u
+
+  # 恒久無効化（ブラックリスト登録）
+  echo 'blacklist dvb_usb_rtl2832u' | sudo tee /etc/modprobe.d/blacklist-rtl.conf
+  ```
+- **原因 2（既存プロセスとの競合）**: `ground-station` や `rtl_test`、`satdump` などの別プロセスが SDR を開いたままになっている。
+  ```bash
+  sudo fuser -v /dev/bus/usb/*/*
+  ```
+
+---
+
+## 6. 参考文献・一次情報リンク
 
 1. **ICAO Annex 10 Volume IV (Surveillance and Collision Avoidance Systems)**: Mode S 拡張スキッター規格書
 2. **[wiedehopf/readsb (GitHub)](https://github.com/wiedehopf/readsb)**: 高速 Mode S / ADS-B デコーダ一次情報リポジトリ
