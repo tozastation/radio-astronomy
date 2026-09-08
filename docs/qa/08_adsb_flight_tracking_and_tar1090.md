@@ -275,10 +275,93 @@ ssh -L 8080:localhost:8080 ssh_user@ssh_host
 
 ---
 
-## 6. 参考文献・一次情報リンク
+## 6. 衛星地上局（ground-station）との時分割統合と実機写真・音声通知
+
+### 6.1 アイドル時間帯のフライト見守りアーキテクチャ
+気象衛星（NOAA / Meteor-M）や CubeSat、ISS の頭上通過は 1 回あたり約 10〜15 分であり、通過と通過の間には 30 分〜数時間の「衛星アイドル時間」が存在します。
+`ground-station`（Rust）では、このアイドル時間を有効活用し、自宅上空を飛行する民間航空機を自動検知して実機写真とともに Discord 通知＆ずんだもん（VOICEVOX）発話を行う自律監視ループを統合しています。
+
+```mermaid
+graph TD
+    subgraph "Edge Device / Local Container"
+        SDR["RTL-SDR v4 (1090MHz)"] --> Ultrafeeder["Ultrafeeder / readsb"]
+        Ultrafeeder --> JSON["/data/aircraft.json (常時HTTP配信)"]
+    end
+
+    subgraph "ground-station (Rust Daemon)"
+        Loop["常駐監視ループ (run_adsb_monitor)"] -->|10秒毎 HTTP GET| JSON
+        Loop --> Geo["Haversine 距離計算 & ジオフェンシング (半径10km/高度12000m)"]
+        Geo --> Cache{"未通知機体? (30分クールダウン)"}
+        Cache -->|Yes| Route["hexdb.io (発着空港・便名照会)"]
+        Cache -->|Yes| Photo["Planespotters.net (実機写真照会)"]
+        Route --> Notify["通知ビルダー"]
+        Photo --> Notify
+        Notify --> Discord["📲 Discord Webhook (実機写真 Embed)"]
+        Notify --> Voice["🔊 VOICEVOX (ずんだもん音声通知)"]
+    end
+```
+
+- **SDRデバイス競合の回避**:
+  Ultrafeeder コンテナが SDR をオープンし、ローカル HTTP（`http://localhost:8080/data/aircraft.json`）で航空機状態を JSON 公開しています。`ground-station` はこの JSON を HTTP GET で参照するため、プロセス間での USB デバイス直接競合を起こさず安全に共存可能です。
+
+---
+
+### 6.2 大圏距離（Haversine 公式）によるジオフェンシング
+自宅（観測地）の緯度・経度と航空機の緯度・経度から、球面上の最短距離（大圏距離）を計算して近接判定を行います。
+
+$$ d = 2 R \arcsin \left( \sqrt{\sin^2\left(\frac{\Delta \phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta \lambda}{2}\right)} \right) $$
+
+#### 記号一覧
+| 記号 | 物理量 / パラメータ | 単位 | 備考 |
+|---|---|---|---|
+| $d$ | 観測地と航空機間の大圏距離 | $\text{km}$ | 判定閾値（例: $10.0 \text{ km}$）と比較 |
+| $R$ | 地球の平均半径 | $\text{km}$ | 約 $6,371.0 \text{ km}$ |
+| $\phi_1, \phi_2$ | 観測地および航空機の緯度 | $\text{rad}$ | 度（deg）から $\times \frac{\pi}{180}$ でラジアンに換算 |
+| $\lambda_1, \lambda_2$ | 観測地および航空機の経度 | $\text{rad}$ | 度（deg）から $\times \frac{\pi}{180}$ でラジアンに換算 |
+| $\Delta \phi, \Delta \lambda$ | 緯度差・経度差 | $\text{rad}$ | $\Delta \phi = \phi_2 - \phi_1, \Delta \lambda = \lambda_2 - \lambda_1$ |
+
+#### 日本語での読み解き
+平面の三平方の定理（ユークリッド距離）を地表にそのまま適用すると、緯度が高くなるにつれて経度 1 度あたりの東西距離が縮むため歪みが生じます。Haversine（半正矢）公式を用いることで、地球を真球と仮定した球面三角法により、日本全土・局所エリアにおいて誤差数メートル以内の高精度な距離計算が可能です。
+
+#### 展開ステップと直感イメージ
+半正矢関数 $\text{hav}(\theta) = \sin^2\left(\frac{\theta}{2}\right) = \frac{1 - \cos(\theta)}{2}$ を用いると、中心角 $\Theta = \frac{d}{R}$ に対する球面余弦定理は以下のように書き換えられます：
+$$ \text{hav}(\Theta) = \text{hav}(\Delta \phi) + \cos(\phi_1)\cos(\phi_2)\text{hav}(\Delta \lambda) $$
+両辺の逆関数（$\arcsin$）をとって中心角 $\Theta$ を求め、地球半径 $R$ を乗じることで地表の最短弧長 $d$ が導かれます：
+$$ d = 2 R \cdot \arcsin\left(\sqrt{\text{hav}(\Delta \phi) + \cos(\phi_1)\cos(\phi_2)\text{hav}(\Delta \lambda)}\right) $$
+
+---
+
+### 6.3 外部 API による情報拡充とキャッシュ
+
+1. **hexdb.io (ルート情報照会)**:
+   - コールサイン（例: `ANA247`）をもとに `https://hexdb.io/api/v1/route/icao/{callsign}` にアクセスし、出発空港（`origin_iata`, `origin_name`）および到着空港（`destination_iata`, `destination_name`）を取得。
+2. **Planespotters.net (実機写真照会)**:
+   - ICAO 24-bit 航空機アドレス（HEX コード、例: `86786c`）をもとに `https://api.planespotters.net/pub/photos/hex/{hex}` にアクセスし、世界中の航空写真家が投稿した実機写真のサムネイル URL、機種名、航空会社名、撮影者クレジットを取得。
+3. **インメモリ・キャッシュ (`AdsbCache`)**:
+   - 外部 API への過剰リクエストを防ぐため、照会結果はメモリ内に保持。
+   - 同一機体が旋回・通過中に何度も通知されるのを防ぐため、30分間のクールダウンタイムアウトを設けて通知を抑制します。
+
+---
+
+### 6.4 疎通確認サブコマンド (`test-adsb`) の使い方
+
+設定が正しく完了しているか確認するため、`ground-station` CLI にテスト用サブコマンドが用意されています。
+
+```bash
+cd apps/ground-station
+cargo run -- test-adsb
+```
+
+実行すると、現在ローカルの readsb で受信中の機体から最も自宅に近い機体を自動抽出し（受信機体がない場合はサンプル機体として全日空 B787 ANA247便を自動モック）、Planespotters から実機写真を取得して Discord への Embed 送信およびずんだもんによるリアルなフライト情報発話を即座にテストできます。
+
+---
+
+## 7. 参考文献・一次情報リンク
 
 1. **ICAO Annex 10 Volume IV (Surveillance and Collision Avoidance Systems)**: Mode S 拡張スキッター規格書
 2. **[wiedehopf/readsb (GitHub)](https://github.com/wiedehopf/readsb)**: 高速 Mode S / ADS-B デコーダ一次情報リポジトリ
 3. **[wiedehopf/tar1090 (GitHub)](https://github.com/wiedehopf/tar1090)**: Web トラッキングインターフェース一次情報リポジトリ
 4. **[SDR-Enthusiasts / docker-adsb-ultrafeeder (GitHub)](https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder)**: Ultrafeeder 公式コンテナリポジトリ
 5. **[SDR-Enthusiasts GitBook Documentation](https://sdr-enthusiasts.gitbook.io/ads-b/)**: システム構築・チューニングガイド
+6. **[Planespotters.net API](https://www.planespotters.net/api)**: 航空機写真オープンAPI
+7. **[hexdb.io API](https://hexdb.io/)**: 航空機登録情報およびフライトルートオープンAPI
