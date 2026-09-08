@@ -1,3 +1,4 @@
+pub mod adsb;
 pub mod config;
 pub mod decoder;
 pub mod discord;
@@ -7,5 +8,6 @@ pub mod receiver;
 pub mod scheduler;
 pub mod voicevox;
 pub mod worker;
+
 
 
