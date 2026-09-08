@@ -171,29 +171,11 @@ git commit -m "feat: ADS-BデータモデルとHaversine距離計算およびキ
   pub async fn fetch_aircraft_photo(client: &reqwest::Client, hex: &str) -> Option<AircraftPhotoMeta>;
   ```
 
-- [ ] **Step 1: 外部 API レスポンス解析の単体テスト作成**
-
-`tests/unit/adsb_test.rs` に hexdb.io と Planespotters.net の JSON モックパーステストを追加：
-- hexdb の JSON（`origin`, `destination`）パース検証
-- planespotters の JSON（`photos[0].thumbnail_large.src`, `photographer`）パース検証
-- 存在しない機体（空配列や 404）の `None` フォールバック検証
-
-- [ ] **Step 2: テストを実行して失敗を確認**
-
-Run: `cargo test --test unit_adsb`
-Expected: FAIL
-
-- [ ] **Step 3: API 問い合わせ関数の実装**
-
-`src/adsb.rs` 内に `fetch_flight_route` および `fetch_aircraft_photo` を実装。
-User-Agent ヘッダを適切に設定し、タイムアウト 5 秒、エラー時はログ出力して `None` を返す Graceful な実装。
-
-- [ ] **Step 4: テストを実行して成功を確認**
-
-Run: `cargo test --test unit_adsb`
-Expected: PASS
-
-- [ ] **Step 5: コミット**
+- [x] **Step 1: 外部 API レスポンス解析の単体テスト作成**
+- [x] **Step 2: テストを実行して失敗を確認**
+- [x] **Step 3: API 問い合わせ関数の実装**
+- [x] **Step 4: テストを実行して成功を確認**
+- [x] **Step 5: コミット**
 
 ```bash
 git add apps/ground-station/src/adsb.rs apps/ground-station/tests/unit/adsb_test.rs
@@ -231,30 +213,11 @@ git commit -m "feat: hexdbルート照会とPlanespotters実機写真照会ク�
   }
   ```
 
-- [ ] **Step 1: Discord Embed 生成の単体テスト作成**
-
-`tests/unit/discord_test.rs` に `test_aircraft_alert_embed_build` を追加：
-- 実機写真がある場合、`image.url` がセットされること
-- ルートがある場合、タイトルや description に `HND ➜ FUK` が含まれること
-- 写真がない場合でもエラーにならず正常な Embed JSON が構築されること
-
-- [ ] **Step 2: テストを実行して失敗を確認**
-
-Run: `cargo test --test unit_discord`
-Expected: FAIL (`send_aircraft_alert` / `AircraftAlert` 未定義)
-
-- [ ] **Step 3: `send_aircraft_alert` と Embed 構築の実装**
-
-`src/discord.rs` に `AircraftAlert` 構造体と `send_aircraft_alert` メソッドを追加。
-カラー `0x3498DB`、インラインフィールド、写真 Embed、フッターを構築。
-`src/adsb.rs` にずんだもん発話用テキスト生成関数 `build_voice_text(alert: &AircraftAlert) -> String` を実装。
-
-- [ ] **Step 4: テストを実行して成功を確認**
-
-Run: `cargo test --test unit_discord`
-Expected: PASS
-
-- [ ] **Step 5: コミット**
+- [x] **Step 1: Discord Embed 生成の単体テスト作成**
+- [x] **Step 2: テストを実行して失敗を確認**
+- [x] **Step 3: `send_aircraft_alert` と Embed 構築の実装**
+- [x] **Step 4: テストを実行して成功を確認**
+- [x] **Step 5: コミット**
 
 ```bash
 git add apps/ground-station/src/discord.rs apps/ground-station/src/adsb.rs apps/ground-station/tests/unit/discord_test.rs
@@ -281,29 +244,11 @@ git commit -m "feat: 航空機接近通知用のDiscord実機写真Embedとず�
   pub async fn test_adsb_alert(config: &Config) -> Result<()>;
   ```
 
-- [ ] **Step 1: 監視メインループ `run_adsb_monitor` の実装**
-
-`src/adsb.rs` に `run_adsb_monitor` を実装：
-- `tokio::select!` によりシャットダウンシグナルを監視。
-- 指定インターバル（`poll_interval_secs`）で `data_url` から JSON 取得。
-- 各機体の座標から近接判定、未通知なら API 照会 $\to$ Discord/VOICEVOX 通知 $\to$ キャッシュ更新。
-
-- [ ] **Step 2: `test_adsb_alert` 単体検証関数の実装**
-
-`aircraft.json` を 1 回フェッチし、現在レーダー圏内で最も自宅に近い機体（またはサンプル機体）を抽出して、実際に Discord 送信およびずんだもん発話を 1 回実行するテスト関数を実装。
-
-- [ ] **Step 3: `scheduler.rs` と `main.rs` への配線**
-
-- `src/scheduler.rs`: `run_daemon` 内で `if config.adsb.enabled` の場合に `tokio::spawn(run_adsb_monitor(...))` を起動。
-- `src/main.rs`: `Commands::TestAdsb` を追加し、`test_adsb_alert(&config).await?` を呼び出す。
-
-- [ ] **Step 4: ビルドとテストの確認**
-
-Run: `cargo check`
-Run: `cargo test`
-Expected: PASS
-
-- [ ] **Step 5: コミット**
+- [x] **Step 1: 監視メインループ `run_adsb_monitor` の実装**
+- [x] **Step 2: `test_adsb_alert` 単体検証関数の実装**
+- [x] **Step 3: `scheduler.rs` と `main.rs` への配線**
+- [x] **Step 4: ビルドとテストの確認**
+- [x] **Step 5: コミット**
 
 ```bash
 git add apps/ground-station/src/adsb.rs apps/ground-station/src/scheduler.rs apps/ground-station/src/main.rs
@@ -320,19 +265,9 @@ git commit -m "feat: ADS-B常駐監視ループとtest-adsbサブコマンドを
 - Modify: `docs/04_qa.md`
 - Modify: `docs/qa/08_adsb_flight_tracking_and_tar1090.md`
 
-- [ ] **Step 1: 全単体テストの実行**
-
-Run: `cargo test`
-Expected: 全テスト PASS（`unit_config`, `unit_adsb`, `unit_discord`, `unit_worker`, `unit_scheduler` 等）
-
-- [ ] **Step 2: 動作検証（CLI テスト）**
-
-Run: `cargo run -- test-adsb`（または SSH 先での実機確認用コマンドの案内）
-Expected: 現在のフライト情報、Planespotters の写真、Discord Embed の送信成功
-
-- [ ] **Step 3: ドキュメントの更新とコミット**
-
-Q&A ドキュメントに「衛星地上局と ADS-B 近接監視の時分割統合アーキテクチャ」を追記。
+- [x] **Step 1: 全単体テストの実行**
+- [x] **Step 2: 動作検証（CLI テスト）**
+- [x] **Step 3: ドキュメントの更新とコミット**
 
 ```bash
 git add docs/04_qa.md docs/qa/08_adsb_flight_tracking_and_tar1090.md
