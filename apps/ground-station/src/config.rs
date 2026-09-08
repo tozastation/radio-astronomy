@@ -28,6 +28,8 @@ pub struct Config {
     pub discord: DiscordConfig,
     #[serde(default)]
     pub satellites: SatellitesConfig,
+    #[serde(default)]
+    pub adsb: AdsbConfig,
 }
 
 fn default_gain() -> f64 {
@@ -315,6 +317,82 @@ impl Default for SatellitesConfig {
 // =============================================================================
 // メソッド実装ブロック (impl Config)
 // =============================================================================
+fn default_adsb_data_url() -> String {
+    "http://localhost:8080/data/aircraft.json".to_string()
+}
+
+fn default_adsb_tar1090_url() -> String {
+    "http://localhost:8080".to_string()
+}
+
+fn default_adsb_poll_interval_secs() -> u64 {
+    2
+}
+
+fn default_adsb_max_distance_km() -> f64 {
+    8.0
+}
+
+fn default_adsb_min_altitude_m() -> f64 {
+    500.0
+}
+
+fn default_adsb_max_altitude_m() -> f64 {
+    13000.0
+}
+
+fn default_adsb_cooldown_minutes() -> u64 {
+    30
+}
+
+/// ADS-B 航空機近接監視・実機写真通知の設定
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct AdsbConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    #[serde(default = "default_adsb_data_url")]
+    pub data_url: String,
+    #[serde(default = "default_adsb_tar1090_url")]
+    pub tar1090_url: String,
+    #[serde(default = "default_adsb_poll_interval_secs")]
+    pub poll_interval_secs: u64,
+    #[serde(default = "default_adsb_max_distance_km")]
+    pub max_distance_km: f64,
+    #[serde(default = "default_adsb_min_altitude_m")]
+    pub min_altitude_m: f64,
+    #[serde(default = "default_adsb_max_altitude_m")]
+    pub max_altitude_m: f64,
+    #[serde(default = "default_adsb_cooldown_minutes")]
+    pub cooldown_minutes: u64,
+    #[serde(default = "default_true")]
+    pub fetch_routes: bool,
+    #[serde(default = "default_true")]
+    pub fetch_photos: bool,
+    #[serde(default = "default_true")]
+    pub discord_alert: bool,
+    #[serde(default = "default_true")]
+    pub voice_alert: bool,
+}
+
+impl Default for AdsbConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            data_url: default_adsb_data_url(),
+            tar1090_url: default_adsb_tar1090_url(),
+            poll_interval_secs: default_adsb_poll_interval_secs(),
+            max_distance_km: default_adsb_max_distance_km(),
+            min_altitude_m: default_adsb_min_altitude_m(),
+            max_altitude_m: default_adsb_max_altitude_m(),
+            cooldown_minutes: default_adsb_cooldown_minutes(),
+            fetch_routes: true,
+            fetch_photos: true,
+            discord_alert: true,
+            voice_alert: true,
+        }
+    }
+}
+
 impl Config {
     /// TOML文字列から設定構造体をパース
     pub fn from_str(s: &str) -> Result<Self> {

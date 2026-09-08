@@ -52,3 +52,19 @@ norad_id = 25544
 freq = 145825000
 signal_type = "AprsPacket" # 145.825MHz 1200bps AFSK AX.25 常時パケットデジピータ中継
 
+
+[adsb]
+enabled = true
+data_url = "http://localhost:8080/data/aircraft.json"
+tar1090_url = "http://localhost:8080"
+poll_interval_secs = 2
+max_distance_km = 8.0          # 自宅から半径 8km 以内に接近したら通知
+min_altitude_m = 500.0         # 地上駐機ノイズ除外
+max_altitude_m = 13000.0       # 巡航高度上限
+cooldown_minutes = 30          # 同一機体の再通知クールダウン
+fetch_routes = true            # hexdb.io 発着ルート取得
+fetch_photos = true            # Planespotters.net 実機写真取得
+discord_alert = true           # Discord Webhook 通知
+voice_alert = true             # ずんだもん音声通知
+
+
