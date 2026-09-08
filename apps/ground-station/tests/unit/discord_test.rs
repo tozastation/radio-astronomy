@@ -288,3 +288,36 @@ fn test_build_embed_with_audio_recorded_status() {
     assert!(telemetry_field["value"].as_str().unwrap().contains("FM ボイストランスポンダー"));
 }
 
+#[test]
+fn test_aircraft_alert_embed_build() {
+    let alert = ground_station::discord::AircraftAlert {
+        icao_hex: "86786c".to_string(),
+        callsign: "ANA247".to_string(),
+        airline: Some("全日本空輸".to_string()),
+        aircraft_type: Some("Boeing 787-8 Dreamliner".to_string()),
+        origin: Some("東京国際空港 (羽田 / HND)".to_string()),
+        destination: Some("福岡空港 (FUK)".to_string()),
+        altitude_m: 5181.6,
+        speed_kmh: 785.0,
+        distance_km: 3.42,
+        photo_url: Some("https://cdn.planespotters.net/photo/123.jpg".to_string()),
+        photographer: Some("John Doe".to_string()),
+        tar1090_url: "http://localhost:8080".to_string(),
+    };
+
+    let embed = ground_station::discord::DiscordClient::build_aircraft_embed(&alert);
+    assert_eq!(embed["color"], 0x3498DB);
+    assert!(embed["title"].as_str().unwrap().contains("ANA247"));
+    assert!(embed["title"].as_str().unwrap().contains("全日本空輸"));
+    assert!(embed["description"].as_str().unwrap().contains("羽田"));
+    assert!(embed["description"].as_str().unwrap().contains("福岡"));
+    assert_eq!(embed["image"]["url"], "https://cdn.planespotters.net/photo/123.jpg");
+    assert!(embed["footer"]["text"].as_str().unwrap().contains("John Doe"));
+
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    let find_field = |name: &str| fields.iter().find(|f| f["name"].as_str() == Some(name));
+    assert!(find_field("🏷️ 機体").is_some());
+    assert!(find_field("📏 最接近距離").is_some());
+}
+
+
