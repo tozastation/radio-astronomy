@@ -122,3 +122,53 @@ fn test_daily_schedule_config_defaults() {
     assert!(!config.scheduler.daily_schedule_send_on_startup);
 }
 
+#[test]
+fn test_adsb_config_parsing() {
+    let toml_str = r#"
+        [observer]
+        latitude = 35.7903
+        longitude = 139.2584
+        altitude_m = 200.0
+
+        [scheduler]
+        min_elevation_deg = 20.0
+        pre_alert_minutes = 3.0
+        tle_update_interval_hours = 24
+
+        [voicevox]
+        enabled = true
+        host = "http://localhost:50021"
+        speaker_id = 3
+
+        [storage]
+        output_dir = "data/noaa"
+
+        [adsb]
+        enabled = true
+        data_url = "http://localhost:8080/data/aircraft.json"
+        tar1090_url = "http://localhost:8080"
+        poll_interval_secs = 2
+        max_distance_km = 8.0
+        min_altitude_m = 500.0
+        max_altitude_m = 13000.0
+        cooldown_minutes = 30
+        fetch_routes = true
+        fetch_photos = true
+        discord_alert = true
+        voice_alert = true
+    "#;
+
+    let config = Config::from_str(toml_str).expect("パース成功");
+    assert!(config.adsb.enabled);
+    assert_eq!(config.adsb.max_distance_km, 8.0);
+    assert_eq!(config.adsb.poll_interval_secs, 2);
+    assert_eq!(config.adsb.min_altitude_m, 500.0);
+    assert_eq!(config.adsb.max_altitude_m, 13000.0);
+    assert_eq!(config.adsb.cooldown_minutes, 30);
+    assert!(config.adsb.fetch_routes);
+    assert!(config.adsb.fetch_photos);
+    assert!(config.adsb.discord_alert);
+    assert!(config.adsb.voice_alert);
+}
+
+
