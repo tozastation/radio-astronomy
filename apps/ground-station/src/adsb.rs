@@ -1,6 +1,13 @@
+use anyhow::Result;
+use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use crate::config::Config;
+use crate::discord::{AircraftAlert, DiscordClient};
+use crate::voicevox::VoicevoxClient;
 
 // =============================================================================
 // ✈️ ADS-B 航空機監視モジュール (adsb)
@@ -352,5 +359,302 @@ pub fn build_voice_text(alert: &crate::discord::AircraftAlert) -> String {
         }
     }
 }
+
+/// ADS-B 常駐近接監視ループ
+pub async fn run_adsb_monitor(
+    config: Config,
+    discord: Arc<DiscordClient>,
+    voice: Arc<VoicevoxClient>,
+) -> Result<()> {
+    let http_client = reqwest::Client::new();
+    let mut cache = AdsbCache::new(config.adsb.cooldown_minutes);
+    let poll_interval = Duration::from_secs(config.adsb.poll_interval_secs.max(1));
+
+    info!(
+        "✈️ ADS-B 航空機近接監視ループを開始しました (エンドポイント: {}, 判定半径: {:.1}km)",
+        config.adsb.data_url, config.adsb.max_distance_km
+    );
+
+    let mut last_cleanup = Instant::now();
+
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(poll_interval) => {},
+            _ = tokio::signal::ctrl_c() => {
+                info!("ADS-B 監視ループが停止シグナルを受信しました");
+                break;
+            }
+        }
+
+        // 定期キャッシュパージ (10分ごと)
+        if last_cleanup.elapsed() > Duration::from_secs(600) {
+            cache.cleanup_stale();
+            last_cleanup = Instant::now();
+        }
+
+        // 1. readsb の aircraft.json を取得
+        let resp = match http_client
+            .get(&config.adsb.data_url)
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                debug!("ADS-B エンドポイント応答エラー (HTTP {})", r.status());
+                continue;
+            }
+            Err(e) => {
+                debug!("ADS-B エンドポイント通信失敗: {}", e);
+                continue;
+            }
+        };
+
+        let aircraft_json: AircraftJson = match resp.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                debug!("aircraft.json のデシリアライズ失敗: {}", e);
+                continue;
+            }
+        };
+
+        // 2. 各機体の接近判定
+        for ac in &aircraft_json.aircraft {
+            let (lat, lon) = match (ac.lat, ac.lon) {
+                (Some(la), Some(lo)) => (la, lo),
+                _ => continue,
+            };
+
+            let alt_m = match ac.altitude_m() {
+                Some(a) => a,
+                None => continue,
+            };
+
+            // 高度範囲チェック
+            if alt_m < config.adsb.min_altitude_m || alt_m > config.adsb.max_altitude_m {
+                continue;
+            }
+
+            // 自宅座標からの距離計算
+            let dist_km = haversine_distance_km(
+                config.observer.latitude,
+                config.observer.longitude,
+                lat,
+                lon,
+            );
+
+            // ジオフェンス判定
+            if dist_km > config.adsb.max_distance_km {
+                continue;
+            }
+
+            // クールダウン & 通知済みチェック
+            if !cache.should_notify(&ac.hex, dist_km) {
+                continue;
+            }
+
+            // 初回検知: 即時マークして多重通知防止
+            cache.mark_notified(&ac.hex, dist_km);
+
+            let callsign = ac.clean_callsign().unwrap_or_else(|| format!("HEX-{}", &ac.hex));
+            info!(
+                "🎯 自宅上空に航空機が接近中！ 便名: {}, 距離: {:.1}km, 高度: {:.0}m",
+                callsign, dist_km, alt_m
+            );
+
+            // ルート情報の取得 (キャッシュ優先)
+            let route = if config.adsb.fetch_routes {
+                if let Some(cached) = cache.get_route(&callsign) {
+                    cached.clone()
+                } else {
+                    let r = fetch_flight_route(&http_client, &callsign).await;
+                    cache.set_route(callsign.clone(), r.clone());
+                    r
+                }
+            } else {
+                None
+            };
+
+            // 実機写真メタデータの取得 (キャッシュ優先)
+            let photo = if config.adsb.fetch_photos {
+                if let Some(cached) = cache.get_photo(&ac.hex) {
+                    cached.clone()
+                } else {
+                    let p = fetch_aircraft_photo(&http_client, &ac.hex).await;
+                    cache.set_photo(ac.hex.clone(), p.clone());
+                    p
+                }
+            } else {
+                None
+            };
+
+            let alert = AircraftAlert {
+                icao_hex: ac.hex.clone(),
+                callsign: callsign.clone(),
+                airline: photo.as_ref().and_then(|p| p.airline_name.clone()),
+                aircraft_type: photo.as_ref().and_then(|p| p.aircraft_type.clone()),
+                origin: route.as_ref().and_then(|r| {
+                    match (&r.origin_name, &r.origin_iata) {
+                        (Some(name), Some(iata)) => Some(format!("{} ({})", name, iata)),
+                        (Some(name), None) => Some(name.clone()),
+                        (None, Some(iata)) => Some(iata.clone()),
+                        (None, None) => None,
+                    }
+                }),
+                destination: route.as_ref().and_then(|r| {
+                    match (&r.destination_name, &r.destination_iata) {
+                        (Some(name), Some(iata)) => Some(format!("{} ({})", name, iata)),
+                        (Some(name), None) => Some(name.clone()),
+                        (None, Some(iata)) => Some(iata.clone()),
+                        (None, None) => None,
+                    }
+                }),
+                altitude_m: alt_m,
+                speed_kmh: ac.speed_kmh().unwrap_or(0.0),
+                distance_km: dist_km,
+                photo_url: photo.as_ref().map(|p| p.thumbnail_large.clone()),
+                photographer: photo.as_ref().map(|p| p.photographer.clone()),
+                tar1090_url: config.adsb.tar1090_url.clone(),
+            };
+
+            // Discord 通知
+            if config.adsb.discord_alert {
+                let discord_clone = discord.clone();
+                let alert_clone = alert.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = discord_clone.send_aircraft_alert(&alert_clone).await {
+                        warn!("Discord 航空機通知エラー: {}", e);
+                    }
+                });
+            }
+
+            // VOICEVOX 発話
+            if config.adsb.voice_alert {
+                let voice_clone = voice.clone();
+                let speech = build_voice_text(&alert);
+                tokio::spawn(async move {
+                    if let Err(e) = voice_clone.speak(&speech).await {
+                        warn!("VOICEVOX 航空機発話エラー: {}", e);
+                    }
+                });
+            }
+        }
+    }
+
+    info!("ADS-B 航空機監視ループを正常終了しました");
+    Ok(())
+}
+
+/// ADS-B 航空機監視・実機写真・Discord/VOICEVOX通知の単体疎通テスト
+pub async fn test_adsb_alert(config: &Config) -> Result<()> {
+    println!("✈️ ADS-B 航空機監視テストを実行中...");
+    let http_client = reqwest::Client::new();
+    let discord = Arc::new(DiscordClient::new(config.discord.clone()));
+    let voice = Arc::new(VoicevoxClient::new(config.voicevox.clone()));
+
+    // 1. readsb から実機データの取得を試みる
+    let mut candidate_alert: Option<AircraftAlert> = None;
+
+    if let Ok(resp) = http_client
+        .get(&config.adsb.data_url)
+        .timeout(Duration::from_secs(3))
+        .send()
+        .await
+    {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<AircraftJson>().await {
+                println!("📡 readsb から受信機体数: {} 機", json.aircraft.len());
+                let mut closest: Option<(&AircraftRecord, f64)> = None;
+                for ac in &json.aircraft {
+                    if let (Some(la), Some(lo)) = (ac.lat, ac.lon) {
+                        let d = haversine_distance_km(
+                            config.observer.latitude,
+                            config.observer.longitude,
+                            la,
+                            lo,
+                        );
+                        if closest.as_ref().map_or(true, |(_, min_d)| d < *min_d) {
+                            closest = Some((ac, d));
+                        }
+                    }
+                }
+
+                if let Some((ac, dist)) = closest {
+                    let callsign = ac.clean_callsign().unwrap_or_else(|| format!("HEX-{}", ac.hex));
+                    println!("🎯 最接近機体を検出: 便名: {}, 距離: {:.1}km", callsign, dist);
+                    let route = fetch_flight_route(&http_client, &callsign).await;
+                    let photo = fetch_aircraft_photo(&http_client, &ac.hex).await;
+                    candidate_alert = Some(AircraftAlert {
+                        icao_hex: ac.hex.clone(),
+                        callsign: callsign.clone(),
+                        airline: photo.as_ref().and_then(|p| p.airline_name.clone()),
+                        aircraft_type: photo.as_ref().and_then(|p| p.aircraft_type.clone()),
+                        origin: route.as_ref().and_then(|r| r.origin_iata.clone()),
+                        destination: route.as_ref().and_then(|r| r.destination_iata.clone()),
+                        altitude_m: ac.altitude_m().unwrap_or(5000.0),
+                        speed_kmh: ac.speed_kmh().unwrap_or(750.0),
+                        distance_km: dist,
+                        photo_url: photo.as_ref().map(|p| p.thumbnail_large.clone()),
+                        photographer: photo.as_ref().map(|p| p.photographer.clone()),
+                        tar1090_url: config.adsb.tar1090_url.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    // readsb に機体がいなかった場合、またはエンドポイント未起動の場合はモックデータでテスト
+    let alert = candidate_alert.unwrap_or_else(|| {
+        println!("ℹ️ 現在ADS-B電波圏内に機体がないため、サンプル機体（ANA247便/B787）でテストします");
+        AircraftAlert {
+            icao_hex: "86786c".to_string(),
+            callsign: "ANA247".to_string(),
+            airline: Some("全日本空輸".to_string()),
+            aircraft_type: Some("Boeing 787-8 Dreamliner".to_string()),
+            origin: Some("羽田 (HND)".to_string()),
+            destination: Some("福岡 (FUK)".to_string()),
+            altitude_m: 5200.0,
+            speed_kmh: 780.0,
+            distance_km: 3.4,
+            photo_url: Some(
+                "https://cdn.planespotters.net/photo/498000/original/planespotters_498305_4a2c91b5bf_o.jpg"
+                    .to_string(),
+            ),
+            photographer: Some("John Doe".to_string()),
+            tar1090_url: config.adsb.tar1090_url.clone(),
+        }
+    });
+
+    println!("=================================================================");
+    println!("✈️ テスト通知内容");
+    println!("  便名:       {}", alert.callsign);
+    println!("  航空会社:   {}", alert.airline.as_deref().unwrap_or("不明"));
+    println!("  機種:       {}", alert.aircraft_type.as_deref().unwrap_or("不明"));
+    println!(
+        "  ルート:     {} ➜ {}",
+        alert.origin.as_deref().unwrap_or("不明"),
+        alert.destination.as_deref().unwrap_or("不明")
+    );
+    println!("  高度:       {:.0} m", alert.altitude_m);
+    println!("  最接近距離: {:.1} km", alert.distance_km);
+    println!("  実機写真:   {}", alert.photo_url.as_deref().unwrap_or("なし"));
+    println!("=================================================================");
+
+    if config.adsb.discord_alert {
+        println!("📲 Discord 通知を送信中...");
+        discord.send_aircraft_alert(&alert).await?;
+        println!("✨ Discord 通知完了！");
+    }
+
+    if config.adsb.voice_alert {
+        println!("🔊 ずんだもん発話中...");
+        let text = build_voice_text(&alert);
+        voice.speak(&text).await?;
+        println!("✨ ずんだもん発話完了！ ({})", text);
+    }
+
+    Ok(())
+}
+
 
 

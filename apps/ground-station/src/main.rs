@@ -47,6 +47,8 @@ enum Commands {
     TestVoice,
     /// Discord Webhook 通知の疎通テスト (スマホ通知確認)
     TestDiscord,
+    /// ADS-B 航空機監視・実機写真・Discord/VOICEVOX通知の疎通テスト
+    TestAdsb,
     /// 自律常駐監視デーモンを起動 (自動観測本番モード)
     Daemon,
 }
@@ -85,6 +87,9 @@ async fn main() -> Result<()> {
         }
         Commands::TestDiscord => {
             test_discord(&config).await?;
+        }
+        Commands::TestAdsb => {
+            ground_station::adsb::test_adsb_alert(&config).await?;
         }
         Commands::Daemon => {
             println!("🔍 起動時事前ヘルスチェックを実行中...");
