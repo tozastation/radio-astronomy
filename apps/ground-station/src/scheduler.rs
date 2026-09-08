@@ -283,7 +283,7 @@ pub async fn run_daemon(config: Config) -> Result<()> {
     let (decode_tx, decode_rx) = tokio::sync::mpsc::channel::<crate::worker::DecodeJob>(32);
     let discord_arc = std::sync::Arc::new(crate::discord::DiscordClient::new(config.discord.clone()));
     let voice_arc = std::sync::Arc::new(voice_client.clone());
-    tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc.clone(), voice_arc));
+    tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc.clone(), voice_arc.clone()));
 
     // デイリースケジューラの独立起動 (毎朝定時に本日のスケジュールをDiscord自動配信)
     let config_clone = config.clone();
@@ -293,6 +293,19 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             error!("デイリースケジューラで予期せぬエラーが発生しました: {}", e);
         }
     });
+
+    // ADS-B 航空機近接監視タスクの独立起動 (アイドル時間帯の頭上フライト見守り)
+    if config.adsb.enabled {
+        let config_adsb = config.clone();
+        let discord_adsb = discord_arc.clone();
+        let voice_adsb = voice_arc.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::adsb::run_adsb_monitor(config_adsb, discord_adsb, voice_adsb).await {
+                error!("ADS-B 監視タスクで予期せぬエラーが発生しました: {}", e);
+            }
+        });
+        info!("✈️ ADS-B 航空機近接監視タスクを並行起動しました (判定半径: {:.1}km)", config.adsb.max_distance_km);
+    }
 
     let mut last_tle_update = Utc::now() - Duration::hours(25);
     let mut cached_satellites = Vec::new();

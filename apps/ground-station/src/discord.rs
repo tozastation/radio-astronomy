@@ -156,6 +156,23 @@ pub struct PassReport {
     pub next_pass_info: Option<String>,
 }
 
+/// ADS-B 航空機近接アラートデータ
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AircraftAlert {
+    pub icao_hex: String,
+    pub callsign: String,
+    pub airline: Option<String>,
+    pub aircraft_type: Option<String>,
+    pub origin: Option<String>,
+    pub destination: Option<String>,
+    pub altitude_m: f64,
+    pub speed_kmh: f64,
+    pub distance_km: f64,
+    pub photo_url: Option<String>,
+    pub photographer: Option<String>,
+    pub tar1090_url: String,
+}
+
 #[derive(Clone)]
 pub struct DiscordClient {
     config: DiscordConfig,
@@ -822,4 +839,116 @@ impl DiscordClient {
         let _ = self.http_client.post(webhook_url).json(&payload).send().await;
         Ok(())
     }
+
+    /// 航空機近接通知用の Discord Embed JSON オブジェクトを構築
+    pub fn build_aircraft_embed(alert: &AircraftAlert) -> serde_json::Value {
+        let altitude_ft = alert.altitude_m / 0.3048;
+        let flight_title = match &alert.airline {
+            Some(al) => format!("✈️ {} {}便 が頭上を通過中！", al, alert.callsign),
+            None => format!("✈️ 航空機 {}便 が頭上を通過中！", alert.callsign),
+        };
+
+        let tar_url = format!(
+            "{}/?icao={}",
+            alert.tar1090_url.trim_end_matches('/'),
+            alert.icao_hex
+        );
+
+        let desc = match (&alert.origin, &alert.destination) {
+            (Some(orig), Some(dest)) => format!("🛫 {} ➜ 🛬 {}", orig, dest),
+            (Some(orig), None) => format!("🛫 {} 発", orig),
+            (None, Some(dest)) => format!("🛬 {} 行き", dest),
+            (None, None) => match &alert.airline {
+                Some(al) => format!("航空会社: {}", al),
+                None => format!("コールサイン: {}", alert.callsign),
+            },
+        };
+
+        let aircraft_type_str = alert
+            .aircraft_type
+            .as_deref()
+            .unwrap_or("機種不明");
+
+        let fields = vec![
+            serde_json::json!({
+                "name": "🏷️ 機体",
+                "value": format!("{} (`{}`)", aircraft_type_str, alert.icao_hex),
+                "inline": true
+            }),
+            serde_json::json!({
+                "name": "📏 最接近距離",
+                "value": format!("{:.1} km", alert.distance_km),
+                "inline": true
+            }),
+            serde_json::json!({
+                "name": "🧭 対地速度",
+                "value": format!("{:.0} km/h", alert.speed_kmh),
+                "inline": true
+            }),
+            serde_json::json!({
+                "name": "📐 飛行高度",
+                "value": format!("{:.0} m ({:.0} ft)", alert.altitude_m, altitude_ft),
+                "inline": true
+            }),
+        ];
+
+        let mut embed_obj = serde_json::json!({
+            "color": 0x3498DB,
+            "title": flight_title,
+            "url": tar_url,
+            "description": desc,
+            "fields": fields,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+
+        if let Some(photo_url) = &alert.photo_url {
+            if !photo_url.trim().is_empty() {
+                embed_obj["image"] = serde_json::json!({ "url": photo_url });
+            }
+        }
+
+        let footer_text = match &alert.photographer {
+            Some(photog) => format!("Photo by {} (Planespotters.net) • tar1090 Radar", photog),
+            None => "tar1090 Radar".to_string(),
+        };
+        embed_obj["footer"] = serde_json::json!({ "text": footer_text });
+
+        embed_obj
+    }
+
+    /// 航空機近接通知を Discord に送信
+    pub async fn send_aircraft_alert(&self, alert: &AircraftAlert) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        let webhook_url = match &self.config.webhook_url {
+            Some(url) if !url.trim().is_empty() => url.trim(),
+            _ => return Ok(()),
+        };
+
+        let embed = Self::build_aircraft_embed(alert);
+        let payload = serde_json::json!({
+            "username": "NOAA Ground Station",
+            "embeds": [embed]
+        });
+
+        let resp = self.http_client
+            .post(webhook_url)
+            .json(&payload)
+            .send()
+            .await
+            .context("Discord 航空機通知の送信に失敗しました")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            warn!("Discord 航空機通知エラー ({}): {}", status, body);
+        } else {
+            info!("✨ Discord 航空機近接通知を送信しました (便名: {})", alert.callsign);
+        }
+
+        Ok(())
+    }
 }
+
