@@ -252,14 +252,21 @@ impl OrbitPredictor {
     ) -> Result<Vec<SatellitePass>> {
         let mut all_passes = Vec::new();
         for sat in satellites {
-            let passes = Self::predict_passes_for_satellite(
+            match Self::predict_passes_for_satellite(
                 sat,
                 observer,
                 start_time,
                 duration_hours,
                 min_el_deg,
-            )?;
-            all_passes.extend(passes);
+            ) {
+                Ok(passes) => all_passes.extend(passes),
+                Err(e) => {
+                    warn!(
+                        "衛星 {} (NORAD ID: {}) のパス計算をスキップしました (TLEパース/軌道計算エラー: {})",
+                        sat.name, sat.norad_id, e
+                    );
+                }
+            }
         }
 
         // AOS（通過開始時刻）の昇順に時系列ソート
@@ -366,14 +373,25 @@ pub fn build_satellite_infos_from_db(
     let mut results = Vec::new();
     for (name, norad_id, freq, sig_type) in targets {
         if let Some((_tle_name, line1, line2)) = tle_db.get(norad_id) {
-            results.push(SatelliteInfo {
-                name: name.clone(),
-                norad_id: *norad_id,
-                frequency_hz: *freq,
-                signal_type: *sig_type,
-                line1: line1.clone(),
-                line2: line2.clone(),
-            });
+            // SGP4 による TLE 構文・チェックサムの事前バリデーション
+            match Elements::from_tle(Some(name.clone()), line1.as_bytes(), line2.as_bytes()) {
+                Ok(_) => {
+                    results.push(SatelliteInfo {
+                        name: name.clone(),
+                        norad_id: *norad_id,
+                        frequency_hz: *freq,
+                        signal_type: *sig_type,
+                        line1: line1.clone(),
+                        line2: line2.clone(),
+                    });
+                }
+                Err(e) => {
+                    warn!(
+                        "衛星 {} (NORAD ID: {}) のTLEが無効なためスキップします: {:?}",
+                        name, norad_id, e
+                    );
+                }
+            }
         }
     }
     results
