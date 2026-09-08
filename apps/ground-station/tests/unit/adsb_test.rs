@@ -1,7 +1,6 @@
 use ground_station::adsb::{
-    haversine_distance_km, parse_altitude_m, AdsbCache, AircraftJson, AircraftRecord,
+    haversine_distance_km, parse_altitude_m, AdsbCache, AircraftJson,
 };
-use std::time::Duration;
 
 #[test]
 fn test_haversine_distance_calculation() {
@@ -106,3 +105,43 @@ fn test_adsb_cache_cooldown_and_state() {
     // 別機体: 通知対象 (true)
     assert!(cache.should_notify("8412ab", 6.0));
 }
+
+#[test]
+fn test_parse_hexdb_route_json() {
+    let json_str = r#"
+    {
+        "flight": "ANA247",
+        "callsign": "ANA247",
+        "origin": { "icao": "RJTT", "iata": "HND", "name": "Tokyo Haneda International Airport" },
+        "destination": { "icao": "RJFF", "iata": "FUK", "name": "Fukuoka Airport" }
+    }
+    "#;
+    let route = ground_station::adsb::parse_hexdb_route("ANA247", json_str).expect("パース成功");
+    assert_eq!(route.callsign, "ANA247");
+    assert_eq!(route.origin_iata.as_deref(), Some("HND"));
+    assert_eq!(route.destination_iata.as_deref(), Some("FUK"));
+}
+
+#[test]
+fn test_parse_planespotters_photo_json() {
+    let json_str = r#"
+    {
+        "photos": [
+            {
+                "id": "12345",
+                "thumbnail_large": { "src": "https://cdn.planespotters.net/photo/123.jpg" },
+                "link": "https://www.planespotters.net/photo/123",
+                "photographer": "John Doe",
+                "aircraft_type": "Boeing 787-8 Dreamliner",
+                "airline": { "name": "All Nippon Airways" }
+            }
+        ]
+    }
+    "#;
+    let photo = ground_station::adsb::parse_planespotters_photo(json_str).expect("パース成功");
+    assert_eq!(photo.thumbnail_large, "https://cdn.planespotters.net/photo/123.jpg");
+    assert_eq!(photo.photographer, "John Doe");
+    assert_eq!(photo.aircraft_type.as_deref(), Some("Boeing 787-8 Dreamliner"));
+    assert_eq!(photo.airline_name.as_deref(), Some("All Nippon Airways"));
+}
+
