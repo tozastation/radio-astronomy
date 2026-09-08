@@ -1,3 +1,4 @@
+
 # ADS-B 航空機情報受信と tar1090 Web レーダー構築詳解
 
 本ドキュメントでは、RTL-SDR Blog V4 を用いて民間航空機のトランスポンダ信号（ADS-B: 1090MHz）を受信し、Docker コンテナ（Ultrafeeder / tar1090）を用いてリアルタイムな Web レーダー画面（Flightradar24 自前版）を構築するための電波工学・デジタル信号処理（DSP）の数学的基礎、および実践手順を体系的に解説します。
@@ -183,10 +184,11 @@ docker run -d \
   --device-cgroup-rule 'c 189:* rwm' \
   -p 8080:80 \
   -e TZ=Asia/Tokyo \
+  -e READSB_DEVICE_TYPE=rtlsdr \
+  -e READSB_GAIN=auto \
   -e READSB_LAT=35.6812 \
   -e READSB_LON=139.7671 \
   -e READSB_ALT=50m \
-  -e READSB_RX_SDR_GAIN=autogain \
   ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest
 ```
 
@@ -208,10 +210,11 @@ services:
       - "8080:80"
     environment:
       - TZ=Asia/Tokyo
+      - READSB_DEVICE_TYPE=rtlsdr
+      - READSB_GAIN=auto
       - READSB_LAT=35.6812
       - READSB_LON=139.7671
       - READSB_ALT=50m
-      - READSB_RX_SDR_GAIN=autogain
 ```
 
 ```bash
