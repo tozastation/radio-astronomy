@@ -323,3 +323,34 @@ pub async fn fetch_aircraft_photo(client: &reqwest::Client, hex: &str) -> Option
     parse_planespotters_photo(&text)
 }
 
+/// ずんだもん発話用テキストを生成
+pub fn build_voice_text(alert: &crate::discord::AircraftAlert) -> String {
+    let alt_m = alert.altitude_m.round() as i64;
+    let airline = alert.airline.as_deref().unwrap_or("");
+    let flight = &alert.callsign;
+    let ac_type = alert.aircraft_type.as_deref().unwrap_or("飛行機");
+
+    match (&alert.origin, &alert.destination) {
+        (Some(orig), Some(dest)) => {
+            format!(
+                "{}発、{}行きの{}{}便、{}が、高度{}メートルで上空を通過中なのだ！",
+                orig, dest, airline, flight, ac_type, alt_m
+            )
+        }
+        _ => {
+            if !airline.is_empty() {
+                format!(
+                    "{}の{}、{}便が、高度{}メートルで上空を通過中なのだ！",
+                    airline, ac_type, flight, alt_m
+                )
+            } else {
+                format!(
+                    "{}便、{}が、高度{}メートルで上空を通過中なのだ！",
+                    flight, ac_type, alt_m
+                )
+            }
+        }
+    }
+}
+
+
