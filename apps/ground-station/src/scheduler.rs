@@ -339,7 +339,8 @@ pub async fn run_daemon(config: Config) -> Result<()> {
         ) {
             Ok(p) => p,
             Err(e) => {
-                error!("パス計算エラー: {}", e);
+                error!("パス計算エラー: {} (キャッシュをリセットして次回ループで再取得を試行します)", e);
+                cached_satellites.clear();
                 tokio::select! {
                     _ = tokio::time::sleep(tokio::time::Duration::from_secs(60)) => continue,
                     _ = tokio::signal::ctrl_c() => break,
