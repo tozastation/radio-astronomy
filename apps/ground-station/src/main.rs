@@ -49,6 +49,14 @@ enum Commands {
     TestDiscord,
     /// ADS-B 航空機監視・実機写真・Discord/VOICEVOX通知の疎通テスト
     TestAdsb,
+    /// 既存の録音セッションディレクトリを手動で再デコード (未復調の raw.u8 / raw.wav の再処理・Discord通知)
+    DecodePass {
+        /// 対象のセッションディレクトリのパス (例: data/noaa/20260909_074013_XW-2A)
+        session_dir: PathBuf,
+        /// Discord に通知を送るか (デフォルト: true)
+        #[arg(long, default_value_t = true)]
+        discord: bool,
+    },
     /// 自律常駐監視デーモンを起動 (自動観測本番モード)
     Daemon,
 }
@@ -90,6 +98,9 @@ async fn main() -> Result<()> {
         }
         Commands::TestAdsb => {
             ground_station::adsb::test_adsb_alert(&config).await?;
+        }
+        Commands::DecodePass { session_dir, discord } => {
+            decode_pass(&config, &session_dir, discord).await?;
         }
         Commands::Daemon => {
             println!("🔍 起動時事前ヘルスチェックを実行中...");
@@ -150,6 +161,52 @@ async fn test_discord(config: &Config) -> Result<()> {
     client.send_pass_report(&report, Some(sample_image), Some(sample_wav)).await?;
 
     println!("✨ Discord 通知リクエストが完了しました！スマホまたはPCのDiscordを確認してください。");
+    Ok(())
+}
+
+async fn decode_pass(config: &Config, session_dir: &std::path::Path, send_discord: bool) -> Result<()> {
+    println!("🔍 セッションディレクトリの解析中: {:?}", session_dir);
+    let (pass, raw_path) = ground_station::worker::resolve_pass_from_session_dir(config, session_dir)?;
+
+    println!("🛰️ 衛星通過情報の特定成功:");
+    println!("   衛星名: {}", pass.satellite_name);
+    println!("   信号方式: {}", pass.signal_type.name());
+    println!("   下り周波数: {:.4} MHz", pass.frequency_hz as f64 / 1_000_000.0);
+    println!("   生データ: {:?}", raw_path);
+
+    let discord_client = if send_discord && config.discord.enabled {
+        Some(ground_station::discord::DiscordClient::new(config.discord.clone()))
+    } else {
+        None
+    };
+
+    let voicevox_client = if config.voicevox.enabled {
+        Some(ground_station::voicevox::VoicevoxClient::new(config.voicevox.clone()))
+    } else {
+        None
+    };
+
+    println!("⚡ デコード処理を実行中...");
+    let result = ground_station::worker::process_decode_job(
+        &pass,
+        &raw_path,
+        session_dir,
+        discord_client.as_ref(),
+        voicevox_client.as_ref(),
+    )
+    .await?;
+
+    println!("✨ デコード完了:");
+    if let Some(summary) = result.telemetry_summary {
+        println!("   要約: {}", summary);
+    }
+    if let Some(img) = result.image_path {
+        println!("   🖼️ 画像生成: {:?}", img);
+    }
+    if let Some(audio) = result.audio_path {
+        println!("   🎵 音声生成: {:?}", audio);
+    }
+
     Ok(())
 }
 

@@ -493,6 +493,74 @@ impl Decoder {
         info!("APRS パケットデコード完了: {} パケット検出", packets.len());
         Ok(packets)
     }
+
+    /// CubeSat Morse CW (生IQから音声WAV復調およびスペクトログラム画像生成)
+    pub async fn decode_morse_cw(
+        pass: &SatellitePass,
+        raw_path: &Path,
+        session_dir: &Path,
+    ) -> Result<DecodeResult> {
+        info!("CW モールス復調処理開始: 入力 {:?}, 衛星 {}", raw_path, pass.satellite_name);
+
+        if !raw_path.exists() {
+            bail!("生データファイルが見つかりません: {:?}", raw_path);
+        }
+
+        let raw_bytes = tokio::fs::read(raw_path)
+            .await
+            .with_context(|| format!("生データ読み込み失敗: {:?}", raw_path))?;
+
+        if raw_bytes.is_empty() {
+            bail!("生データが空です: {:?}", raw_path);
+        }
+
+        // 1. 生IQ (240kSPS cu8) から可聴音 PCM (11025Hz 16bit) を復調
+        let in_rate = 240_000;
+        let out_rate = 11_025;
+        let bfo_hz = 750.0;
+        let pcm = crate::cw::demodulate_cw_iq_to_pcm(&raw_bytes, in_rate, out_rate, bfo_hz);
+
+        // 2. 復調音声 WAV の保存
+        let wav_path = session_dir.join("cw_audio.wav");
+        let wav_bytes = crate::cw::create_cw_wav(&raw_bytes, in_rate, out_rate, bfo_hz);
+        tokio::fs::write(&wav_path, &wav_bytes)
+            .await
+            .with_context(|| format!("復調WAV保存失敗: {:?}", wav_path))?;
+        info!("CW 復調音声WAV保存完了: {:?} ({} bytes)", wav_path, wav_bytes.len());
+
+        // 3. STFT によるスペクトログラム PNG 画像の生成
+        let png_path = session_dir.join("spectrogram.png");
+        let png_bytes = crate::cw::generate_spectrogram_png(&pcm, out_rate, 800, 400)
+            .context("スペクトログラム画像生成失敗")?;
+        tokio::fs::write(&png_path, &png_bytes)
+            .await
+            .with_context(|| format!("スペクトログラム保存失敗: {:?}", png_path))?;
+        info!("CW スペクトログラム画像保存完了: {:?} ({} bytes)", png_path, png_bytes.len());
+
+        let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
+        let housekeeping = vec![
+            ("復調方式".to_string(), format!("BFO CW復調 ({:.0}Hz ビート音)", bfo_hz)),
+            ("可聴音声".to_string(), "cw_audio.wav (11.025kHz 16bit WAV 添付)".to_string()),
+            ("解析画像".to_string(), "spectrogram.png (STFT ウォーターフォール添付)".to_string()),
+            ("受信周波数".to_string(), format!("{:.4} MHz", freq_mhz)),
+            ("生データ".to_string(), format!("保全完了 ({})", raw_path.file_name().unwrap_or_default().to_string_lossy())),
+        ];
+
+        Ok(DecodeResult {
+            image_path: Some(png_path),
+            audio_path: Some(wav_path),
+            telemetry_summary: Some(format!(
+                "CubeSat {} ({:.3}MHz) CW モールス復調完了 (音声/画像生成)",
+                pass.satellite_name, freq_mhz
+            )),
+            telemetry: Some(SatelliteTelemetry {
+                snr_db: None,
+                lines_or_packets: Some("CW 音声/スペクトログラム復元完了".to_string()),
+                housekeeping,
+                status: PassStatus::AudioRecorded,
+            }),
+        })
+    }
 }
 
 use crate::discord::{PassStatus, SatelliteTelemetry};
@@ -695,7 +763,10 @@ impl DecoderEngine {
                     }
                 }
             }
-            SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry | SignalType::MorseCw => {
+            SignalType::MorseCw => {
+                Decoder::decode_morse_cw(pass, raw_path, session_dir).await
+            }
+            SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry => {
                 let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
                     Some(raw_path.to_path_buf())
                 } else {
