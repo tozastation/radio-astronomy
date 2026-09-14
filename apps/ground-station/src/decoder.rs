@@ -62,6 +62,24 @@ pub fn satdump_pipeline_for_satellite(sat_name: &str) -> Option<&'static str> {
     }
 }
 
+/// 衛星名から gr-satellites の対応衛星名を判定
+pub fn gr_satellites_name_for_satellite(sat_name: &str) -> Option<&'static str> {
+    let s = sat_name.to_lowercase();
+    if s.contains("funcube") || s.contains("ao-73") || s.contains("ao73") {
+        Some("AO-73")
+    } else if s.contains("sonate") {
+        Some("SONATE-2")
+    } else if s.contains("umka") || s.contains("rs40") || s.contains("rs-40") {
+        Some("UmKA-1")
+    } else if s.contains("cas-4a") || s.contains("cas_4a") {
+        Some("CAS-4A")
+    } else if s.contains("xw-2a") || s.contains("cas-3a") {
+        Some("CAS-3A")
+    } else {
+        None
+    }
+}
+
 /// SatDump CLI 呼び出し用引数を構築 (CubeSat用: baseband または audio モード自動判定)
 pub fn build_satdump_cubesat_args(
     pipeline: &str,
@@ -374,60 +392,129 @@ impl Decoder {
             .with_context(|| format!("出力ディレクトリ作成失敗: {:?}", output_dir))?;
 
         // 1. 外部デコーダ satdump の存在確認
-        if !crate::health::check_command_exists("satdump") {
-            info!("satdump 未導入のため CubeSat 生データを保全: {:?}", input_file);
+        let has_satdump = crate::health::check_command_exists("satdump");
+        let satdump_pipeline = satdump_pipeline_for_satellite(&pass.satellite_name);
+
+        if has_satdump && satdump_pipeline.is_some() {
+            let pipeline = satdump_pipeline.unwrap();
+            let args = build_satdump_cubesat_args(pipeline, input_file, output_dir, 240000);
+            info!("SatDump 実行: satdump {}", args.join(" "));
+
+            if let Ok(output) = Command::new("satdump").args(&args).output().await {
+                if let Some(img) = find_best_image_in_dir(output_dir) {
+                    info!("CubeSat デコード画像検出: {:?}", img);
+                    return Ok(CubeSatDecodeOutcome::Image(img));
+                }
+
+                if let Some(tlm) = extract_telemetry_from_dir(output_dir) {
+                    info!("CubeSat テレメトリ JSON 検出 ({} 項目)", tlm.len());
+                    return Ok(CubeSatDecodeOutcome::Telemetry(tlm));
+                }
+
+                if has_cadu_files(output_dir) {
+                    info!("CubeSat CADU パケット検出");
+                    return Ok(CubeSatDecodeOutcome::PacketsSaved);
+                }
+
+                let stdout_str = String::from_utf8_lossy(&output.stdout);
+                let stderr_str = String::from_utf8_lossy(&output.stderr);
+                let is_weak_signal = stdout_str.contains("0 packets")
+                    || stdout_str.contains("Lines  : 0")
+                    || stdout_str.contains("Skipping")
+                    || stderr_str.contains("Skipping")
+                    || output.status.success();
+
+                if is_weak_signal {
+                    info!("CubeSat SatDump 完了: パケット未検出 (電波微弱または未送信)");
+                    return Ok(CubeSatDecodeOutcome::WeakSignal);
+                }
+            }
+        }
+
+        // 2. gr-satellites によるフォールバック復調
+        if crate::health::check_command_exists("gr_satellites") || crate::health::check_command_exists("gr-satellites") {
+            if let Ok(outcome) = Self::decode_cubesat_gr_satellites(&pass.satellite_name, input_file, output_dir).await {
+                match outcome {
+                    CubeSatDecodeOutcome::Image(_) | CubeSatDecodeOutcome::Telemetry(_) | CubeSatDecodeOutcome::PacketsSaved => {
+                        return Ok(outcome);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // 3. 外部デコーダが存在しない・パイプライン未設定時の安全保全
+        if !has_satdump && !crate::health::check_command_exists("gr_satellites") && !crate::health::check_command_exists("gr-satellites") {
+            info!("satdump / gr-satellites 未導入のため CubeSat 生データを保全: {:?}", input_file);
             return Ok(CubeSatDecodeOutcome::DecoderNotInstalled);
         }
 
-        // 2. パイプラインの有無確認
-        let pipeline = match satdump_pipeline_for_satellite(&pass.satellite_name) {
-            Some(p) => p,
-            None => {
-                info!("衛星 {} 用の SatDump パイプライン未定義のため生データを保全", pass.satellite_name);
-                return Ok(CubeSatDecodeOutcome::NoPipelineConfigured);
-            }
+        if satdump_pipeline.is_none() && gr_satellites_name_for_satellite(&pass.satellite_name).is_none() {
+            info!("衛星 {} 用のパイプライン未定義のため生データを保全", pass.satellite_name);
+            return Ok(CubeSatDecodeOutcome::NoPipelineConfigured);
+        }
+
+        Ok(CubeSatDecodeOutcome::WeakSignal)
+    }
+
+    /// gr-satellites CLI による CubeSat デコード
+    pub async fn decode_cubesat_gr_satellites(
+        sat_name: &str,
+        input_file: &Path,
+        output_dir: &Path,
+    ) -> Result<CubeSatDecodeOutcome> {
+        let cmd = if crate::health::check_command_exists("gr_satellites") {
+            "gr_satellites"
+        } else if crate::health::check_command_exists("gr-satellites") {
+            "gr-satellites"
+        } else {
+            return Ok(CubeSatDecodeOutcome::DecoderNotInstalled);
         };
 
-        // 3. SatDump 実行
-        let args = build_satdump_cubesat_args(pipeline, input_file, output_dir, 240000);
-        info!("SatDump 実行: satdump {}", args.join(" "));
+        let target_sat = match gr_satellites_name_for_satellite(sat_name) {
+            Some(name) => name,
+            None => return Ok(CubeSatDecodeOutcome::NoPipelineConfigured),
+        };
 
-        let output = Command::new("satdump")
+        info!("gr-satellites デコード試行: 衛星 {}, コマンド {}", target_sat, cmd);
+
+        let ext = input_file.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let mut args = vec![target_sat.to_string()];
+        if ext.eq_ignore_ascii_case("wav") {
+            args.extend(["--wavfile".to_string(), input_file.to_string_lossy().to_string()]);
+        } else {
+            args.extend([
+                "--rawfile".to_string(),
+                input_file.to_string_lossy().to_string(),
+                "--raw_format".to_string(),
+                "u8".to_string(),
+                "--samp_rate".to_string(),
+                "240000".to_string(),
+            ]);
+        }
+        args.extend(["--dump_path".to_string(), output_dir.to_string_lossy().to_string()]);
+
+        let output = Command::new(cmd)
             .args(&args)
             .output()
             .await
-            .context("satdump コマンドの実行に失敗しました")?;
+            .context("gr-satellites コマンドの実行に失敗しました")?;
 
-        // 4. 生成成果物の確認
         if let Some(img) = find_best_image_in_dir(output_dir) {
-            info!("CubeSat デコード画像検出: {:?}", img);
+            info!("gr-satellites デコード画像検出: {:?}", img);
             return Ok(CubeSatDecodeOutcome::Image(img));
         }
-
         if let Some(tlm) = extract_telemetry_from_dir(output_dir) {
-            info!("CubeSat テレメトリ JSON 検出 ({} 項目)", tlm.len());
+            info!("gr-satellites テレメトリ検出 ({} 項目)", tlm.len());
             return Ok(CubeSatDecodeOutcome::Telemetry(tlm));
-        }
-
-        if has_cadu_files(output_dir) {
-            info!("CubeSat CADU パケット検出");
-            return Ok(CubeSatDecodeOutcome::PacketsSaved);
         }
 
         let stdout_str = String::from_utf8_lossy(&output.stdout);
         let stderr_str = String::from_utf8_lossy(&output.stderr);
-        let is_weak_signal = stdout_str.contains("0 packets")
-            || stdout_str.contains("Lines  : 0")
-            || stdout_str.contains("Skipping")
-            || stderr_str.contains("Skipping")
-            || output.status.success();
-
-        if is_weak_signal {
-            info!("CubeSat デコード完了: パケット未検出 (電波微弱または未送信)");
+        let err_snippet = extract_error_snippet(&stderr_str, &stdout_str);
+        if output.status.success() {
             Ok(CubeSatDecodeOutcome::WeakSignal)
         } else {
-            let err_snippet = extract_error_snippet(&stderr_str, &stdout_str);
-            warn!("CubeSat SatDump 異常終了 (status {}): {}", output.status, err_snippet);
             Ok(CubeSatDecodeOutcome::Error(err_snippet))
         }
     }
@@ -492,6 +579,92 @@ impl Decoder {
         let packets = parse_multimon_aprs_output(&stdout_str);
         info!("APRS パケットデコード完了: {} パケット検出", packets.len());
         Ok(packets)
+    }
+
+    /// CubeSat Morse CW (生IQから音声WAV復調およびスペクトログラム画像生成)
+    pub async fn decode_morse_cw(
+        pass: &SatellitePass,
+        raw_path: &Path,
+        session_dir: &Path,
+    ) -> Result<DecodeResult> {
+        info!("CW モールス復調処理開始: 入力 {:?}, 衛星 {}", raw_path, pass.satellite_name);
+
+        if !raw_path.exists() {
+            bail!("生データファイルが見つかりません: {:?}", raw_path);
+        }
+
+        let raw_bytes = tokio::fs::read(raw_path)
+            .await
+            .with_context(|| format!("生データ読み込み失敗: {:?}", raw_path))?;
+
+        if raw_bytes.is_empty() {
+            bail!("生データが空です: {:?}", raw_path);
+        }
+
+        // 1. 生IQ (240kSPS cu8) から可聴音 PCM (11025Hz 16bit) を復調
+        let in_rate = 240_000;
+        let out_rate = 11_025;
+        let bfo_hz = 750.0;
+        let pcm = crate::cw::demodulate_cw_iq_to_pcm(&raw_bytes, in_rate, out_rate, bfo_hz);
+
+        // 2. 復調音声 WAV の保存
+        let wav_path = session_dir.join("cw_audio.wav");
+        let wav_bytes = crate::cw::create_cw_wav(&raw_bytes, in_rate, out_rate, bfo_hz);
+        tokio::fs::write(&wav_path, &wav_bytes)
+            .await
+            .with_context(|| format!("復調WAV保存失敗: {:?}", wav_path))?;
+        info!("CW 復調音声WAV保存完了: {:?} ({} bytes)", wav_path, wav_bytes.len());
+
+        // 3. STFT によるスペクトログラム PNG 画像の生成
+        let png_path = session_dir.join("spectrogram.png");
+        let png_bytes = crate::cw::generate_spectrogram_png(&pcm, out_rate, 800, 400)
+            .context("スペクトログラム画像生成失敗")?;
+        tokio::fs::write(&png_path, &png_bytes)
+            .await
+            .with_context(|| format!("スペクトログラム保存失敗: {:?}", png_path))?;
+        info!("CW スペクトログラム画像保存完了: {:?} ({} bytes)", png_path, png_bytes.len());
+
+        // 4. 包絡線解析によるモールス符号自動テキスト復号
+        let decoded_text = crate::cw::decode_morse_from_iq(&raw_bytes, in_rate);
+        if let Some(ref text) = decoded_text {
+            info!("🎯 CW モールス自動テキスト復号成功: [{}]", text);
+        }
+
+        let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
+        let mut housekeeping = vec![
+            ("復調方式".to_string(), format!("BFO CW復調 ({:.0}Hz ビート音)", bfo_hz)),
+            ("可聴音声".to_string(), "cw_audio.wav (11.025kHz 16bit WAV 添付)".to_string()),
+            ("解析画像".to_string(), "spectrogram.png (STFT ウォーターフォール添付)".to_string()),
+            ("受信周波数".to_string(), format!("{:.4} MHz", freq_mhz)),
+            ("生データ".to_string(), format!("保全完了 ({})", raw_path.file_name().unwrap_or_default().to_string_lossy())),
+        ];
+
+        let (summary, lines_text, status) = if let Some(ref text) = decoded_text {
+            housekeeping.insert(0, ("復号電文".to_string(), text.clone()));
+            (
+                format!("CubeSat {} ({:.3}MHz) CW モールス電文復号成功: [{}]", pass.satellite_name, freq_mhz, text),
+                format!("Morse: {}", text),
+                PassStatus::TelemetryDecoded,
+            )
+        } else {
+            (
+                format!("CubeSat {} ({:.3}MHz) CW モールス復調完了 (音声/画像生成)", pass.satellite_name, freq_mhz),
+                "CW 音声/スペクトログラム復元完了".to_string(),
+                PassStatus::AudioRecorded,
+            )
+        };
+
+        Ok(DecodeResult {
+            image_path: Some(png_path),
+            audio_path: Some(wav_path),
+            telemetry_summary: Some(summary),
+            telemetry: Some(SatelliteTelemetry {
+                snr_db: None,
+                lines_or_packets: Some(lines_text),
+                housekeeping,
+                status,
+            }),
+        })
     }
 }
 
@@ -695,7 +868,10 @@ impl DecoderEngine {
                     }
                 }
             }
-            SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry | SignalType::MorseCw => {
+            SignalType::MorseCw => {
+                Decoder::decode_morse_cw(pass, raw_path, session_dir).await
+            }
+            SignalType::CubeSatSsdv | SignalType::CubeSatSstv | SignalType::CubeSatTelemetry => {
                 let audio_path = if raw_path.exists() && raw_path.extension().is_some_and(|e| e == "wav") {
                     Some(raw_path.to_path_buf())
                 } else {

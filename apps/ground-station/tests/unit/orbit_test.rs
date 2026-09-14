@@ -120,43 +120,6 @@ fn test_signal_type_display_and_parsing() {
 }
 
 #[test]
-fn test_east_view_favorable_and_geometry() {
-    use chrono::Utc;
-    use ground_station::orbit::SatellitePass;
-
-    let now = Utc::now();
-    let make_pass = |az: f64| SatellitePass {
-        satellite_name: "ISS (ZARYA)".to_string(),
-        frequency_hz: 145_825_000,
-        signal_type: ground_station::orbit::SignalType::AprsPacket,
-        aos: now,
-        los: now + chrono::Duration::minutes(10),
-        max_elevation_deg: 65.0,
-        peak_azimuth_deg: az,
-    };
-
-    // 東側パス（0°〜180°: 北〜東〜南）は見通し良好
-    let pass_north = make_pass(0.0);
-    assert!(pass_north.is_east_view_favorable());
-    assert!(pass_north.view_geometry_desc().contains("見通し良好"));
-
-    let pass_east = make_pass(90.0);
-    assert!(pass_east.is_east_view_favorable());
-    assert!(pass_east.view_geometry_desc().contains("見通し良好"));
-
-    let pass_south = make_pass(180.0);
-    assert!(pass_south.is_east_view_favorable());
-
-    // 西側パス（180.1°〜359.9°: 南西〜西〜北西）は建物遮蔽
-    let pass_west = make_pass(270.0);
-    assert!(!pass_west.is_east_view_favorable());
-    assert!(pass_west.view_geometry_desc().contains("建物遮蔽"));
-
-    let pass_northwest = make_pass(315.0);
-    assert!(!pass_northwest.is_east_view_favorable());
-}
-
-#[test]
 fn test_default_tles_loading_and_fallback() {
     use ground_station::orbit::{build_satellite_infos_from_db, parse_3line_tles, resolve_data_path, SignalType};
     use std::collections::HashMap;

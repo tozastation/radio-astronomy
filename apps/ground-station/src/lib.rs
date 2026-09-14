@@ -1,5 +1,6 @@
 pub mod adsb;
 pub mod config;
+pub mod cw;
 pub mod decoder;
 pub mod discord;
 pub mod health;

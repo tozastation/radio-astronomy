@@ -145,3 +145,14 @@ fn test_parse_planespotters_photo_json() {
     assert_eq!(photo.airline_name.as_deref(), Some("All Nippon Airways"));
 }
 
+#[test]
+fn test_generate_candidate_data_urls() {
+    let base = "http://localhost:8080/data/aircraft.json";
+    let candidates = ground_station::adsb::generate_candidate_data_urls(base);
+    assert!(candidates.contains(&"http://localhost:8080/data/aircraft.json".to_string()));
+    assert!(candidates.contains(&"http://localhost:8080/tar1090/data/aircraft.json".to_string()));
+    assert!(candidates.contains(&"http://localhost:8080/aircraft.json".to_string()));
+    assert!(candidates.contains(&"http://localhost:8080/run/readsb/aircraft.json".to_string()));
+}
+
+

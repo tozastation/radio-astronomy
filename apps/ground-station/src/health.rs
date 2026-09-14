@@ -278,6 +278,47 @@ pub async fn probe_voicevox(config: &Config) -> HealthCheckItem {
     }
 }
 
+/// ADS-B readsb / tar1090 エンドポイントのプローブ
+pub async fn probe_adsb(config: &Config) -> HealthCheckItem {
+    let name = "ADS-B Radar (readsb)".to_string();
+    if !config.adsb.enabled {
+        return HealthCheckItem {
+            name,
+            status: HealthStatus::Ok,
+            message: "監視無効 (config.adsb.enabled = false)".to_string(),
+            remedy: None,
+        };
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let candidates = crate::adsb::generate_candidate_data_urls(&config.adsb.data_url);
+    for url in &candidates {
+        if let Ok(res) = client.get(url).send().await {
+            if res.status().is_success() {
+                if let Ok(json) = res.json::<crate::adsb::AircraftJson>().await {
+                    return HealthCheckItem {
+                        name,
+                        status: HealthStatus::Ok,
+                        message: format!("正常稼働中 ({} 機捕捉 / URL: {})", json.aircraft.len(), url),
+                        remedy: None,
+                    };
+                }
+            }
+        }
+    }
+
+    HealthCheckItem {
+        name,
+        status: HealthStatus::Warn,
+        message: format!("接続不能 ({} に接続できません。航空機近接監視は待機状態になります)", config.adsb.data_url),
+        remedy: Some("Ultrafeeder / readsb / tar1090 コンテナが起動しているか確認してください (例: docker run ...)".to_string()),
+    }
+}
+
 /// ストレージ保存先の書き込みテスト
 pub fn probe_storage(config: &Config) -> HealthCheckItem {
     let name = "Storage Access".to_string();
@@ -325,7 +366,10 @@ pub async fn run_preflight_checks(config: &Config) -> Result<HealthReport> {
     // 3. VOICEVOX
     items.push(probe_voicevox(config).await);
 
-    // 4. ストレージ
+    // 4. ADS-B 航空機レーダー
+    items.push(probe_adsb(config).await);
+
+    // 5. ストレージ
     items.push(probe_storage(config));
 
     Ok(HealthReport { items })

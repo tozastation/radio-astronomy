@@ -18,6 +18,8 @@ dotenvy = "0.15"
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
+rustfft = "6.2"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # ==============================================================================
 # 🧪 単体テスト (Unit Tests)
@@ -55,6 +57,10 @@ path = "tests/unit/scheduler_test.rs"
 [[test]]
 name = "unit_adsb"
 path = "tests/unit/adsb_test.rs"
+
+[[test]]
+name = "unit_cw"
+path = "tests/unit/cw_test.rs"
 
 
 # ==============================================================================
