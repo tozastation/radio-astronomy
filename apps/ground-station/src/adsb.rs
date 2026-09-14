@@ -1,5 +1,5 @@
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -289,13 +289,34 @@ pub fn parse_planespotters_photo(json_str: &str) -> Option<AircraftPhotoMeta> {
     })
 }
 
+/// 指定されたベースURLから一般的な readsb / tar1090 / dump1090 の JSON エンドポイント候補リストを生成
+pub fn generate_candidate_data_urls(base_url: &str) -> Vec<String> {
+    let mut urls = vec![base_url.to_string()];
+    if let Ok(mut parsed) = reqwest::Url::parse(base_url) {
+        let default_paths = [
+            "/data/aircraft.json",
+            "/tar1090/data/aircraft.json",
+            "/aircraft.json",
+            "/run/readsb/aircraft.json",
+        ];
+        for p in default_paths {
+            parsed.set_path(p);
+            let s = parsed.to_string();
+            if !urls.contains(&s) {
+                urls.push(s);
+            }
+        }
+    }
+    urls
+}
+
 /// hexdb.io API からフライト発着ルートを取得
 pub async fn fetch_flight_route(client: &reqwest::Client, callsign: &str) -> Option<FlightRoute> {
     let url = format!("https://hexdb.io/api/v1/route/icao/{}", callsign);
     let resp = client
         .get(&url)
         .header("User-Agent", "radio-astronomy-ground-station/0.1.0")
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(3))
         .send()
         .await
         .ok()?;
@@ -317,7 +338,7 @@ pub async fn fetch_aircraft_photo(client: &reqwest::Client, hex: &str) -> Option
             "User-Agent",
             "radio-astronomy-ground-station/0.1.0 (https://github.com/tozastation/radio-astronomy)",
         )
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(3))
         .send()
         .await
         .ok()?;
@@ -370,12 +391,17 @@ pub async fn run_adsb_monitor(
     let mut cache = AdsbCache::new(config.adsb.cooldown_minutes);
     let poll_interval = Duration::from_secs(config.adsb.poll_interval_secs.max(1));
 
+    let candidate_urls = generate_candidate_data_urls(&config.adsb.data_url);
+    let mut active_url: Option<String> = None;
+
     info!(
-        "✈️ ADS-B 航空機近接監視ループを開始しました (エンドポイント: {}, 判定半径: {:.1}km)",
-        config.adsb.data_url, config.adsb.max_distance_km
+        "✈️ ADS-B 航空機近接監視ループを開始しました (設定URL: {}, 判定半径: {:.1}km, 探索候補: {} 件)",
+        config.adsb.data_url, config.adsb.max_distance_km, candidate_urls.len()
     );
 
     let mut last_cleanup = Instant::now();
+    let mut last_heartbeat = Instant::now();
+    let mut last_error_warn = Instant::now() - Duration::from_secs(60);
 
     loop {
         tokio::select! {
@@ -392,33 +418,98 @@ pub async fn run_adsb_monitor(
             last_cleanup = Instant::now();
         }
 
-        // 1. readsb の aircraft.json を取得
-        let resp = match http_client
-            .get(&config.adsb.data_url)
-            .timeout(Duration::from_secs(3))
-            .send()
-            .await
-        {
-            Ok(r) if r.status().is_success() => r,
-            Ok(r) => {
-                debug!("ADS-B エンドポイント応答エラー (HTTP {})", r.status());
-                continue;
+        // 1. readsb の aircraft.json を取得 (自動探索 & フォールバック)
+        let mut fetched_json: Option<(AircraftJson, String)> = None;
+        let urls_to_try = if let Some(ref act) = active_url {
+            let mut list = vec![act.clone()];
+            for u in &candidate_urls {
+                if u != act {
+                    list.push(u.clone());
+                }
             }
-            Err(e) => {
-                debug!("ADS-B エンドポイント通信失敗: {}", e);
+            list
+        } else {
+            candidate_urls.clone()
+        };
+
+        let mut last_err_msg = String::new();
+
+        for url in &urls_to_try {
+            match http_client
+                .get(url)
+                .timeout(Duration::from_secs(2))
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<AircraftJson>().await {
+                        Ok(json) => {
+                            if active_url.as_ref() != Some(url) {
+                                info!("📡 ADS-B 有効なエンドポイントを検出・確定しました: {}", url);
+                                active_url = Some(url.clone());
+                            }
+                            fetched_json = Some((json, url.clone()));
+                            break;
+                        }
+                        Err(e) => {
+                            last_err_msg = format!("{}: JSONパース失敗 ({})", url, e);
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    last_err_msg = format!("{}: HTTP {}", url, resp.status());
+                }
+                Err(e) => {
+                    last_err_msg = format!("{}: 通信エラー ({})", url, e);
+                }
+            }
+        }
+
+        let aircraft_json = match fetched_json {
+            Some((json, _)) => json,
+            None => {
+                active_url = None;
+                if last_error_warn.elapsed() >= Duration::from_secs(30) {
+                    warn!(
+                        "⚠️ ADS-B エンドポイントに接続できません (最新試行: {})。dump1090 / readsb / Ultrafeeder コンテナが起動しているか確認してください",
+                        last_err_msg
+                    );
+                    last_error_warn = Instant::now();
+                }
                 continue;
             }
         };
 
-        let aircraft_json: AircraftJson = match resp.json().await {
-            Ok(j) => j,
-            Err(e) => {
-                debug!("aircraft.json のデシリアライズ失敗: {}", e);
-                continue;
-            }
-        };
+        // 2. 定期ハートビート / レーダーステータスログ (30秒ごと)
+        if last_heartbeat.elapsed() >= Duration::from_secs(30) {
+            last_heartbeat = Instant::now();
+            let total = aircraft_json.aircraft.len();
+            let with_pos: Vec<_> = aircraft_json.aircraft.iter().filter(|a| a.has_position()).collect();
 
-        // 2. 各機体の接近判定
+            if with_pos.is_empty() {
+                info!("📡 ADS-B レーダー状況: 捕捉 {} 機 (位置確定 0 機) | 電波待機中...", total);
+            } else {
+                let mut min_dist = f64::INFINITY;
+                let mut nearest_callsign = String::new();
+                let mut nearest_alt = 0.0;
+                for ac in &with_pos {
+                    if let (Some(la), Some(lo)) = (ac.lat, ac.lon) {
+                        let d = haversine_distance_km(config.observer.latitude, config.observer.longitude, la, lo);
+                        if d < min_dist {
+                            min_dist = d;
+                            nearest_callsign = ac.clean_callsign().unwrap_or_else(|| format!("HEX-{}", ac.hex));
+                            nearest_alt = ac.altitude_m().unwrap_or(0.0);
+                        }
+                    }
+                }
+                info!(
+                    "📡 ADS-B レーダー状況: 捕捉 {} 機 (位置確定 {} 機) | 最接近: {} ({:.1}km, 高度 {:.0}m)",
+                    total, with_pos.len(), nearest_callsign, min_dist, nearest_alt
+                );
+            }
+        }
+
+        // 3. 各機体の接近判定
         for ac in &aircraft_json.aircraft {
             let (lat, lon) = match (ac.lat, ac.lon) {
                 (Some(la), Some(lo)) => (la, lo),
@@ -462,31 +553,40 @@ pub async fn run_adsb_monitor(
                 callsign, dist_km, alt_m
             );
 
-            // ルート情報の取得 (キャッシュ優先)
-            let route = if config.adsb.fetch_routes {
-                if let Some(cached) = cache.get_route(&callsign) {
-                    cached.clone()
-                } else {
-                    let r = fetch_flight_route(&http_client, &callsign).await;
-                    cache.set_route(callsign.clone(), r.clone());
-                    r
-                }
-            } else {
-                None
-            };
+            // ルート情報と実機写真メタデータの並列取得 (キャッシュ優先)
+            let callsign_clone = callsign.clone();
+            let hex_clone = ac.hex.clone();
 
-            // 実機写真メタデータの取得 (キャッシュ優先)
-            let photo = if config.adsb.fetch_photos {
-                if let Some(cached) = cache.get_photo(&ac.hex) {
-                    cached.clone()
-                } else {
-                    let p = fetch_aircraft_photo(&http_client, &ac.hex).await;
-                    cache.set_photo(ac.hex.clone(), p.clone());
-                    p
+            let cached_route = cache.get_route(&callsign).cloned();
+            let cached_photo = cache.get_photo(&ac.hex).cloned();
+
+            let (route, photo) = tokio::join!(
+                async {
+                    if !config.adsb.fetch_routes {
+                        return None;
+                    }
+                    if let Some(r) = cached_route {
+                        return r;
+                    }
+                    fetch_flight_route(&http_client, &callsign_clone).await
+                },
+                async {
+                    if !config.adsb.fetch_photos {
+                        return None;
+                    }
+                    if let Some(p) = cached_photo {
+                        return p;
+                    }
+                    fetch_aircraft_photo(&http_client, &hex_clone).await
                 }
-            } else {
-                None
-            };
+            );
+
+            if config.adsb.fetch_routes {
+                cache.set_route(callsign.clone(), route.clone());
+            }
+            if config.adsb.fetch_photos {
+                cache.set_photo(ac.hex.clone(), photo.clone());
+            }
 
             let alert = AircraftAlert {
                 icao_hex: ac.hex.clone(),
@@ -552,19 +652,30 @@ pub async fn test_adsb_alert(config: &Config) -> Result<()> {
     let discord = Arc::new(DiscordClient::new(config.discord.clone()));
     let voice = Arc::new(VoicevoxClient::new(config.voicevox.clone()));
 
-    // 1. readsb から実機データの取得を試みる
+    // 1. readsb から実機データの取得を試みる (候補URLを順次探索)
+    let candidate_urls = generate_candidate_data_urls(&config.adsb.data_url);
     let mut candidate_alert: Option<AircraftAlert> = None;
+    let mut found_json: Option<(AircraftJson, String)> = None;
 
-    if let Ok(resp) = http_client
-        .get(&config.adsb.data_url)
-        .timeout(Duration::from_secs(3))
-        .send()
-        .await
-    {
-        if resp.status().is_success() {
-            if let Ok(json) = resp.json::<AircraftJson>().await {
-                println!("📡 readsb から受信機体数: {} 機", json.aircraft.len());
-                let mut closest: Option<(&AircraftRecord, f64)> = None;
+    for url in &candidate_urls {
+        if let Ok(resp) = http_client
+            .get(url)
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await
+        {
+            if resp.status().is_success() {
+                if let Ok(json) = resp.json::<AircraftJson>().await {
+                    println!("📡 readsb エンドポイント確認 ({}): 受信機体数 {} 機", url, json.aircraft.len());
+                    found_json = Some((json, url.clone()));
+                    break;
+                }
+            }
+        }
+    }
+
+    if let Some((json, url)) = found_json {
+        let mut closest: Option<(&AircraftRecord, f64)> = None;
                 for ac in &json.aircraft {
                     if let (Some(la), Some(lo)) = (ac.lat, ac.lon) {
                         let d = haversine_distance_km(
@@ -581,7 +692,7 @@ pub async fn test_adsb_alert(config: &Config) -> Result<()> {
 
                 if let Some((ac, dist)) = closest {
                     let callsign = ac.clean_callsign().unwrap_or_else(|| format!("HEX-{}", ac.hex));
-                    println!("🎯 最接近機体を検出: 便名: {}, 距離: {:.1}km", callsign, dist);
+                    println!("🎯 最接近機体を検出: 便名: {}, 距離: {:.1}km (データソース: {})", callsign, dist, url);
                     let route = fetch_flight_route(&http_client, &callsign).await;
                     let photo = fetch_aircraft_photo(&http_client, &ac.hex).await;
                     candidate_alert = Some(AircraftAlert {
@@ -597,11 +708,9 @@ pub async fn test_adsb_alert(config: &Config) -> Result<()> {
                         photo_url: photo.as_ref().map(|p| p.thumbnail_large.clone()),
                         photographer: photo.as_ref().map(|p| p.photographer.clone()),
                         tar1090_url: config.adsb.tar1090_url.clone(),
-                    });
-                }
+                });
             }
         }
-    }
 
     // readsb に機体がいなかった場合、またはエンドポイント未起動の場合はモックデータでテスト
     let alert = candidate_alert.unwrap_or_else(|| {

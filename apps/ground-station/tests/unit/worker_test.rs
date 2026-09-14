@@ -388,3 +388,50 @@ async fn test_decoder_engine_aprs_routing() {
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
+
+#[test]
+fn test_resolve_pass_from_session_dir_xw2a() {
+    let toml_content = r#"
+[observer]
+latitude = 35.7903
+longitude = 139.2584
+altitude_m = 200.0
+
+[scheduler]
+min_elevation_deg = 20.0
+pre_alert_minutes = 3.0
+tle_update_interval_hours = 24
+
+[voicevox]
+enabled = false
+host = "http://localhost:50021"
+speaker_id = 3
+
+[storage]
+output_dir = "data/noaa"
+
+[satellites.cubesats]
+enabled = true
+targets = [
+    { name = "XW-2A", norad_id = 40903, freq = 145660000, type = "MorseCw" },
+]
+"#;
+    let config = ground_station::config::Config::from_str(toml_content).unwrap();
+
+    let session_dir = std::env::temp_dir().join("test_session_20260909_074013_XW-2A");
+    let _ = std::fs::remove_dir_all(&session_dir);
+    std::fs::create_dir_all(&session_dir).unwrap();
+
+    let raw_u8 = session_dir.join("raw.u8");
+    std::fs::write(&raw_u8, b"dummy iq data").unwrap();
+
+    let (pass, raw_path) = ground_station::worker::resolve_pass_from_session_dir(&config, &session_dir)
+        .expect("resolve_pass_from_session_dir should succeed");
+
+    assert_eq!(pass.satellite_name, "XW-2A");
+    assert_eq!(pass.frequency_hz, 145_660_000);
+    assert_eq!(pass.signal_type, ground_station::orbit::SignalType::MorseCw);
+    assert_eq!(raw_path, raw_u8);
+
+    let _ = std::fs::remove_dir_all(&session_dir);
+}

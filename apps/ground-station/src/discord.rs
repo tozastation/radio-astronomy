@@ -583,11 +583,6 @@ impl DiscordClient {
             let duration_min = (pass.los - pass.aos).num_minutes();
             let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
             let dir = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg);
-            let view_badge = if pass.is_east_view_favorable() {
-                "☀️東見通し良好"
-            } else {
-                "🏢西遮蔽注意"
-            };
 
             let field_name = format!(
                 "{}. 🛰️ {} [{}]",
@@ -596,13 +591,12 @@ impl DiscordClient {
                 pass.signal_type.name()
             );
             let field_value = format!(
-                "⏱️ {} 〜 {} ({}分間)\n📐 最大 {:.1}° ({} / {}) | 📡 {:.4} MHz",
+                "⏱️ {} 〜 {} ({}分間)\n📐 最大 {:.1}° ({}) | 📡 {:.4} MHz",
                 aos_local.format("%H:%M"),
                 los_local.format("%H:%M"),
                 duration_min,
                 pass.max_elevation_deg,
                 dir,
-                view_badge,
                 freq_mhz
             );
 
@@ -662,11 +656,6 @@ impl DiscordClient {
             let duration_min = (pass.los - pass.aos).num_minutes();
             let freq_mhz = pass.frequency_hz as f64 / 1_000_000.0;
             let dir = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg);
-            let view_badge = if pass.is_east_view_favorable() {
-                "☀️東見通し良好"
-            } else {
-                "🏢西遮蔽注意"
-            };
 
             let time_str = if aos_local.date_naive() == today_jst {
                 format!("{} 〜 {}", aos_local.format("%H:%M"), los_local.format("%H:%M"))
@@ -681,12 +670,11 @@ impl DiscordClient {
                 pass.signal_type.name()
             );
             let field_value = format!(
-                "⏱️ {} ({}分間)\n📐 最大 {:.1}° ({} / {}) | 📡 {:.4} MHz",
+                "⏱️ {} ({}分間)\n📐 最大 {:.1}° ({}) | 📡 {:.4} MHz",
                 time_str,
                 duration_min,
                 pass.max_elevation_deg,
                 dir,
-                view_badge,
                 freq_mhz
             );
 
