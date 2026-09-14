@@ -113,24 +113,6 @@ pub struct SatellitePass {
     pub peak_azimuth_deg: f64,        // ピーク時の方位角 (0度=北, 90度=東, 180度=南, 270度=西)
 }
 
-impl SatellitePass {
-    /// マンション5階・東向きベランダにおける見通し良好（東側通過: 0°〜180°）判定
-    /// 西側通過（180°〜360°）は鉄筋コンクリート躯体により30〜50dB減衰するため、
-    /// 東側通過こそが直達波を受信できる最大のチャンスとなります。
-    pub fn is_east_view_favorable(&self) -> bool {
-        let norm = self.peak_azimuth_deg.rem_euclid(360.0);
-        (0.0..=180.0).contains(&norm)
-    }
-
-    /// ベランダ幾何学に基づく受信見通し評価テキスト
-    pub fn view_geometry_desc(&self) -> &'static str {
-        if self.is_east_view_favorable() {
-            "☀️ 見通し良好 (東側通過)"
-        } else {
-            "🏢 建物遮蔽注意 (西側通過)"
-        }
-    }
-}
 
 /// 方位角（度）を16方位の日本語方角名に変換
 pub fn azimuth_to_direction(az_deg: f64) -> &'static str {
