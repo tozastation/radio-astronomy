@@ -89,11 +89,7 @@ pub async fn process_decode_job(
                     chrono::DateTime::<chrono::Local>::from(pass.aos).format("%Y-%m-%d %H:%M:%S"),
                     chrono::DateTime::<chrono::Local>::from(pass.los).format("%H:%M:%S")
                 );
-                let dir_str = format!(
-                    "{} ({})",
-                    crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg),
-                    pass.view_geometry_desc()
-                );
+                let dir_str = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg).to_string();
 
                 let (has_image, image_bytes) = if let Some(ref path) = result.image_path {
                     if path.exists() {
@@ -169,11 +165,7 @@ pub async fn process_decode_job(
                     chrono::DateTime::<chrono::Local>::from(pass.aos).format("%Y-%m-%d %H:%M:%S"),
                     chrono::DateTime::<chrono::Local>::from(pass.los).format("%H:%M:%S")
                 );
-                let dir_str = format!(
-                    "{} ({})",
-                    crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg),
-                    pass.view_geometry_desc()
-                );
+                let dir_str = crate::orbit::azimuth_to_direction(pass.peak_azimuth_deg).to_string();
                 let report = crate::discord::PassReport {
                     satellite_name: pass_name.clone(),
                     signal_type_name: pass.signal_type.name().to_string(),
