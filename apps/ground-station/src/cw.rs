@@ -284,3 +284,251 @@ fn colormap_waterfall(val: f32) -> Rgb<u8> {
         Rgb([r, g, b])
     }
 }
+
+// =============================================================================
+// 📝 モールス符号自動テキスト復号 (Morse Code Demodulation & OCR)
+// -----------------------------------------------------------------------------
+// 【アルゴリズムと数理】
+// 1. 動的包絡線閾値判定 (Otsu法ライクな2値化):
+//    包絡線の振幅ヒストグラムから、ノイズフロア (OFF) とキーイング搬送波 (ON) の
+//    境界閾値 V_th を適応決定し、パルス列を 0/1 に量子化します。
+// 2. パルス幅クラスタリング (Unit Dit Length T の適応推定):
+//    短点 (Dit: 1T) と長点 (Dash: 3T) の長さの比率は 1:3 です。
+//    観測されたパルス幅の分布から基準単位時間 T (衛星CWでは通常 40〜80ms) を推定します。
+// 3. ITU-R M.1677 国際モールス符号デコーダ:
+//    Dit/Dash 列を文字 (A-Z, 0-9, スラッシュ等) にマッピングし、
+//    コールサイン (DF, XW2A 等) やテレメトリ文字列を抽出します。
+// =============================================================================
+
+/// モールス符号パルス (短点/長点/スペース)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PulseKind {
+    Dit,       // 短点 (.)
+    Dash,      // 長点 (-)
+    CharSpace, // 文字間スペース (3T)
+    WordSpace, // 単語間スペース (7T)
+}
+
+/// 国際モールス符号テーブル (ITU-R M.1677 準拠)
+fn morse_to_char(morse: &str) -> Option<char> {
+    match morse {
+        ".-" => Some('A'),
+        "-..." => Some('B'),
+        "-.-." => Some('C'),
+        "-.." => Some('D'),
+        "." => Some('E'),
+        "..-." => Some('F'),
+        "--." => Some('G'),
+        "...." => Some('H'),
+        ".." => Some('I'),
+        ".---" => Some('J'),
+        "-.-" => Some('K'),
+        ".-.." => Some('L'),
+        "--" => Some('M'),
+        "-." => Some('N'),
+        "---" => Some('O'),
+        ".--." => Some('P'),
+        "--.-" => Some('Q'),
+        ".-." => Some('R'),
+        "..." => Some('S'),
+        "-" => Some('T'),
+        "..-" => Some('U'),
+        "...-" => Some('V'),
+        ".--" => Some('W'),
+        "-..-" => Some('X'),
+        "-.--" => Some('Y'),
+        "--.." => Some('Z'),
+        "-----" => Some('0'),
+        ".----" => Some('1'),
+        "..---" => Some('2'),
+        "...--" => Some('3'),
+        "....-" => Some('4'),
+        "....." => Some('5'),
+        "-...." => Some('6'),
+        "--..." => Some('7'),
+        "---.." => Some('8'),
+        "----." => Some('9'),
+        "-..-." => Some('/'),
+        ".-.-.-" => Some('.'),
+        "--..--" => Some(','),
+        "..--.." => Some('?'),
+        "-....-" => Some('-'),
+        _ => None,
+    }
+}
+
+/// 生IQデータから包絡線パルスを解析し、モールス符号テキストを自動復号
+pub fn decode_morse_from_iq(
+    raw_u8: &[u8],
+    in_rate: u32,
+) -> Option<String> {
+    let num_iq = raw_u8.len() / 2;
+    if num_iq < 1000 {
+        return None;
+    }
+
+    // 1. 包絡線サンプル列の計算 (時間分解能 5ms: 200 Hz ダウンサンプリング)
+    let env_rate = 200.0f64; // 200 samples/sec -> 1 sample = 5ms
+    let decimation = in_rate as f64 / env_rate;
+    let out_len = (num_iq as f64 / decimation).floor() as usize;
+    if out_len < 20 {
+        return None;
+    }
+
+    let mut envelopes = Vec::with_capacity(out_len);
+    for m in 0..out_len {
+        let start = (m as f64 * decimation) as usize;
+        let end = (((m + 1) as f64 * decimation) as usize).min(num_iq);
+        let count = (end - start).max(1);
+
+        let mut sum_amp = 0.0f32;
+        for k in start..end {
+            let i = (raw_u8[2 * k] as f32 - 128.0) / 128.0;
+            let q = (raw_u8[2 * k + 1] as f32 - 128.0) / 128.0;
+            sum_amp += (i * i + q * q).sqrt();
+        }
+        envelopes.push(sum_amp / count as f32);
+    }
+
+    decode_morse_from_envelope_samples(&envelopes, env_rate)
+}
+
+/// 連続包絡線サンプル列からモールス符号テキストを復号
+pub fn decode_morse_from_envelope_samples(
+    envelopes: &[f32],
+    sample_rate: f64,
+) -> Option<String> {
+    if envelopes.len() < 20 {
+        return None;
+    }
+
+    // 2. 振幅の最小・最大・動的閾値 (V_th) の算出
+    let mut sorted = envelopes.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let floor = sorted[(sorted.len() as f64 * 0.15) as usize];
+    let peak = sorted[(sorted.len() as f64 * 0.90) as usize];
+
+    if peak - floor < 0.05 {
+        // 信号振幅が小さすぎる（純粋なノイズ）
+        return None;
+    }
+
+    let threshold = floor + 0.35 * (peak - floor);
+
+    // 3. 連長圧縮 (RLE): (is_on, duration_samples)
+    let mut rle: Vec<(bool, usize)> = Vec::new();
+    let mut curr_state = envelopes[0] >= threshold;
+    let mut curr_len = 1;
+
+    for &env in &envelopes[1..] {
+        let is_on = env >= threshold;
+        if is_on == curr_state {
+            curr_len += 1;
+        } else {
+            rle.push((curr_state, curr_len));
+            curr_state = is_on;
+            curr_len = 1;
+        }
+    }
+    rle.push((curr_state, curr_len));
+
+    // 4. グリッチ除去 (10ms 未満の単発スパイクを吸収)
+    let min_glitch_samples = (0.010 * sample_rate).round().max(1.0) as usize;
+    let mut clean_rle: Vec<(bool, usize)> = Vec::new();
+    for (state, len) in rle {
+        if len <= min_glitch_samples && !clean_rle.is_empty() {
+            let last_idx = clean_rle.len() - 1;
+            clean_rle[last_idx].1 += len;
+        } else {
+            clean_rle.push((state, len));
+        }
+    }
+
+    // 5. ON パルスの長さから短点基準長 T (Dit Length) を自己適応推定
+    let mut on_durations: Vec<f64> = clean_rle
+        .iter()
+        .filter(|(state, _)| *state)
+        .map(|(_, len)| *len as f64 / sample_rate)
+        .collect();
+
+    if on_durations.is_empty() {
+        return None;
+    }
+
+    on_durations.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 最も短い側のパルス群（下位 40%）の中央値を短点長 T とする
+    let dit_candidates_len = (on_durations.len() as f64 * 0.4).ceil() as usize;
+    let t_est = on_durations[dit_candidates_len / 2].clamp(0.030, 0.150); // 30ms 〜 150ms
+
+    // 6. パルス列を Dit/Dash および スペース記号列に変換
+    let mut tokens: Vec<PulseKind> = Vec::new();
+    for &(is_on, len) in &clean_rle {
+        let dur = len as f64 / sample_rate;
+        if is_on {
+            if dur < 2.0 * t_est {
+                tokens.push(PulseKind::Dit);
+            } else {
+                tokens.push(PulseKind::Dash);
+            }
+        } else {
+            if dur >= 5.0 * t_est {
+                tokens.push(PulseKind::WordSpace);
+            } else if dur >= 2.0 * t_est {
+                tokens.push(PulseKind::CharSpace);
+            }
+            // 2.0*T 未満のOFFは文字内エレメント区切りのため無視
+        }
+    }
+
+    // 7. トークン列から文字を組み立て
+    let mut decoded_text = String::new();
+    let mut current_morse = String::new();
+
+    for token in tokens {
+        match token {
+            PulseKind::Dit => current_morse.push('.'),
+            PulseKind::Dash => current_morse.push('-'),
+            PulseKind::CharSpace => {
+                if !current_morse.is_empty() {
+                    if let Some(ch) = morse_to_char(&current_morse) {
+                        decoded_text.push(ch);
+                    } else {
+                        decoded_text.push('?');
+                    }
+                    current_morse.clear();
+                }
+            }
+            PulseKind::WordSpace => {
+                if !current_morse.is_empty() {
+                    if let Some(ch) = morse_to_char(&current_morse) {
+                        decoded_text.push(ch);
+                    } else {
+                        decoded_text.push('?');
+                    }
+                    current_morse.clear();
+                }
+                if !decoded_text.is_empty() && !decoded_text.ends_with(' ') {
+                    decoded_text.push(' ');
+                }
+            }
+        }
+    }
+
+    // 末尾に残ったモールス文字を処理
+    if !current_morse.is_empty() {
+        if let Some(ch) = morse_to_char(&current_morse) {
+            decoded_text.push(ch);
+        }
+    }
+
+    let trimmed = decoded_text.trim().to_string();
+    // 有効な英数字が 2 文字以上得られた場合にデコード成功と判定
+    let alnum_count = trimmed.chars().filter(|c| c.is_alphanumeric()).count();
+    if alnum_count >= 2 {
+        Some(trimmed)
+    } else {
+        None
+    }
+}
+

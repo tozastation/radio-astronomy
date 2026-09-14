@@ -146,3 +146,51 @@ async fn test_decoder_morse_cw_end_to_end() {
 
     let _ = fs::remove_dir_all(&session_dir);
 }
+
+#[test]
+fn test_decode_morse_text() {
+    // 1Dit = 50ms (sample_rate = 200 Hz -> 10 samples)
+    let dit_samples = 10;
+    let dash_samples = 30;
+    let elem_gap = 10;
+    let char_gap = 30;
+    let word_gap = 70;
+
+    let mut envelopes = Vec::new();
+
+    // "DF" を生成:
+    // 'D': -..  (Dash, elem, Dit, elem, Dit)
+    // char_gap
+    // 'F': ..-. (Dit, elem, Dit, elem, Dash, elem, Dit)
+
+    // D: Dash
+    envelopes.extend(vec![1.0f32; dash_samples]);
+    envelopes.extend(vec![0.0f32; elem_gap]);
+    // Dit
+    envelopes.extend(vec![1.0f32; dit_samples]);
+    envelopes.extend(vec![0.0f32; elem_gap]);
+    // Dit
+    envelopes.extend(vec![1.0f32; dit_samples]);
+
+    // Char gap
+    envelopes.extend(vec![0.0f32; char_gap]);
+
+    // F: Dit
+    envelopes.extend(vec![1.0f32; dit_samples]);
+    envelopes.extend(vec![0.0f32; elem_gap]);
+    // Dit
+    envelopes.extend(vec![1.0f32; dit_samples]);
+    envelopes.extend(vec![0.0f32; elem_gap]);
+    // Dash
+    envelopes.extend(vec![1.0f32; dash_samples]);
+    envelopes.extend(vec![0.0f32; elem_gap]);
+    // Dit
+    envelopes.extend(vec![1.0f32; dit_samples]);
+
+    // 末尾余白
+    envelopes.extend(vec![0.0f32; word_gap]);
+
+    let decoded = ground_station::cw::decode_morse_from_envelope_samples(&envelopes, 200.0);
+    assert_eq!(decoded, Some("DF".to_string()));
+}
+

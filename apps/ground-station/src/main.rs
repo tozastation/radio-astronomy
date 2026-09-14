@@ -54,7 +54,7 @@ enum Commands {
         /// 対象のセッションディレクトリのパス (例: data/noaa/20260909_074013_XW-2A)
         session_dir: PathBuf,
         /// Discord に通知を送るか (デフォルト: true)
-        #[arg(long, default_value_t = true)]
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         discord: bool,
     },
     /// 自律常駐監視デーモンを起動 (自動観測本番モード)
