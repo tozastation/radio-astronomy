@@ -57,6 +57,12 @@ enum Commands {
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         discord: bool,
     },
+    /// 衛星通過の成否メトリクス・集計サマリーを表示
+    Metrics {
+        /// 直近表示するレコード件数 (デフォルト: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
     /// 自律常駐監視デーモンを起動 (自動観測本番モード)
     Daemon,
 }
@@ -102,6 +108,9 @@ async fn main() -> Result<()> {
         Commands::DecodePass { session_dir, discord } => {
             decode_pass(&config, &session_dir, discord).await?;
         }
+        Commands::Metrics { limit } => {
+            show_metrics(&config, limit).await?;
+        }
         Commands::Daemon => {
             println!("🔍 起動時事前ヘルスチェックを実行中...");
             let report = ground_station::health::run_preflight_checks(&config).await?;
@@ -113,6 +122,14 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn show_metrics(config: &Config, limit: usize) -> Result<()> {
+    let collector = ground_station::metrics::MetricsCollector::new(PathBuf::from(&config.metrics.file_path));
+    let summary = collector.get_summary().await?;
+    let recent = collector.read_recent_records(limit).await?;
+    ground_station::metrics::MetricsCollector::print_metrics_report(&summary, &recent);
     Ok(())
 }
 
@@ -186,6 +203,14 @@ async fn decode_pass(config: &Config, session_dir: &std::path::Path, send_discor
         None
     };
 
+    let metrics_collector = if config.metrics.enabled {
+        Some(ground_station::metrics::MetricsCollector::new(
+            std::path::PathBuf::from(&config.metrics.file_path),
+        ))
+    } else {
+        None
+    };
+
     println!("⚡ デコード処理を実行中...");
     let result = ground_station::worker::process_decode_job(
         &pass,
@@ -193,6 +218,7 @@ async fn decode_pass(config: &Config, session_dir: &std::path::Path, send_discor
         session_dir,
         discord_client.as_ref(),
         voicevox_client.as_ref(),
+        metrics_collector.as_ref(),
     )
     .await?;
 

@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::decoder::{DecodeResult, DecoderEngine};
 use crate::discord::DiscordClient;
+use crate::metrics::{MetricsCollector, PassMetricRecord};
 use crate::orbit::{SatellitePass, SignalType};
 use crate::voicevox::VoicevoxClient;
 use anyhow::{bail, Context, Result};
@@ -16,8 +17,8 @@ use tokio::sync::mpsc;
 // SDR による電波録音 (I/O) は衛星通過の決められた時間に完了しなければなりませんが、
 // satdump や gr-satellites による画像復調・DSP (CPU) は数分〜十数分かかることがあります。
 // 本モジュールは Tokio MPSC キューを通じて録音完了イベント（DecodeJob）を非同期に受領し、
-// 次の通過録音をブロックすることなくバックグラウンドでデコードと Discord / ずんだもん通知を
-// 自律的に処理します。
+// 次の通過録音をブロックすることなくバックグラウンドでデコードと Discord / ずんだもん通知、
+// そして成否メトリクスのファイル書き込みを自律的に処理します。
 // =============================================================================
 
 #[derive(Debug, Clone)]
@@ -31,6 +32,7 @@ pub async fn run_worker(
     mut rx: mpsc::Receiver<DecodeJob>,
     discord: Arc<DiscordClient>,
     voicevox: Arc<VoicevoxClient>,
+    metrics: Option<Arc<MetricsCollector>>,
 ) {
     info!("非同期デコードワーカ起動完了 (バックグラウンド待機中...)");
 
@@ -48,6 +50,7 @@ pub async fn run_worker(
             &job.session_dir,
             Some(&discord),
             Some(&voicevox),
+            metrics.as_deref(),
         )
         .await;
     }
@@ -55,16 +58,25 @@ pub async fn run_worker(
     info!("非同期デコードワーカ終了");
 }
 
-/// 衛星パスと生録音データからデコードを実行し、ずんだもん音声および Discord に通知
+/// 衛星パスと生録音データからデコードを実行し、成否メトリクスを記録してずんだもん音声および Discord に通知
 pub async fn process_decode_job(
     pass: &SatellitePass,
     raw_path: &Path,
     session_dir: &Path,
     discord: Option<&DiscordClient>,
     voicevox: Option<&VoicevoxClient>,
+    metrics: Option<&MetricsCollector>,
 ) -> Result<DecodeResult> {
     let pass_name = pass.satellite_name.clone();
     let decode_res = DecoderEngine::decode(pass, raw_path, session_dir).await;
+
+    // メトリクス記録 (「中身が見える」を基準に成功/失敗/あきらめる枠を自動分類してファイル書き込み)
+    if let Some(col) = metrics {
+        let record = PassMetricRecord::from_pass_and_result(pass, &decode_res, session_dir);
+        if let Err(e) = col.record_pass(&record).await {
+            warn!("メトリクス記録中に警告が発生しました: {}", e);
+        }
+    }
 
     match decode_res {
         Ok(result) => {

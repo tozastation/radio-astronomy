@@ -279,7 +279,19 @@ pub async fn run_daemon(config: Config) -> Result<()> {
     let (decode_tx, decode_rx) = tokio::sync::mpsc::channel::<crate::worker::DecodeJob>(32);
     let discord_arc = std::sync::Arc::new(crate::discord::DiscordClient::new(config.discord.clone()));
     let voice_arc = std::sync::Arc::new(voice_client.clone());
-    tokio::spawn(crate::worker::run_worker(decode_rx, discord_arc.clone(), voice_arc.clone()));
+    let metrics_collector = if config.metrics.enabled {
+        Some(std::sync::Arc::new(crate::metrics::MetricsCollector::new(
+            std::path::PathBuf::from(&config.metrics.file_path),
+        )))
+    } else {
+        None
+    };
+    tokio::spawn(crate::worker::run_worker(
+        decode_rx,
+        discord_arc.clone(),
+        voice_arc.clone(),
+        metrics_collector.clone(),
+    ));
 
     // デイリースケジューラの独立起動 (毎朝定時に本日のスケジュールをDiscord自動配信)
     let config_clone = config.clone();
@@ -450,6 +462,26 @@ pub async fn run_daemon(config: Config) -> Result<()> {
             Ok(r) => r,
             Err(e) => {
                 error!("録音プロセスの起動に失敗しました: {}", e);
+                if let Some(ref col) = metrics_collector {
+                    let fail_record = crate::metrics::PassMetricRecord {
+                        timestamp: chrono::DateTime::<chrono::Local>::from(chrono::Utc::now()).to_rfc3339(),
+                        satellite: pass.satellite_name.clone(),
+                        frequency_hz: pass.frequency_hz,
+                        signal_type: pass.signal_type.name().to_string(),
+                        max_elevation_deg: pass.max_elevation_deg,
+                        peak_azimuth_deg: pass.peak_azimuth_deg,
+                        status: crate::discord::PassStatus::DecodeError,
+                        outcome: crate::metrics::PassOutcome::Failure,
+                        content_viewable: false,
+                        content_summary: Some(format!("SDR録音プロセス起動失敗: {}", e)),
+                        session_dir: session_dir.to_string_lossy().to_string(),
+                        has_image: false,
+                        has_audio: false,
+                        has_telemetry_or_text: false,
+                        duration_secs: Some((pass.los - pass.aos).num_seconds().max(0) as u64),
+                    };
+                    let _ = col.record_pass(&fail_record).await;
+                }
                 continue;
             }
         };

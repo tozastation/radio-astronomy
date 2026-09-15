@@ -62,6 +62,10 @@ path = "tests/unit/adsb_test.rs"
 name = "unit_cw"
 path = "tests/unit/cw_test.rs"
 
+[[test]]
+name = "unit_metrics"
+path = "tests/unit/metrics_test.rs"
+
 
 # ==============================================================================
 # 🔗 統合テスト (Integration Tests)

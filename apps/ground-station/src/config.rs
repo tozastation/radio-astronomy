@@ -30,6 +30,8 @@ pub struct Config {
     pub satellites: SatellitesConfig,
     #[serde(default)]
     pub adsb: AdsbConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
 }
 
 fn default_gain() -> f64 {
@@ -389,6 +391,32 @@ impl Default for AdsbConfig {
             fetch_photos: true,
             discord_alert: true,
             voice_alert: true,
+        }
+    }
+}
+
+fn default_metrics_enabled() -> bool {
+    true
+}
+
+fn default_metrics_file_path() -> String {
+    "data/metrics/passes.jsonl".to_string()
+}
+
+/// 衛星通過メトリクス（成否管理）の設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct MetricsConfig {
+    #[serde(default = "default_metrics_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_metrics_file_path")]
+    pub file_path: String,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_metrics_enabled(),
+            file_path: default_metrics_file_path(),
         }
     }
 }
