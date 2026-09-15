@@ -28,6 +28,38 @@ fn test_load_default_config() {
     assert_eq!(config.storage.output_dir, "data/noaa");
     assert!(config.satellites.enable_meteor);
     assert!(!config.satellites.enable_noaa);
+    assert!(config.metrics.enabled);
+    assert_eq!(config.metrics.file_path, "data/metrics/passes.jsonl");
+}
+
+#[test]
+fn test_metrics_custom_config_parsing() {
+    let toml_str = r#"
+        [observer]
+        latitude = 35.6895
+        longitude = 139.6917
+        altitude_m = 40.0
+
+        [scheduler]
+        min_elevation_deg = 20.0
+        pre_alert_minutes = 3.0
+        tle_update_interval_hours = 24
+
+        [voicevox]
+        enabled = true
+        host = "http://localhost:50021"
+        speaker_id = 3
+
+        [storage]
+        output_dir = "data/noaa"
+
+        [metrics]
+        enabled = false
+        file_path = "custom/path/metrics.jsonl"
+    "#;
+    let config = Config::from_str(toml_str).expect("Failed to parse config");
+    assert!(!config.metrics.enabled);
+    assert_eq!(config.metrics.file_path, "custom/path/metrics.jsonl");
 }
 
 #[test]

@@ -68,3 +68,8 @@ discord_alert = true           # Discord Webhook 通知
 voice_alert = true             # ずんだもん音声通知
 
 
+[metrics]
+enabled = true                  # 衛星通過の成否メトリクス記録を有効化
+file_path = "data/metrics/passes.jsonl" # 追記型 JSON Lines 保存先
+
+
