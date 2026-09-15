@@ -64,6 +64,66 @@ fn test_demodulate_cw_iq_to_pcm() {
     );
 }
 
+/// ノイズおよびDCオフセットが重畳された合成 CW IQ 信号を生成
+fn generate_noisy_synthetic_cw_iq(
+    sample_rate: u32,
+    duration_secs: f32,
+    tone_freq: f32,
+    noise_amp: f32,
+    dc_offset: f32,
+) -> Vec<u8> {
+    let num_samples = (sample_rate as f32 * duration_secs) as usize;
+    let mut bytes = Vec::with_capacity(num_samples * 2);
+
+    let mut lcg_state: u64 = 123456789;
+
+    for n in 0..num_samples {
+        let t = n as f32 / sample_rate as f32;
+        let sig_amp = if t < duration_secs * 0.5 { 80.0 } else { 0.0 };
+        let phase = 2.0 * PI * tone_freq * t;
+
+        lcg_state = lcg_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let n1 = ((lcg_state >> 32) as i32 as f32) / 2147483648.0;
+        lcg_state = lcg_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let n2 = ((lcg_state >> 32) as i32 as f32) / 2147483648.0;
+
+        let i = (128.0 + dc_offset + sig_amp * phase.cos() + noise_amp * n1).clamp(0.0, 255.0) as u8;
+        let q = (128.0 + dc_offset + sig_amp * phase.sin() + noise_amp * n2).clamp(0.0, 255.0) as u8;
+        bytes.push(i);
+        bytes.push(q);
+    }
+    bytes
+}
+
+#[test]
+fn test_demodulate_noisy_cw_iq_suppresses_noise_floor() {
+    let in_rate = 240_000;
+    let out_rate = 11_025;
+    let duration = 0.2; // 200ms
+    // ノイズ振幅 20 (SNR 約 12dB)、DCオフセット +5LSB
+    let raw_iq = generate_noisy_synthetic_cw_iq(in_rate, duration, 750.0, 20.0, 5.0);
+
+    let pcm = demodulate_cw_iq_to_pcm(&raw_iq, in_rate, out_rate, 750.0);
+
+    let half = pcm.len() / 2;
+    let max_first_half = pcm[..half].iter().map(|&s| s.abs()).max().unwrap_or(0);
+    let max_second_half = pcm[half..].iter().map(|&s| s.abs()).max().unwrap_or(0);
+
+    assert!(
+        max_first_half > 8000,
+        "信号区間のトーン振幅が十分ではありません: {}",
+        max_first_half
+    );
+
+    // 適応スケルチにより、ノイズ区間のトーン振幅が信号区間の1/5未満に抑圧されていることを検証
+    assert!(
+        max_second_half < max_first_half / 5,
+        "ノイズ区間のスケルチ抑圧が不十分: first={}, second={}",
+        max_first_half,
+        max_second_half
+    );
+}
+
 #[test]
 fn test_create_cw_wav() {
     let in_rate = 240_000;
