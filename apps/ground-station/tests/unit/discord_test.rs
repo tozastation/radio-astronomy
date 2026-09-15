@@ -320,4 +320,78 @@ fn test_aircraft_alert_embed_build() {
     assert!(find_field("📏 最接近距離").is_some());
 }
 
+#[test]
+fn test_build_metrics_embed() {
+    use ground_station::metrics::{PassMetricRecord, PassMetricsSummary, PassOutcome, SatelliteStats};
+    use std::collections::BTreeMap;
+
+    let mut sat_stats = BTreeMap::new();
+    sat_stats.insert(
+        "Meteor-M N2-3".to_string(),
+        SatelliteStats {
+            total: 2,
+            success: 2,
+            failure: 0,
+            unknown: 0,
+        },
+    );
+    sat_stats.insert(
+        "XW-2A".to_string(),
+        SatelliteStats {
+            total: 1,
+            success: 0,
+            failure: 0,
+            unknown: 1,
+        },
+    );
+
+    let summary = PassMetricsSummary {
+        total_passes: 3,
+        success_count: 2,
+        failure_count: 0,
+        unknown_count: 1,
+        success_rate: 100.0,
+        satellite_stats: sat_stats,
+    };
+
+    let recent = vec![
+        PassMetricRecord {
+            timestamp: "2026-09-15T10:00:00+09:00".to_string(),
+            satellite: "Meteor-M N2-3".to_string(),
+            frequency_hz: 137_900_000,
+            signal_type: "LRPT".to_string(),
+            max_elevation_deg: 58.0,
+            peak_azimuth_deg: 45.0,
+            status: ground_station::discord::PassStatus::ImageDecoded,
+            outcome: PassOutcome::Success,
+            content_viewable: true,
+            content_summary: Some("LRPT 画像デコード成功".to_string()),
+            session_dir: "data/noaa/session1".to_string(),
+            has_image: true,
+            has_audio: false,
+            has_telemetry_or_text: false,
+            duration_secs: Some(600),
+        },
+    ];
+
+    let embed = ground_station::discord::DiscordClient::build_metrics_embed(&summary, &recent);
+
+    assert_eq!(embed["color"], 0x2ECC71); // 成功率50%以上でエメラルドグリーン
+    assert!(embed["title"].as_str().unwrap().contains("衛星通過成否メトリクス"));
+
+    let fields = embed["fields"].as_array().expect("fields は配列であること");
+    let find_field = |name: &str| fields.iter().find(|f| f["name"].as_str() == Some(name));
+
+    let summary_field = find_field("📈 観測サマリー").expect("観測サマリーフィールドが存在すること");
+    assert!(summary_field["value"].as_str().unwrap().contains("総観測: **3** 回"));
+    assert!(summary_field["value"].as_str().unwrap().contains("100.0%"));
+
+    let sat_field = find_field("🛰️ 衛星別実績").expect("衛星別実績フィールドが存在すること");
+    assert!(sat_field["value"].as_str().unwrap().contains("Meteor-M N2-3"));
+    assert!(sat_field["value"].as_str().unwrap().contains("XW-2A"));
+
+    let recent_field = find_field("🕒 直近の観測").expect("直近観測フィールドが存在すること");
+    assert!(recent_field["value"].as_str().unwrap().contains("Meteor-M N2-3"));
+}
+
 
