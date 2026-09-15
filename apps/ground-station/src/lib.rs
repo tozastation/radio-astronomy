@@ -4,6 +4,7 @@ pub mod cw;
 pub mod decoder;
 pub mod discord;
 pub mod health;
+pub mod metrics;
 pub mod orbit;
 pub mod receiver;
 pub mod scheduler;

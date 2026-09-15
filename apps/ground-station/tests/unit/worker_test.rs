@@ -435,3 +435,53 @@ targets = [
 
     let _ = std::fs::remove_dir_all(&session_dir);
 }
+
+#[tokio::test]
+async fn test_process_decode_job_records_metrics() {
+    use ground_station::metrics::{MetricsCollector, PassOutcome};
+    use ground_station::orbit::{SatellitePass, SignalType};
+
+    let temp_dir = std::env::temp_dir().join(format!("test_worker_metrics_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let jsonl_path = temp_dir.join("passes.jsonl");
+    let collector = MetricsCollector::new(jsonl_path.clone());
+
+    let session_dir = temp_dir.join("session_so50");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let raw_wav = session_dir.join("raw.wav");
+    std::fs::write(&raw_wav, b"dummy wav data").unwrap();
+
+    let pass = SatellitePass {
+        satellite_name: "SO-50".to_string(),
+        frequency_hz: 436_795_000,
+        signal_type: SignalType::FmRepeater,
+        aos: chrono::Utc::now() - chrono::Duration::minutes(5),
+        los: chrono::Utc::now(),
+        max_elevation_deg: 35.0,
+        peak_azimuth_deg: 180.0,
+    };
+
+    // process_decode_job に metrics を渡して実行 (SO-50 FM音声 -> Unknown / あきらめる枠)
+    let res = ground_station::worker::process_decode_job(
+        &pass,
+        &raw_wav,
+        &session_dir,
+        None,
+        None,
+        Some(&collector),
+    )
+    .await;
+
+    assert!(res.is_ok());
+    assert!(jsonl_path.exists());
+
+    let records = collector.read_all_records().await.unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].satellite, "SO-50");
+    assert_eq!(records[0].outcome, PassOutcome::Unknown);
+    assert!(!records[0].content_viewable);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
