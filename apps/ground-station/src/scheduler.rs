@@ -249,6 +249,23 @@ async fn send_daily_for_date(
     let day_passes = filter_passes_for_jst_date(&passes, date);
     let date_str = date.format("%Y-%m-%d").to_string();
 
+    let metrics_embed = if config.metrics.enabled {
+        let collector = crate::metrics::MetricsCollector::new(std::path::PathBuf::from(&config.metrics.file_path));
+        match collector.get_summary().await {
+            Ok(summary) if summary.total_passes > 0 => {
+                let recent = collector.read_recent_records(5).await.unwrap_or_default();
+                Some(crate::discord::DiscordClient::build_metrics_embed(&summary, &recent))
+            }
+            Ok(_) => None,
+            Err(e) => {
+                warn!("デイリー配信用のメトリクス集計取得に失敗しました: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     discord
         .send_daily_schedule(
             &day_passes,
@@ -256,6 +273,7 @@ async fn send_daily_for_date(
             config.observer.latitude,
             config.observer.longitude,
             config.scheduler.min_elevation_deg,
+            metrics_embed,
         )
         .await?;
 
