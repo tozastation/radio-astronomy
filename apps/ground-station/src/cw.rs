@@ -25,17 +25,15 @@ use std::io::Cursor;
 //    を連続計算することで、横軸=時間、縦軸=周波数、輝度=信号強度のヒートマップ画像を生成します。
 // =============================================================================
 
-/// 生IQ (cu8: 8-bit unsigned interleaved IQ) から 16-bit モノラル PCM を復調
+/// 生IQ (cu8: 8-bit unsigned interleaved IQ) から DC除去・コヒーレント積分・適応スケルチを施したクリーンな包絡線列を抽出
 /// - `raw_u8`: SDR がキャプチャした unsigned 8-bit IQ データ (I, Q, I, Q, ...)
 /// - `in_rate`: 入力サンプリングレート (例: 240,000 Hz)
-/// - `out_rate`: 出力音声サンプリングレート (例: 11,025 Hz)
-/// - `bfo_hz`: 再合成する可聴ビート周波数 (例: 750.0 Hz)
-pub fn demodulate_cw_iq_to_pcm(
+/// - `out_rate`: 出力サンプリングレート (例: 11,025 Hz または 200 Hz)
+pub fn extract_clean_envelopes(
     raw_u8: &[u8],
     in_rate: u32,
     out_rate: u32,
-    bfo_hz: f32,
-) -> Vec<i16> {
+) -> Vec<f32> {
     let num_iq_samples = raw_u8.len() / 2;
     if num_iq_samples == 0 {
         return Vec::new();
@@ -47,56 +45,119 @@ pub fn demodulate_cw_iq_to_pcm(
         return Vec::new();
     }
 
-    // 1. 各出力区間ごとの包絡線 (Envelope) を計算
-    let mut envelopes = Vec::with_capacity(out_samples);
-    let mut max_envelope = 0.0f32;
+    // 1. DC オフセット (LO リーク / 直流バイアス) を高精度に推定
+    let dc_check_samples = num_iq_samples.min(500_000);
+    let mut sum_i = 0.0f64;
+    let mut sum_q = 0.0f64;
+    for k in 0..dc_check_samples {
+        sum_i += raw_u8[2 * k] as f64;
+        sum_q += raw_u8[2 * k + 1] as f64;
+    }
+    let dc_i = (sum_i / dc_check_samples as f64) as f32;
+    let dc_q = (sum_q / dc_check_samples as f64) as f32;
 
+    // 2. コヒーレント積分 (検波前複素デシメーション)
+    // 振幅計算の前に I と Q をそれぞれブロック内で積算・平均化することで、
+    // ガウス雑音成分が正負で相殺され、ノイズ電力が帯域幅比 (約 -13.4 dB) に激減します。
+    let mut raw_envelopes = Vec::with_capacity(out_samples);
     for m in 0..out_samples {
         let start_idx = (m as f64 * decimation) as usize;
         let end_idx = (((m + 1) as f64 * decimation) as usize).min(num_iq_samples);
+        let count = (end_idx - start_idx).max(1) as f32;
 
-        let mut sum_amp = 0.0f32;
-        let count = (end_idx - start_idx).max(1);
-
+        let mut block_sum_i = 0.0f32;
+        let mut block_sum_q = 0.0f32;
         for k in start_idx..end_idx {
-            let i_raw = raw_u8[2 * k] as f32;
-            let q_raw = raw_u8[2 * k + 1] as f32;
-
-            // 0..255 を -1.0..+1.0 に正規化
-            let i = (i_raw - 128.0) / 128.0;
-            let q = (q_raw - 128.0) / 128.0;
-
-            let amp = (i * i + q * q).sqrt();
-            sum_amp += amp;
+            let i = (raw_u8[2 * k] as f32 - dc_i) / 128.0;
+            let q = (raw_u8[2 * k + 1] as f32 - dc_q) / 128.0;
+            block_sum_i += i;
+            block_sum_q += q;
         }
 
-        let avg_amp = sum_amp / (count as f32);
-        if avg_amp > max_envelope {
-            max_envelope = avg_amp;
-        }
-        envelopes.push(avg_amp);
+        let avg_i = block_sum_i / count;
+        let avg_q = block_sum_q / count;
+        raw_envelopes.push((avg_i * avg_i + avg_q * avg_q).sqrt());
     }
 
-    // 2. 移動平均による平滑化 (急峻なクリックノイズを低減)
-    let window_size = 5;
+    // 3. 移動平均による平滑化 (時定数 約 0.5ms)
+    let smooth_window = ((out_rate as f32 * 0.0005).round() as usize).max(3) | 1;
     let mut smoothed_envelopes = Vec::with_capacity(out_samples);
     for i in 0..out_samples {
-        let start = i.saturating_sub(window_size / 2);
-        let end = (i + window_size / 2 + 1).min(out_samples);
-        let sum: f32 = envelopes[start..end].iter().sum();
+        let start = i.saturating_sub(smooth_window / 2);
+        let end = (i + smooth_window / 2 + 1).min(out_samples);
+        let sum: f32 = raw_envelopes[start..end].iter().sum();
         smoothed_envelopes.push(sum / (end - start) as f32);
     }
 
-    // 3. BFO トーン合成と 16-bit PCM スケーリング
-    // 目標のピーク振幅: 約 20,000 (最大 32,767 に対して適度なヘッドルームを確保)
-    let gain = if max_envelope > 1e-4 {
-        20_000.0 / max_envelope
+    // 4. 動的ノイズフロア推定と適応スケルチ (ベースライン減算)
+    if smoothed_envelopes.len() < 20 {
+        return smoothed_envelopes;
+    }
+
+    let mut sorted = smoothed_envelopes.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 下位 20% をノイズフロアの代表値、上位 95% をピークの代表値とする
+    let floor_idx = (sorted.len() as f64 * 0.20) as usize;
+    let peak_idx = (sorted.len() as f64 * 0.95) as usize;
+    let noise_floor = sorted[floor_idx.min(sorted.len() - 1)];
+    let signal_peak = sorted[peak_idx.min(sorted.len() - 1)];
+    let dynamic_range = signal_peak - noise_floor;
+
+    // 相対 SNR 判定: 信号ピークがノイズフロアより 15% 以上高ければスケルチ発動
+    let has_signal = dynamic_range > noise_floor * 0.15;
+    let threshold = noise_floor + dynamic_range * 0.25;
+    let mut clean_envelopes = Vec::with_capacity(out_samples);
+
+    for &env in &smoothed_envelopes {
+        if has_signal && env <= threshold {
+            clean_envelopes.push(0.0f32);
+        } else if has_signal {
+            clean_envelopes.push(env - noise_floor);
+        } else {
+            clean_envelopes.push(env);
+        }
+    }
+
+    clean_envelopes
+}
+
+/// 生IQ (cu8: 8-bit unsigned interleaved IQ) から 16-bit モノラル PCM を復調
+/// - `raw_u8`: SDR がキャプチャした unsigned 8-bit IQ データ (I, Q, I, Q, ...)
+/// - `in_rate`: 入力サンプリングレート (例: 240,000 Hz)
+/// - `out_rate`: 出力音声サンプリングレート (例: 11,025 Hz)
+/// - `bfo_hz`: 再合成する可聴ビート周波数 (例: 750.0 Hz)
+pub fn demodulate_cw_iq_to_pcm(
+    raw_u8: &[u8],
+    in_rate: u32,
+    out_rate: u32,
+    bfo_hz: f32,
+) -> Vec<i16> {
+    let clean_envelopes = extract_clean_envelopes(raw_u8, in_rate, out_rate);
+    let out_samples = clean_envelopes.len();
+    if out_samples == 0 {
+        return Vec::new();
+    }
+
+    // クリック雑音を抑える軟化フィルタ (Soft-keying filter: 立ち上がり時定数 約 1ms)
+    let keying_filter_size = ((out_rate as f32 * 0.001).round() as usize).max(3) | 1;
+    let mut shaped_envelopes = Vec::with_capacity(out_samples);
+    for i in 0..out_samples {
+        let start = i.saturating_sub(keying_filter_size / 2);
+        let end = (i + keying_filter_size / 2 + 1).min(out_samples);
+        let sum: f32 = clean_envelopes[start..end].iter().sum();
+        shaped_envelopes.push(sum / (end - start) as f32);
+    }
+
+    let max_amp = shaped_envelopes.iter().copied().fold(0.0f32, f32::max);
+    let gain = if max_amp > 1e-4 {
+        20_000.0 / max_amp
     } else {
         1.0
     };
 
     let mut pcm = Vec::with_capacity(out_samples);
-    for (m, &env) in smoothed_envelopes.iter().enumerate() {
+    for (m, &env) in shaped_envelopes.iter().enumerate() {
         let t = m as f32 / out_rate as f32;
         let tone = (2.0 * PI * bfo_hz * t).sin();
         let sample = (env * gain * tone).clamp(-32767.0, 32767.0) as i16;
@@ -367,30 +428,14 @@ pub fn decode_morse_from_iq(
         return None;
     }
 
-    // 1. 包絡線サンプル列の計算 (時間分解能 5ms: 200 Hz ダウンサンプリング)
-    let env_rate = 200.0f64; // 200 samples/sec -> 1 sample = 5ms
-    let decimation = in_rate as f64 / env_rate;
-    let out_len = (num_iq as f64 / decimation).floor() as usize;
-    if out_len < 20 {
+    // 時間分解能 5ms (200 Hz ダウンサンプリング) でクリーン包絡線を抽出
+    let env_rate = 200u32;
+    let envelopes = extract_clean_envelopes(raw_u8, in_rate, env_rate);
+    if envelopes.len() < 20 {
         return None;
     }
 
-    let mut envelopes = Vec::with_capacity(out_len);
-    for m in 0..out_len {
-        let start = (m as f64 * decimation) as usize;
-        let end = (((m + 1) as f64 * decimation) as usize).min(num_iq);
-        let count = (end - start).max(1);
-
-        let mut sum_amp = 0.0f32;
-        for k in start..end {
-            let i = (raw_u8[2 * k] as f32 - 128.0) / 128.0;
-            let q = (raw_u8[2 * k + 1] as f32 - 128.0) / 128.0;
-            sum_amp += (i * i + q * q).sqrt();
-        }
-        envelopes.push(sum_amp / count as f32);
-    }
-
-    decode_morse_from_envelope_samples(&envelopes, env_rate)
+    decode_morse_from_envelope_samples(&envelopes, env_rate as f64)
 }
 
 /// 連続包絡線サンプル列からモールス符号テキストを復号
@@ -408,7 +453,7 @@ pub fn decode_morse_from_envelope_samples(
     let floor = sorted[(sorted.len() as f64 * 0.15) as usize];
     let peak = sorted[(sorted.len() as f64 * 0.90) as usize];
 
-    if peak - floor < 0.05 {
+    if peak - floor < 0.02 {
         // 信号振幅が小さすぎる（純粋なノイズ）
         return None;
     }
