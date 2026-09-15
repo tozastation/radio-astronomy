@@ -706,7 +706,102 @@ impl DiscordClient {
         })
     }
 
-    /// デイリーの衛星受信スケジュールを Discord に送信
+    /// 観測成否メトリクス集計サマリーと直近履歴から Discord Embed を構築
+    pub fn build_metrics_embed(
+        summary: &crate::metrics::PassMetricsSummary,
+        recent: &[crate::metrics::PassMetricRecord],
+    ) -> serde_json::Value {
+        let color = if summary.success_rate >= 50.0 && summary.success_count > 0 {
+            0x2ECC71 // エメラルドグリーン
+        } else {
+            0x3498DB // 宇宙ブルー
+        };
+
+        let mut fields = Vec::new();
+
+        // 1. 観測サマリーフィールド
+        let det = summary.success_count + summary.failure_count;
+        let rate_str = if det > 0 {
+            format!("{:.1}%", summary.success_rate)
+        } else {
+            "-".to_string()
+        };
+        let summary_value = format!(
+            "総観測: **{}** 回 | 確定成功率: **{}**\n✅ 成功 (中身確認済): {} 回\n❌ 失敗 (微弱/エラー): {} 回\n⏸️ 保留 (検知あきらめ): {} 回",
+            summary.total_passes,
+            rate_str,
+            summary.success_count,
+            summary.failure_count,
+            summary.unknown_count
+        );
+        fields.push(serde_json::json!({
+            "name": "📈 観測サマリー",
+            "value": summary_value,
+            "inline": false
+        }));
+
+        // 2. 衛星別実績フィールド
+        if !summary.satellite_stats.is_empty() {
+            let mut sat_lines = Vec::new();
+            for (sat, stats) in &summary.satellite_stats {
+                let sat_det = stats.success + stats.failure;
+                let sat_rate = if sat_det > 0 {
+                    format!("{:.0}%", (stats.success as f64 / sat_det as f64) * 100.0)
+                } else {
+                    "-".to_string()
+                };
+                sat_lines.push(format!(
+                    "・ **{}**: 成功 {} / 失敗 {} / 保留 {} (成功率: {})",
+                    sat, stats.success, stats.failure, stats.unknown, sat_rate
+                ));
+            }
+            fields.push(serde_json::json!({
+                "name": "🛰️ 衛星別実績",
+                "value": sat_lines.join("\n"),
+                "inline": false
+            }));
+        }
+
+        // 3. 直近の観測履歴フィールド
+        if !recent.is_empty() {
+            let mut recent_lines = Vec::new();
+            for rec in recent.iter().rev().take(5) {
+                let dt_str = if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&rec.timestamp) {
+                    parsed.format("%m/%d %H:%M").to_string()
+                } else {
+                    rec.timestamp.clone()
+                };
+                let icon = match rec.outcome {
+                    crate::metrics::PassOutcome::Success => "✅",
+                    crate::metrics::PassOutcome::Failure => "❌",
+                    crate::metrics::PassOutcome::Unknown => "⏸️",
+                };
+                let summary_snippet = rec.content_summary.as_deref().unwrap_or("-");
+                recent_lines.push(format!(
+                    "{} `{}` **{}** ({:.0}°): {}",
+                    icon, dt_str, rec.satellite, rec.max_elevation_deg, summary_snippet
+                ));
+            }
+            fields.push(serde_json::json!({
+                "name": "🕒 直近の観測",
+                "value": recent_lines.join("\n"),
+                "inline": false
+            }));
+        }
+
+        serde_json::json!({
+            "title": "📊 衛星通過成否メトリクス・観測実績レポート",
+            "description": "受信データの中身（画像・テレメトリ・復号テキスト）が確認できたパスを客観的「成功」として集計しています。",
+            "color": color,
+            "fields": fields,
+            "footer": {
+                "text": "RTL-SDR v4 自律地上局 メトリクスエンジン | data/metrics/passes.jsonl"
+            },
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })
+    }
+
+    /// デイリーの衛星受信スケジュール（およびメトリクスサマリー）を Discord に送信
     pub async fn send_daily_schedule(
         &self,
         passes: &[crate::orbit::SatellitePass],
@@ -714,6 +809,7 @@ impl DiscordClient {
         observer_lat: f64,
         observer_lon: f64,
         min_elev: f64,
+        metrics_embed: Option<serde_json::Value>,
     ) -> Result<()> {
         if !self.config.enabled {
             return Ok(());
@@ -729,10 +825,65 @@ impl DiscordClient {
 
         info!("Discord に本日の受信スケジュールを送信中 (対象パス: {} 件)", passes.len());
 
-        let embed = Self::build_daily_schedule_embed(passes, date_str, observer_lat, observer_lon, min_elev);
+        let schedule_embed = Self::build_daily_schedule_embed(passes, date_str, observer_lat, observer_lon, min_elev);
         let content_text = format!(
             "🌅 おはようございますなのだ！本日の衛星受信スケジュールをお届けするのだ！（予定パス: {}件）",
             passes.len()
+        );
+
+        let mut embeds = vec![schedule_embed];
+        if let Some(m_embed) = metrics_embed {
+            embeds.push(m_embed);
+        }
+
+        let payload = serde_json::json!({
+            "content": content_text,
+            "embeds": embeds
+        });
+
+        match self.http_client.post(webhook_url).json(&payload).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    info!("✨ Discord へのデイリースケジュール送信が完了しました！");
+                    Ok(())
+                } else {
+                    let status = resp.status();
+                    let text = resp.text().await.unwrap_or_default();
+                    warn!("Discord 送信失敗 (HTTP {}): {}", status, text);
+                    anyhow::bail!("Discord 送信失敗 (HTTP {}): {}", status, text);
+                }
+            }
+            Err(e) => {
+                warn!("Discord 送信エラー: {}", e);
+                Err(anyhow::anyhow!("Discord 送信エラー: {}", e))
+            }
+        }
+    }
+
+    /// 観測成否メトリクス集計レポートを Discord に単独送信
+    pub async fn send_metrics_report(
+        &self,
+        summary: &crate::metrics::PassMetricsSummary,
+        recent: &[crate::metrics::PassMetricRecord],
+    ) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        let webhook_url = match &self.config.webhook_url {
+            Some(url) if !url.trim().is_empty() => url.trim(),
+            _ => {
+                warn!("Discord通知が有効化されていますが、Webhook URL が未設定です");
+                return Ok(());
+            }
+        };
+
+        info!("Discord に観測成否メトリクスレポートを送信中...");
+
+        let embed = Self::build_metrics_embed(summary, recent);
+        let content_text = format!(
+            "📊 自律地上局の観測成否メトリクスレポートをお届けするのだ！（総観測: {}件、確定成功率: {:.1}%）",
+            summary.total_passes, summary.success_rate
         );
 
         let payload = serde_json::json!({
@@ -743,7 +894,7 @@ impl DiscordClient {
         match self.http_client.post(webhook_url).json(&payload).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    info!("✨ Discord へのデイリースケジュール送信が完了しました！");
+                    info!("✨ Discord へのメトリクスレポート送信が完了しました！");
                     Ok(())
                 } else {
                     let status = resp.status();

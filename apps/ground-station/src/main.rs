@@ -62,6 +62,9 @@ enum Commands {
         /// 直近表示するレコード件数 (デフォルト: 10)
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+        /// Discord にメトリクスレポートを送信するか (デフォルト: false)
+        #[arg(long, default_value_t = false)]
+        discord: bool,
     },
     /// 自律常駐監視デーモンを起動 (自動観測本番モード)
     Daemon,
@@ -108,8 +111,8 @@ async fn main() -> Result<()> {
         Commands::DecodePass { session_dir, discord } => {
             decode_pass(&config, &session_dir, discord).await?;
         }
-        Commands::Metrics { limit } => {
-            show_metrics(&config, limit).await?;
+        Commands::Metrics { limit, discord } => {
+            show_metrics(&config, limit, discord).await?;
         }
         Commands::Daemon => {
             println!("🔍 起動時事前ヘルスチェックを実行中...");
@@ -125,11 +128,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn show_metrics(config: &Config, limit: usize) -> Result<()> {
+async fn show_metrics(config: &Config, limit: usize, send_discord: bool) -> Result<()> {
     let collector = ground_station::metrics::MetricsCollector::new(PathBuf::from(&config.metrics.file_path));
     let summary = collector.get_summary().await?;
     let recent = collector.read_recent_records(limit).await?;
     ground_station::metrics::MetricsCollector::print_metrics_report(&summary, &recent);
+
+    if send_discord {
+        println!("📲 Discord にメトリクスレポートを送信中...");
+        let discord = ground_station::discord::DiscordClient::new(config.discord.clone());
+        discord.send_metrics_report(&summary, &recent).await?;
+        println!("✨ Discord 送信が完了しました！");
+    }
+
     Ok(())
 }
 

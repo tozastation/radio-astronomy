@@ -129,9 +129,21 @@ XW-2A              |        1 |        0 |        0 |        1 |        -
 =====================================================================================================================
 ```
 
+### 5.2 毎朝のデイリースケジュール配信（07:00 JST）との自動統合
+地上局デーモン（`ground-station daemon`）は、毎朝 07:00 JST に当日の衛星通過予定を Discord へ自動送信する「デイリースケジューラ」を備えています。
+本機能により、デイリー配信メッセージ内に**「本日の通過予定一覧 Embed」と「これまでの観測成否メトリクス Embed」が 1 つの通知に美しく連続してパッケージング**され、毎朝起床時に前日までの実績と当日の予定を一目で確認できます。
+
+### 5.3 CLI からの Discord 即時レポート送信
+手動でメトリクスレポートを Discord へ送信したい場合は、`--discord` フラグを付与して実行します：
+
+```bash
+cargo run --bin ground-station -- metrics --discord
+```
+
 ---
 
 ## 6. 一次情報リンク
 - [JSON Lines Text Format Specification](https://jsonlines.org/)
 - [DuckDB: Querying JSON Lines](https://duckdb.org/docs/data/json/overview.html)
+- [Discord Developer Portal: Execute Webhook (Embeds Object)](https://discord.com/developers/docs/resources/webhook#execute-webhook)
 - [Shannon, C. E. (1948) "A Mathematical Theory of Communication", Bell System Technical Journal](https://archive.org/details/bstj27-3-379)
