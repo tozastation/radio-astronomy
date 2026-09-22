@@ -117,13 +117,17 @@ fn test_load_real_config_file() {
     let config = Config::load_from_file("config.toml")
         .or_else(|_| Config::load_from_file("apps/ground-station/config.toml"))
         .expect("実ファイルの読み込み成功");
-    assert!(config.satellites.meteor.enabled);
-    assert!(config.satellites.cubesats.enabled);
+    // 案A: 衛星系は一時オフ、ADS-B を本命にする
+    assert!(!config.satellites.meteor.enabled);
+    assert!(!config.satellites.cubesats.enabled);
     assert_eq!(config.satellites.cubesats.targets.len(), 6);
     assert_eq!(config.satellites.cubesats.targets[0].name, "FUNcube-1");
-    assert!(config.satellites.iss.enabled);
+    assert!(!config.satellites.iss.enabled);
     assert_eq!(config.satellites.iss.freq, 145825000);
     assert_eq!(config.satellites.iss.signal_type, "AprsPacket");
+    assert!(config.adsb.enabled);
+    assert!(config.adsb.data_url.contains("18090"));
+    assert!(config.adsb.skip_proximity_filters);
 }
 
 #[test]
@@ -188,6 +192,7 @@ fn test_adsb_config_parsing() {
         fetch_photos = true
         discord_alert = true
         voice_alert = true
+        skip_proximity_filters = true
     "#;
 
     let config = Config::from_str(toml_str).expect("パース成功");
@@ -201,6 +206,7 @@ fn test_adsb_config_parsing() {
     assert!(config.adsb.fetch_photos);
     assert!(config.adsb.discord_alert);
     assert!(config.adsb.voice_alert);
+    assert!(config.adsb.skip_proximity_filters);
 }
 
 
