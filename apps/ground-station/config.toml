@@ -8,7 +8,7 @@ altitude_m = 200.0    # 標高 (m)
 min_elevation_deg = 20.0
 pre_alert_minutes = 3.0
 tle_update_interval_hours = 24
-daily_schedule_enabled = true          # 毎朝のデイリースケジュール Discord 自動配信を有効化
+daily_schedule_enabled = false         # 案A: 衛星対象オフ中は朝の衛星スケジュール通知を停止
 daily_schedule_hour_jst = 7            # 配信時刻 (時 / JST: 07:00)
 daily_schedule_minute_jst = 0          # 配信時刻 (分 / JST)
 daily_schedule_send_on_startup = false # デーモン起動時に本日分が未送信なら即座に送信するか
@@ -29,14 +29,18 @@ gain = 45.0          # チューナー利得 (dB)。宇宙からの微弱信号�
 sample_rate = 60000  # SDRサンプリングレート (60kHz)
 ppm_error = 0        # 周波数偏差補正 (PPM)
 
+# --- 案A (ADS-B 成功優先): 衛星系は SDR 競合回避のため一時オフ -------------------
+# Ultrafeeder が 1090 MHz でドングルを独占できるようにする。
+# ADS-B で機影確認できたあと、北寄りパスから個別に再有効化する。
+
 [satellites.meteor]
-enabled = true   # ロシア極軌道気象衛星 Meteor-M (N2-3, N2-4: 2026年現役 LRPTデジタル画像)
+enabled = false  # 一時オフ (Meteor-M LRPT)。再有効化時は北寄り高仰角パスから
 
 [satellites.noaa]
 enabled = false  # 米国 NOAA (15, 18, 19: 2025年8月に全機退役・停波済み)
 
 [satellites.cubesats]
-enabled = true
+enabled = false  # 一時オフ (FUNcube / XW-2A / CAS-4A / UmKA-1 / SONATE-2 / SO-50)
 targets = [
     { name = "FUNcube-1", norad_id = 39444, freq = 145935000, type = "BpskTelemetry" }, # 145MHz VHF高感度テレメトリ
     { name = "XW-2A", norad_id = 40903, freq = 145660000, type = "MorseCw" },           # 145MHz 常時強烈CWビーコン (CAS-3A)
@@ -47,16 +51,16 @@ targets = [
 ]
 
 [satellites.iss]
-enabled = true
+enabled = false  # 一時オフ (ISS APRS)
 norad_id = 25544
 freq = 145825000
 signal_type = "AprsPacket" # 145.825MHz 1200bps AFSK AX.25 常時パケットデジピータ中継
 
 
 [adsb]
-enabled = true
-data_url = "http://localhost:8080/data/aircraft.json"
-tar1090_url = "http://localhost:8080"
+enabled = true                 # 案A 本命: Ultrafeeder / tar1090 経由の航空機受信
+data_url = "http://localhost:18090/data/aircraft.json"  # ホスト 18090 → コンテナ 80 (8080/8081/8090 は他アプリ)
+tar1090_url = "http://localhost:18090"
 poll_interval_secs = 2
 max_distance_km = 15.0         # 自宅から半径 15km 以内に接近したら通知 (青梅市上空の主要航空路をカバー)
 min_altitude_m = 500.0         # 地上駐機ノイズ除外
