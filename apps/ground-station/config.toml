@@ -70,6 +70,8 @@ fetch_routes = true            # hexdb.io 発着ルート取得
 fetch_photos = true            # Planespotters.net 実機写真取得
 discord_alert = true           # Discord Webhook 通知
 voice_alert = true             # ずんだもん音声通知
+# 検証用: true で距離・高度・位置必須を外す（捕捉機ほぼ全部が通知対象）。終わったら false に戻す
+skip_proximity_filters = true
 
 
 [metrics]
