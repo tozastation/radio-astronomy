@@ -1,9 +1,33 @@
 services:
   # ずんだもん音声合成エンジン (CPU版)
-  # 公式Dockerイメージ: https://hub.docker.com/r/voicevox/voicevox_engine
+  # 公式: https://hub.docker.com/r/voicevox/voicevox_engine
   voicevox:
     image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
     container_name: voicevox_engine
     ports:
       - "50021:50021"
     restart: unless-stopped
+
+  # ADS-B (1090 MHz) → readsb + tar1090 Web レーダー
+  # 公式イメージ: https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder
+  # 起動: docker compose up -d ultrafeeder
+  # UI / JSON: http://localhost:18090  /  http://localhost:18090/data/aircraft.json
+  # ※ 8080/8081 は他アプリ、8090 は PocketBase 占有のため 18090 を使用
+  ultrafeeder:
+    image: ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest
+    container_name: ultrafeeder
+    restart: unless-stopped
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    ports:
+      - "18090:80"
+    environment:
+      TZ: Asia/Tokyo
+      READSB_DEVICE_TYPE: rtlsdr
+      READSB_GAIN: auto
+      # 観測地: 東京都青梅市 (config.toml [observer] と整合)
+      READSB_LAT: "35.7903"
+      READSB_LON: "139.2584"
+      READSB_ALT: 200m

@@ -1,0 +1,47 @@
+# Radio Astronomy with RTL-SDR v4 — Cursor Rules
+
+本リポジトリは、RTL-SDR Blog V4 を活用した電波天文学（21cm HI線、銀河回転曲線、太陽・流星電波観測）および分散自律観測基盤の開発プロジェクトである。
+
+出典: プロジェクト方針は [GEMINI.md](GEMINI.md) と同期すること。方針変更時は両方を更新する。
+
+## ユーザープロファイル & コミュニケーション
+
+- **バックグラウンド**: ソフトウェアエンジニア（SRE）。インフラ、分散システム、Linux、Python、コンテナ/Kubernetes に精通。
+- **補完領域**: 高校〜大学初年級の数学、DSP、天文学の専門理論。
+- **解説方針**:
+  - 数式や理論を過剰に IT/インフラ比喩で置き換えない。無線工学・電磁気・DSP・情報理論の物理・数学的メカニズムで、情報量を落とさず解説する。
+  - 専門用語は適宜 [docs/00_glossary.md](docs/00_glossary.md) へのリンクや補足を添える。
+  - 外部ツール・OS・ドライバ・ハードウェア仕様を扱うときは、公式サイト / GitHub / Microsoft Learn 等の一次情報リンクを必ず添える。
+  - コマンド実行やコード変更時は、「今何をしているか」「なぜ必要か」を技術的背景とともに説明する。
+  - 知識・質疑応答は逐次 [docs/04_qa.md](docs/04_qa.md) に追記する。情報量が多いトピックは個別ファイルへ分割し、親ドキュメントからリンクする。
+  - 数式は次の3要素をセットで書く: (1) 記号一覧（意味・単位） (2) 日本語での読み解き (3) 展開ステップ・直感イメージ。
+  - 一方的に進めず、ユーザー承認を挟みながら1ステップずつ進める。
+
+## システムアーキテクチャ (2台体制)
+
+- **エッジ観測ノード (GPD Pocket3)**: アンテナ直下。RTL-SDR v4 から 2.4MSPS IQ 受信。エッジ DSP（高速 FFT & 1秒積算）で ~8 KB/s に圧縮。KubeEdge EdgeCore で 24h 自律稼働。DuckDB / SQLite / Parquet にローカル蓄積。
+- **分析・開発 WS (Windows 11 + WSL2)**: k3s + KubeEdge cloudcore。オンデマンド起動。LAN 越しにエッジデータを SQL/Jupyter 分析。Grafana / JupyterLab / VS Code。
+
+詳細は [docs/03_system_architecture.md](docs/03_system_architecture.md)。
+
+## 技術スタック
+
+- **分析・天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
+- **エッジ DSP / コレクター**: Rust / C / Python (`librtlsdr`, `sdr`, `rustfft`)
+- **ストレージ**: DuckDB, Parquet, SQLite, TimescaleDB, MinIO
+- **可視化・運用**: Grafana, Prometheus, JupyterLab, KubeEdge, k3s, kubectl, k9s
+
+## コード・ドキュメント慣習
+
+- 地上局デーモンは `apps/ground-station/`（Rust）。観測成功の定義は「中身が見える」（画像・テレメトリJSON・復号テキスト）。判定困難な対象は `unknown`（あきらめる作戦）。詳細は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md)。
+- 観測地は東京都青梅市。アンテナは **北向きベランダ**（2026-09-15 移設、見通しおおよそ方位 $270^\circ \sim 90^\circ$）。南〜南西側は建物 RC 遮蔽を想定。極軌道は北寄りパス（北西・北・東北東など）を優先する。
+- NOAA APT は退役済み。気象画像系は Meteor-M LRPT 等を優先。
+- **現行フェーズ（案A）**: 衛星受信（Meteor / CubeSat / ISS）とデイリー衛星スケジュールは `config.toml` で一時オフ。RTL-SDR は ADS-B（Ultrafeeder 1090 MHz）に明け渡し、「機影が見える」成功を先に取る。
+- ADS-B / tar1090 のホスト公開ポートは **18090**（8080/8081 は他アプリ、8090 は PocketBase）。`data_url` / `tar1090_url` も 18090 に合わせる。
+
+## コミットルール
+
+- 日本語で記述する
+- 絵文字は禁止
+- Conventional Commits（例: `feat: ...`, `fix: ...`, `docs: ...`）
+- 「〜を追加」「〜を修正」のように簡潔に記述する
