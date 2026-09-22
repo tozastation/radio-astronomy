@@ -394,9 +394,17 @@ pub async fn run_adsb_monitor(
     let candidate_urls = generate_candidate_data_urls(&config.adsb.data_url);
     let mut active_url: Option<String> = None;
 
+    if config.adsb.skip_proximity_filters {
+        warn!(
+            "⚠️ ADS-B skip_proximity_filters=true: 距離・高度・位置必須フィルタを無効化しています（検証用）。終わったら false に戻してください"
+        );
+    }
     info!(
-        "✈️ ADS-B 航空機近接監視ループを開始しました (設定URL: {}, 判定半径: {:.1}km, 探索候補: {} 件)",
-        config.adsb.data_url, config.adsb.max_distance_km, candidate_urls.len()
+        "✈️ ADS-B 航空機近接監視ループを開始しました (設定URL: {}, 判定半径: {:.1}km, フィルタ緩和: {}, 探索候補: {} 件)",
+        config.adsb.data_url,
+        config.adsb.max_distance_km,
+        config.adsb.skip_proximity_filters,
+        candidate_urls.len()
     );
 
     let mut last_cleanup = Instant::now();
@@ -511,36 +519,46 @@ pub async fn run_adsb_monitor(
 
         // 3. 各機体の接近判定
         for ac in &aircraft_json.aircraft {
-            let (lat, lon) = match (ac.lat, ac.lon) {
-                (Some(la), Some(lo)) => (la, lo),
-                _ => continue,
+            let skip = config.adsb.skip_proximity_filters;
+
+            let (dist_km, alt_m) = match (ac.lat, ac.lon, ac.altitude_m()) {
+                (Some(la), Some(lo), Some(alt)) => {
+                    let dist = haversine_distance_km(
+                        config.observer.latitude,
+                        config.observer.longitude,
+                        la,
+                        lo,
+                    );
+                    if !skip {
+                        if alt < config.adsb.min_altitude_m || alt > config.adsb.max_altitude_m {
+                            continue;
+                        }
+                        if dist > config.adsb.max_distance_km {
+                            continue;
+                        }
+                    }
+                    (dist, alt)
+                }
+                (Some(la), Some(lo), None) if skip => {
+                    // 検証用: 高度不明でも位置があれば通知
+                    let dist = haversine_distance_km(
+                        config.observer.latitude,
+                        config.observer.longitude,
+                        la,
+                        lo,
+                    );
+                    (dist, 0.0)
+                }
+                (_, _, Some(alt)) if skip => {
+                    // 検証用: 位置なし Mode S も通知（距離は不明のため -1）
+                    ( -1.0, alt)
+                }
+                (_, _, None) if skip => (-1.0, 0.0),
+                _ => continue, // 通常運用: 位置・高度が揃わない機体はスキップ
             };
-
-            let alt_m = match ac.altitude_m() {
-                Some(a) => a,
-                None => continue,
-            };
-
-            // 高度範囲チェック
-            if alt_m < config.adsb.min_altitude_m || alt_m > config.adsb.max_altitude_m {
-                continue;
-            }
-
-            // 自宅座標からの距離計算
-            let dist_km = haversine_distance_km(
-                config.observer.latitude,
-                config.observer.longitude,
-                lat,
-                lon,
-            );
-
-            // ジオフェンス判定
-            if dist_km > config.adsb.max_distance_km {
-                continue;
-            }
 
             // クールダウン & 通知済みチェック
-            if !cache.should_notify(&ac.hex, dist_km) {
+            if !cache.should_notify(&ac.hex, dist_km.max(0.0)) {
                 continue;
             }
 

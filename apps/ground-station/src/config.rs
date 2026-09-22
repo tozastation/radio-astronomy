@@ -374,6 +374,9 @@ pub struct AdsbConfig {
     pub discord_alert: bool,
     #[serde(default = "default_true")]
     pub voice_alert: bool,
+    /// true のとき距離・高度・位置必須の近接フィルタをスキップ（検証用。常用は false）
+    #[serde(default = "default_false")]
+    pub skip_proximity_filters: bool,
 }
 
 impl Default for AdsbConfig {
@@ -391,6 +394,7 @@ impl Default for AdsbConfig {
             fetch_photos: true,
             discord_alert: true,
             voice_alert: true,
+            skip_proximity_filters: false,
         }
     }
 }
