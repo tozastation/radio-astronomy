@@ -66,6 +66,14 @@ path = "tests/unit/cw_test.rs"
 name = "unit_metrics"
 path = "tests/unit/metrics_test.rs"
 
+[[test]]
+name = "unit_solar_config"
+path = "tests/unit/solar_config_test.rs"
+
+[[test]]
+name = "unit_solar_sun_pos"
+path = "tests/unit/solar_sun_pos_test.rs"
+
 
 # ==============================================================================
 # 🔗 統合テスト (Integration Tests)
