@@ -34,7 +34,7 @@
   - `SolarConfig`: TOML configuration for solar observation (freq, sample_rate, gain, thresholds, mode).
   - `calculate_sun_position(lat_deg: f64, lon_deg: f64, time: DateTime<Utc>) -> SunPosition { azimuth_deg: f64, elevation_deg: f64 }`
 
-- [ ] **Step 1: Write failing tests for `SolarConfig` and `calculate_sun_position`**
+- [x] **Step 1: Write failing tests for `SolarConfig` and `calculate_sun_position`**
 
 `apps/ground-station/tests/unit/solar_config_test.rs`:
 ```rust
@@ -99,12 +99,12 @@ fn test_sun_position_midnight() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --test unit_solar_config --test unit_solar_sun_pos`
 Expected: FAIL (modules not found, config fields not found)
 
-- [ ] **Step 3: Implement `SolarConfig` and `sun_pos.rs`**
+- [x] **Step 3: Implement `SolarConfig` and `sun_pos.rs`**
 
 Update `apps/ground-station/src/config.rs`:
 ```rust
@@ -193,12 +193,12 @@ pub fn calculate_sun_position(lat_deg: f64, lon_deg: f64, time: DateTime<Utc>) -
 
 Update `apps/ground-station/Cargo.toml` to register tests `unit_solar_config` and `unit_solar_sun_pos`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --test unit_solar_config --test unit_solar_sun_pos`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/config.rs apps/ground-station/src/lib.rs apps/ground-station/src/solar/ tests/unit/solar_config_test.rs tests/unit/solar_sun_pos_test.rs apps/ground-station/Cargo.toml
@@ -221,7 +221,7 @@ git commit -m "feat: 太陽観測の設定モデルと太陽位置計算モジ�
   - `SolarSecondMetrics { timestamp: i64, total_power_db: f32, baseline_median_db: f32, snr_db: f32, is_burst: bool, spectrum_db: Vec<f32> }`
   - `calculate_median_and_mad(values: &[f32]) -> (f32, f32)`
 
-- [ ] **Step 1: Write failing tests for MAD calculation and burst detection**
+- [x] **Step 1: Write failing tests for MAD calculation and burst detection**
 
 `apps/ground-station/tests/unit/solar_dsp_test.rs`:
 ```rust
@@ -244,12 +244,12 @@ fn test_dsp_burst_detection_trigger() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --test unit_solar_dsp`
 Expected: FAIL (module not found)
 
-- [ ] **Step 3: Implement `SolarDsp` and robust statistics**
+- [x] **Step 3: Implement `SolarDsp` and robust statistics**
 
 Implement `apps/ground-station/src/solar/dsp.rs`:
 - Window function generation: Hamming 1024 points.
@@ -258,12 +258,12 @@ Implement `apps/ground-station/src/solar/dsp.rs`:
 - 1-second integration: accumulate $|X[k]|^2$, compute total power in dB, push to `RingBuffer<f32, 300>`.
 - Trigger logic: compute median and MAD over ring buffer, check $P > \text{median} + 4\sigma$ and $dP/dt \ge 3.0\text{ dB/s}$.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --test unit_solar_dsp`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/solar/dsp.rs apps/ground-station/src/solar/mod.rs tests/unit/solar_dsp_test.rs apps/ground-station/Cargo.toml
@@ -284,7 +284,7 @@ git commit -m "feat: リアルタイムFFT積算とMAD動的しきい値検知DS
   - `render_waterfall_png(spectra: &[Vec<f32>], width: u32, height: u32, output_path: &Path, title: &str) -> anyhow::Result<()>`
   - Color palette: Inferno or Viridis mapping from power range [min_db, max_db] to RGB.
 
-- [ ] **Step 1: Write failing test for waterfall PNG generation**
+- [x] **Step 1: Write failing test for waterfall PNG generation**
 
 `apps/ground-station/tests/unit/solar_waterfall_test.rs`:
 ```rust
@@ -317,24 +317,24 @@ fn test_render_waterfall_png() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify it fails**
+- [x] **Step 2: Run tests to verify it fails**
 
 Run: `cargo test --test unit_solar_waterfall`
 Expected: FAIL (module not found)
 
-- [ ] **Step 3: Implement `render_waterfall_png`**
+- [x] **Step 3: Implement `render_waterfall_png`**
 
 Implement `apps/ground-station/src/solar/waterfall.rs`:
 - Map 2D float array to `image::RgbImage` using bilinear interpolation or pixel nearest-neighbor.
 - Apply colormap (Inferno heatmap: black $\to$ purple $\to$ red $\to$ yellow).
 - Save to PNG with compression.
 
-- [ ] **Step 4: Run tests to verify it passes**
+- [x] **Step 4: Run tests to verify it passes**
 
 Run: `cargo test --test unit_solar_waterfall`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/solar/waterfall.rs apps/ground-station/src/solar/mod.rs tests/unit/solar_waterfall_test.rs apps/ground-station/Cargo.toml
@@ -357,7 +357,7 @@ git commit -m "feat: 太陽電波スペクトログラムPNG生成モジュー�
   - `SolarStorage`: writes 1-second JSON Lines records (`metrics_YYYY-MM-DD.jsonl`) atomically.
   - `SolarNotifier`: constructs rich Discord embed with attached waterfall PNG and sends to configured Webhook with cooldown management.
 
-- [ ] **Step 1: Write failing tests for storage and notification builder**
+- [x] **Step 1: Write failing tests for storage and notification builder**
 
 `apps/ground-station/tests/unit/solar_storage_test.rs`:
 ```rust
@@ -386,22 +386,22 @@ fn test_solar_storage_append() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --test unit_solar_storage --test unit_solar_notification`
 Expected: FAIL
 
-- [ ] **Step 3: Implement `storage.rs` and `notification.rs`**
+- [x] **Step 3: Implement `storage.rs` and `notification.rs`**
 
 - `storage.rs`: Atomic append to daily JSON Lines file using `std::fs::OpenOptions`.
 - `notification.rs`: Formats embed with event metrics, integrates cooldown timer (180s), and uses `crate::discord::DiscordClient::send_embed_with_file`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --test unit_solar_storage --test unit_solar_notification`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/solar/storage.rs apps/ground-station/src/solar/notification.rs apps/ground-station/src/solar/mod.rs tests/unit/solar_storage_test.rs tests/unit/solar_notification_test.rs apps/ground-station/Cargo.toml
@@ -423,7 +423,7 @@ git commit -m "feat: 太陽電波メトリクスのJSON Lines保存とDiscord通
   - `SolarStationManager`: launches `rtl_sdr`, manages stdout reader thread, DSP thread, and async event worker.
   - Binary `solar-station` CLI options (`--config`, `--dry-run`, `--continuous`).
 
-- [ ] **Step 1: Write integration test with simulated IQ stream**
+- [x] **Step 1: Write integration test with simulated IQ stream**
 
 `apps/ground-station/tests/integration/solar_station_test.rs`:
 ```rust
@@ -434,12 +434,12 @@ async fn test_solar_station_pipeline_simulated() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify it fails**
+- [x] **Step 2: Run tests to verify it fails**
 
 Run: `cargo test --test integration_solar_station`
 Expected: FAIL (binary / manager not found)
 
-- [ ] **Step 3: Implement `manager.rs` and `bin/solar_station.rs`**
+- [x] **Step 3: Implement `manager.rs` and `bin/solar_station.rs`**
 
 Implement pipeline:
 1. Parse CLI arguments (`clap`).
@@ -455,12 +455,12 @@ name = "solar-station"
 path = "src/bin/solar_station.rs"
 ```
 
-- [ ] **Step 4: Run integration test and cargo check**
+- [x] **Step 4: Run integration test and cargo check**
 
 Run: `cargo test --test integration_solar_station && cargo check --bin solar-station`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/ground-station/src/solar/manager.rs apps/ground-station/src/bin/solar_station.rs apps/ground-station/Cargo.toml tests/integration/solar_station_test.rs
@@ -476,25 +476,25 @@ git commit -m "feat: 太陽電波観測ステーションのメインデーモ�
 - Create: `docs/qa/12_solar_station_architecture_and_burst_detection.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Write detailed Q&A technical document**
+- [x] **Step 1: Write detailed Q&A technical document**
 
 Create `docs/qa/12_solar_station_architecture_and_burst_detection.md`:
 - Detailed explanation of 70MHz 1/4 wavelength monopole resonance.
 - Mathematical derivation of MAD robust thresholding.
 - 3-tier thread concurrency and storage optimization.
 
-- [ ] **Step 2: Update `docs/04_qa.md` and `README.md`**
+- [x] **Step 2: Update `docs/04_qa.md` and `README.md`**
 
 Add links and summary for solar observation pipeline.
 
-- [ ] **Step 3: Run full test suite across all crates**
+- [x] **Step 3: Run full test suite across all crates**
 
 Run: `cargo test --all`
 Expected: ALL PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
-git add docs/04_qa.md docs/qa/12_solar_station_architecture_and_burst_detection.md README.md
+git add docs/04_qa.md docs/qa/12_solar_station_architecture_and_burst_detection.md README.md docs/superpowers/plans/2026-09-27-solar-station.md
 git commit -m "docs: 太陽電波観測ステーションの運用ガイドと技術解説を追加"
 ```
