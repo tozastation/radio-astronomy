@@ -33,6 +33,7 @@
     - [1. RTL-SDR Blog V4 ドライバのインストール (Linux)](#1-rtl-sdr-blog-v4-ドライバのインストール-linux)
     - [2. Python 開発環境のセットアップ](#2-python-開発環境のセットアップ)
     - [3. 動作確認 (SDR ハローワールド)](#3-動作確認-sdr-ハローワールド)
+    - [4. 太陽電波観測ステーション (solar-station) の起動](#4-太陽電波観測ステーション-solar-station-の起動)
   - [📁 ディレクトリ構成](#-ディレクトリ構成)
   - [📄 ライセンス](#-ライセンス)
 
@@ -272,6 +273,21 @@ rtl_test -t
 jupyter lab
 ```
 
+### 4. 太陽電波観測ステーション (solar-station) の起動
+付属の伸縮アンテナ（最大1m伸長＋金属板吸着による70MHz共振）とRTL-SDR Blog V4を用いた太陽フレア電波バースト（Type II / Type III）自動観測デーモンです。  
+生IQデータをメモリ上でリアルタイムFFT後に破棄し、1秒集約レコードのみを保存することで、1日わずか約10MBの省リソース観測を実現します（詳細は [docs/qa/12_solar_station_architecture_and_burst_detection.md](docs/qa/12_solar_station_architecture_and_burst_detection.md) を参照）。
+
+```bash
+# 疑似IQ信号によるドライラン動作確認 (ハードウェア不要)
+cargo run --bin solar-station -- --dry-run
+
+# 本番観測 (日照時間帯 El >= 5° に自動受信・夜間自動待機)
+cargo run --bin solar-station -- -c apps/ground-station/config.toml
+
+# 24時間常時観測モード (銀河背景雑音・電離層擾乱の連続ロギング)
+cargo run --bin solar-station -- -c apps/ground-station/config.toml --continuous
+```
+
 ---
 
 ## 📁 ディレクトリ構成
@@ -283,25 +299,32 @@ radio-astronomy/
 ├── mise.toml                          # ツールバージョン管理 (mise)
 ├── pyproject.toml / requirements.txt  # Python依存ライブラリ一覧 (Jupyter分析用)
 ├── apps/                              # 🚀 独立したツール・デーモン群 (モノレポ構成)
-│   ├── ground-station/                # 🛰️ [Rust] 自律型パーソナル衛星地上局 (Meteor-M, CubeSat, ISS)
+│   ├── ground-station/                # 🛰️ [Rust] 自律型地上局 & 太陽電波観測ステーション
 │   │   ├── Cargo.toml                 # クレート固有の依存関係
-│   │   ├── config.toml                # 観測地座標・衛星リスト・VOICEVOX等の設定
+│   │   ├── config.toml                # 観測地座標・衛星リスト・太陽観測設定等
 │   │   └── src/
-│   │       ├── main.rs                # CLIサブコマンド (check / schedule / test-voice / test-discord / daemon)
+│   │       ├── main.rs                # 衛星追尾CLI (check / schedule / daemon)
+│   │       ├── bin/
+│   │       │   └── solar_station.rs   # ☀️ 太陽電波観測ステーション CLIバイナリ
+│   │       ├── solar/                 # ☀️ 太陽電波観測コアモジュール
+│   │       │   ├── dsp.rs             # FFT・1秒積算・MAD動的しきい値検知
+│   │       │   ├── manager.rs         # 3層スレッド分離パイプラインマネージャ
+│   │       │   ├── notification.rs    # Discord Webhook & クールダウン制御
+│   │       │   ├── storage.rs         # 追記型 JSON Lines ストレージ
+│   │       │   ├── sun_pos.rs         # NOAA簡易太陽高度・方位角計算
+│   │       │   └── waterfall.rs       # Infernoカラーマップ スペクトログラム生成
 │   │       ├── config.rs              # TOML設定読み込み (serde)
-│   │       ├── health.rs              # 起動前ヘルスチェック (RTL-SDR / ツール群 / VOICEVOX / ストレージ)
-│   │       ├── orbit.rs               # CelesTrak 多衛星TLE取得 & sgp4軌道・仰角計算
-│   │       ├── scheduler.rs           # tokio非同期タイマーループ & ステートマシン
-│   │       ├── receiver.rs            # rtl_fm / rtl_sdr プロセス制御 (WAV / 生IQベースバンド録音)
-│   │       ├── decoder.rs             # プラグイン型デコーダ (satdump / noaa-apt)
-│   │       ├── worker.rs              # 非同期デコードワーカ (MPSC時分割パイプライン)
+│   │       ├── health.rs              # 起動前ヘルスチェック
+│   │       ├── orbit.rs               # CelesTrak 多衛星TLE取得 & sgp4軌道計算
+│   │       ├── scheduler.rs           # tokio非同期タイマーループ
+│   │       ├── receiver.rs            # rtl_fm / rtl_sdr プロセス制御
+│   │       ├── decoder.rs             # プラグイン型デコーダ
+│   │       ├── worker.rs              # 非同期デコードワーカ
 │   │       ├── discord.rs             # Discord Webhook 通知
-│   │       └── voicevox.rs            # VOICEVOX API 連携 & ずんだもん音声通知
+│   │       └── voicevox.rs            # VOICEVOX API 連携
 │   ├── sdr-collector/                 # ⚡ [Rust] (今後) 2.4MSPS 高速IQ受信・FFT・1秒積算エッジデーモン
 │   └── meteor-detector/               # 🌠 [Python/Rust] (今後) 流星電波反射エコー検知
-├── packages/                          # 📦 ツール間で共通利用するライブラリ群 (必要に応じて追加)
-│   ├── rust/                          # 例: sdr-common, dsp-utils などの共通クレート
-│   └── python/                        # 例: 共通の天文学ユーティリティ等
+├── packages/                          # 📦 ツール間で共通利用するライブラリ群
 ├── docs/                              # 📚 数学・DSP・電波天文学の詳細解説ノート・仕様書
 │   ├── 00_glossary.md                 # 電波天文学 & SDR 用語集 (Glossary)
 │   ├── 01_math_and_dsp_cheatsheet.md  # 複素数・IQ・FFT・窓関数・雑音理論
@@ -309,18 +332,15 @@ radio-astronomy/
 │   ├── 03_system_architecture.md      # 自宅KubeEdge分散観測システム構成図
 │   ├── 04_qa.md                       # 質疑応答・ナレッジ蓄積集 (Q&A)
 │   ├── 05_getting_started.md          # エッジ構築＆電波受信ファーストステップ
+│   ├── qa/                            # 📖 トピック別詳細解説集
+│   │   ├── 11_stellar_radio_reception_and_sensitivity_limits.md
+│   │   └── 12_solar_station_architecture_and_burst_detection.md
 │   └── superpowers/specs/             # ツール別詳細設計仕様書
-│       └── 2026-09-04-noaa-station-design.md
 ├── notebooks/                         # 📓 実践 Jupyter Notebook
-│   ├── 01_iq_and_dsp_foundations.ipynb  # IQ信号生成・FFT・PSD・窓関数の実験
-│   ├── 02_radiometer_and_noise.ipynb   # 放射計方程式とノイズ積算シミュレーション
-│   ├── 03_meteor_scatter_analysis.ipynb # 流星電波反射エコー検出
-│   └── 04_hi_line_rotation_curve.ipynb # 21cm線解析と銀河回転曲線のプロット
 ├── k8s/                               # ☸️ KubeEdge / Kubernetes マニフェスト
-│   ├── cloud/                         # ゲーミングPC側 (CloudCore, JupyterLab, Grafana)
-│   └── edge/                          # GPD Pocket3側 (EdgeCore, noaa-station, collector)
 └── data/                              # 💾 観測データ・生成物 (.gitignore 対象)
     ├── noaa/                          # NOAA衛星画像 (PNG) & 録音 (WAV)
+    ├── solar/                         # ☀️ 太陽観測データ (JSON Lines / イベントPNG)
     └── spectra/                       # 21cm積算スペクトル (Parquet / DuckDB)
 ```
 
