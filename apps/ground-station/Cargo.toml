@@ -78,6 +78,10 @@ path = "tests/unit/solar_sun_pos_test.rs"
 name = "unit_solar_dsp"
 path = "tests/unit/solar_dsp_test.rs"
 
+[[test]]
+name = "unit_solar_waterfall"
+path = "tests/unit/solar_waterfall_test.rs"
+
 
 # ==============================================================================
 # 🔗 統合テスト (Integration Tests)
