@@ -1089,5 +1089,17 @@ impl DiscordClient {
 
         Ok(())
     }
+
+    pub fn webhook_url(&self) -> Option<&str> {
+        self.config.webhook_url.as_deref()
+    }
+
+    pub fn http_client(&self) -> &Client {
+        &self.http_client
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.config.enabled
+    }
 }
 
