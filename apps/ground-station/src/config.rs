@@ -32,6 +32,8 @@ pub struct Config {
     pub adsb: AdsbConfig,
     #[serde(default)]
     pub metrics: MetricsConfig,
+    #[serde(default)]
+    pub solar: Option<SolarConfig>,
 }
 
 fn default_gain() -> f64 {
@@ -464,5 +466,97 @@ impl Config {
         }
 
         Ok(config)
+    }
+}
+
+fn default_solar_center_freq() -> f64 {
+    70.0e6
+}
+
+fn default_solar_sample_rate() -> f64 {
+    2.4e6
+}
+
+fn default_solar_gain() -> f64 {
+    28.0
+}
+
+fn default_solar_fft_size() -> usize {
+    1024
+}
+
+fn default_solar_integration_secs() -> u64 {
+    1
+}
+
+fn default_solar_threshold_sigma() -> f64 {
+    4.0
+}
+
+fn default_solar_min_jump_db() -> f64 {
+    3.0
+}
+
+fn default_solar_cooldown_secs() -> u64 {
+    180
+}
+
+fn default_solar_mode() -> String {
+    "daylight_only".to_string()
+}
+
+fn default_solar_min_elevation() -> f64 {
+    5.0
+}
+
+fn default_solar_data_dir() -> String {
+    "data/solar".to_string()
+}
+
+/// 太陽電波観測の設定
+#[derive(Debug, Clone, Deserialize)]
+pub struct SolarConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_solar_center_freq")]
+    pub center_freq: f64,
+    #[serde(default = "default_solar_sample_rate")]
+    pub sample_rate: f64,
+    #[serde(default = "default_solar_gain")]
+    pub gain: f64,
+    #[serde(default = "default_solar_fft_size")]
+    pub fft_size: usize,
+    #[serde(default = "default_solar_integration_secs")]
+    pub integration_secs: u64,
+    #[serde(default = "default_solar_threshold_sigma")]
+    pub threshold_sigma: f64,
+    #[serde(default = "default_solar_min_jump_db")]
+    pub min_jump_db: f64,
+    #[serde(default = "default_solar_cooldown_secs")]
+    pub cooldown_secs: u64,
+    #[serde(default = "default_solar_mode")]
+    pub mode: String,
+    #[serde(default = "default_solar_min_elevation")]
+    pub min_elevation: f64,
+    #[serde(default = "default_solar_data_dir")]
+    pub data_dir: String,
+}
+
+impl Default for SolarConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            center_freq: default_solar_center_freq(),
+            sample_rate: default_solar_sample_rate(),
+            gain: default_solar_gain(),
+            fft_size: default_solar_fft_size(),
+            integration_secs: default_solar_integration_secs(),
+            threshold_sigma: default_solar_threshold_sigma(),
+            min_jump_db: default_solar_min_jump_db(),
+            cooldown_secs: default_solar_cooldown_secs(),
+            mode: default_solar_mode(),
+            min_elevation: default_solar_min_elevation(),
+            data_dir: default_solar_data_dir(),
+        }
     }
 }

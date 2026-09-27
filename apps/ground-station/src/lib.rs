@@ -8,6 +8,7 @@ pub mod metrics;
 pub mod orbit;
 pub mod receiver;
 pub mod scheduler;
+pub mod solar;
 pub mod voicevox;
 pub mod worker;
 
