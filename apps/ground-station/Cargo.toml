@@ -99,3 +99,18 @@ path = "tests/unit/solar_notification_test.rs"
 [[test]]
 name = "integration_voicevox"
 path = "tests/integration/voicevox_integration_test.rs"
+
+[[test]]
+name = "integration_solar_station"
+path = "tests/integration/solar_station_test.rs"
+
+# ==============================================================================
+# 🚀 実行バイナリ (Binaries)
+# ==============================================================================
+[[bin]]
+name = "ground-station"
+path = "src/main.rs"
+
+[[bin]]
+name = "solar-station"
+path = "src/bin/solar_station.rs"
