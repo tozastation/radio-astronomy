@@ -81,8 +81,8 @@ ignorePublish: false
 
 そのため、アンテナのマグネットベースは **スチール缶のフタ（お菓子の缶など）、金属製トレー、エアコン室外機の天板、またはベランダの金属製手すり** に必ずカチッと吸着させてください。これを怠るとインピーダンスが整合せず、受信感度が激減します。
 
-<!-- 📸 写真①: アンテナのマグネットベースが金属板（お菓子の缶のフタや室外機）に吸着している様子 -->
-> *(※写真挿入位置: アンテナの金属板グラウンド吸着風景)*
+![ベランダの金属部にマグネット吸着させたアンテナ](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/192927/e73d097f-db7f-4a2b-9ed6-b1e6f0cf64d7.jpeg)
+*▲ ベランダの金属部にマグネット吸着させたアンテナ（仮想グラウンドを形成）*
 
 ---
 
@@ -100,8 +100,8 @@ ignorePublish: false
 
 超小型UMPC（GPD Pocket3）のUSBポートに RTL-SDR Blog V4 を直結します。アンテナ直下（窓際）に小型PCを配置することで、同軸ケーブルの長さを最小限に抑え、高周波の伝送損失を防ぐことができます。
 
-<!-- 📸 写真②: GPD Pocket3 のUSBポートに RTL-SDR Blog V4 が接続されている様子 -->
-> *(※写真挿入位置: エッジPCとRTL-SDR Blog V4接続風景)*
+![GPD Pocket3 に接続した RTL-SDR Blog V4](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/192927/80f5b4d0-f8ba-486e-b166-67ab7cf1006b.jpeg)
+*▲ GPD Pocket3 のUSBポートに接続された RTL-SDR Blog V4*
 
 ---
 
