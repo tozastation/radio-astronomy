@@ -128,18 +128,68 @@ KubeEdge はクラウド側（CloudCore）とエッジ端末側（EdgeCore）で
 | **edged** | EdgeCore | エッジ向けに軽量化された kubelet。CRI（containerd）経由で Pod のライフサイクルを管理 |
 | **EdgeStream** | EdgeCore | CloudStream からのリクエストを受け、ローカル containerd のストリーミングエンドポイントへ転送 |
 
-### スペックとリソース配分
-- **ハードウェア**: GPD Pocket3 (Intel Core i7-1195G7 / RAM 16GB / NVMe 1TB)
-- **エッジ観測アプリ (`satellite-tracker`)**: Python 3.11, SGP4 軌道力学計算, NumPy FFT スペクトル解析, Prometheus Exporter
-- **全体メモリ消費**: **約 770MB**（Grafana 380MB, Prometheus 335MB, kube-state-metrics 23MB, Operator 30MB）
+### できたもの：ノードと Pod の配置
+実際に単一端末（GPD Pocket3）内で構成したクラスタの Pod 配置です。`-o wide` で確認すると、どの Pod がどちらのノードで稼働しているかが分かります。
 
-UMPC の限られたリソースでも、エッジ端末での常時監視や観測処理に支障なく動作しています。
+```bash
+$ kubectl get pods -A -o wide
+NAMESPACE            NAME                                                        READY   STATUS    IP              NODE
+container-registry   local-registry-9d959d85f-j2656                              1/1     Running   10.42.0.144     tozastation-g1621-02
+kube-system          coredns-7cfb7bc9c7-2rbxd                                    1/1     Running   10.42.0.142     tozastation-g1621-02
+kube-system          local-path-provisioner-77b9867795-wbdkx                     1/1     Running   10.42.0.143     tozastation-g1621-02
+kube-system          metrics-server-6f58cdc499-mzswn                             1/1     Running   10.42.0.146     tozastation-g1621-02
+kubeedge             cloud-iptables-manager-nxww4                                1/1     Running   192.168.68.66   tozastation-g1621-02
+kubeedge             cloudcore-7499476549-t29qs                                  1/1     Running   192.168.68.66   tozastation-g1621-02
+monitoring           kube-prometheus-stack-grafana-79d88bc745-4d5cz              3/3     Running   10.42.0.155     tozastation-g1621-02
+monitoring           kube-prometheus-stack-kube-state-metrics-687686d88b-64xr8   1/1     Running   10.42.0.148     tozastation-g1621-02
+monitoring           kube-prometheus-stack-operator-bdbf4977d-jxftd              1/1     Running   10.42.0.150     tozastation-g1621-02
+monitoring           prometheus-kube-prometheus-stack-prometheus-0               2/2     Running   10.42.0.152     tozastation-g1621-02
+default              satellite-tracker-59994966b5-vlzjp                          1/1     Running   10.42.3.42      gpd-pocket3-edge
+```
+
+- **コントロールプレーン側 (`tozastation-g1621-02`)**:
+  - k3s サーバー、CloudCore、ローカルコンテナレジストリ
+  - 監視スタック（Prometheus, Grafana, kube-state-metrics, Prometheus Operator, metrics-server）
+- **エッジノード側 (`gpd-pocket3-edge`)**:
+  - `satellite-tracker`（USB バス経由で RTL-SDR v4 実機ドングルを占有し、FFT スペクトル解析を行う観測 Pod）
+
+コントロールプレーンと監視スタック、そして観測用エッジ Pod が意図通り綺麗にノード分離されて稼働しています。
+
+### リソース消費量（約 770MB）
+監視基盤（Prometheus / Grafana）も含め、UMPC の限られたメモリを圧迫しないよう最小構成で運用しています。
+
+```bash
+$ kubectl top pods -n monitoring
+NAME                                                        CPU(cores)   MEMORY(bytes)   
+kube-prometheus-stack-grafana-79d88bc745-4d5cz              17m          382Mi           
+kube-prometheus-stack-kube-state-metrics-687686d88b-64xr8   2m           23Mi            
+kube-prometheus-stack-operator-bdbf4977d-jxftd              15m          30Mi            
+prometheus-kube-prometheus-stack-prometheus-0               11m          335Mi           
+```
+
+### Grafana ダッシュボードでのリアルタイム可視化
+
+実際に GPD Pocket3 上で稼働しているリアルタイムダッシュボードのキャプチャです：
+
+![Grafana 衛星追尾ダッシュボード全体](https://raw.githubusercontent.com/tozastation/radio-astronomy/main/docs/images/grafana_satellite_tracker_full.png)
+
+*(※ローカルリポジトリの `docs/images/grafana_satellite_tracker_full.png` および `grafana_satellite_tracker_overview.png` に高解像度画像を格納しています。Qiita 投稿時は Qiita の画像アップローダーにドラッグ＆ドロップして差し替えてください)*
+
+#### 各パネルの解説
+1. **ドップラーS字カーブ（中央パネル）**:
+   - 緑線（SGP4 軌道力学による理論予測）と黄線（RTL-SDR v4 の FFT パワースペクトルピーク実測値）を表示しています。
+   - 衛星接近時の **+10,000 Hz** から最接近（TCA）の **0 Hz ゼロクロス** を経て、離脱時の **-10,000 Hz** へと推移する逆S字カーブを描いています。理論値と実測値の誤差は約 52.7 Hz（相対誤差 0.5%）で推移しています。
+2. **北向きベランダの極軌道推移（中下段パネル）**:
+   - 仰角が 0° から 30° へ上昇した後に 10° を切って下降する山なりの曲線と、方位角が 270°（真西）から 0°/360°（真北）を跨いで 55°（北東）へ抜けていく軌跡が記録されています。
+3. **エッジリソース消費（最下段パネル）**:
+   - エッジノード上の `satellite-tracker` Pod の CPU 使用率は **0.28〜0.34 Cores**、物理メモリ消費（RSS）は **約 50 MB** となっており、常時観測を行っても負荷は低く抑えられています。
 
 ---
 
-## 衛星追尾における数理モデルとDSP処理
+## 衛星追尾の仕組みとDSP処理
 
-衛星観測パイプラインで処理している 2 つの数理モデルです。
+衛星追尾パイプラインで処理している数理モデルと、アンテナ設置環境に合わせた視界判定の仕組みです。  
+なお、軌道力学やデジタル信号処理（DSP）の数式導出や実装の詳細については、筆者の専門領域外のため AI（Antigravity）とペアプログラミングを行いながら設計・検証を進めました。詳細な理論的背景はリポジトリ内のドキュメントや関連リファレンスを参照してください。
 
 ### 1. 第一宇宙速度とドップラー偏移（Doppler S-Curve）
 地上約 400〜600 km の地球低軌道（LEO）を周回する人工衛星は、秒速約 7.6 km（時速 27,000 km）の超高速で移動しています。  
@@ -172,15 +222,20 @@ $$\Delta f = - f_0 \frac{v_r}{c} = - f_0 \frac{\vec{v} \cdot \vec{r}}{c \|\vec{r
           └──────────────── 時刻 t
 ```
 
-### 2. 都市部マンションの「北向きベランダ視界フィルタ」
-都市部の集合住宅では「南側の空は部屋の壁に遮られて見えない」という物理制約があります。  
-SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\circ \to 90^\circ$、仰角 $\ge 10^\circ$）」を実装し、ベランダから電波が届くパスだけを自動判定して SDR 受信機を起動させます。
+> **📚 関連リファレンス**:
+> - プロジェクト内技術文書: [docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](https://github.com/tozastation/radio-astronomy/blob/main/docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md)
+> - SGP4 軌道計算: [CelesTrak: FAQs - Two-Line Element (TLE) Sets](https://celestrak.org/)
+> - ドップラー効果の物理原理: [Wikipedia - ドップラー効果](https://ja.wikipedia.org/wiki/%E3%83%89%E3%83%83%E3%83%97%E3%83%A9%E3%83%BC%E5%8A%B9%E6%9E%9C)
+
+### 2. アンテナ設置環境に合わせた「ベランダ視界フィルタ」
+筆者の自宅ベランダは北側に面しているため、建物に遮られる南側の空を通過するパスでは電波を受信できません。  
+そこで SGP4 予測器に北天方向の視界フィルタ（方位角 $270^\circ \to 360^\circ \to 90^\circ$、仰角 $\ge 10^\circ$）を組み込み、アンテナから見通せるパスのみを自動判定して SDR 受信機を起動するようにしています。
 
 ---
 
 ## 単一ノード同居環境でのトラブルシューティング
 
-1台のマシン上で k3s と KubeEdge を同居させた際に発生したトラブルと、その調査結果および解決策をまとめます。
+上記のように無事動作するまでに、1台のマシン上で k3s と KubeEdge を同居させたことで直面した 5 つの課題と、その調査・解決策をまとめます。
 
 ---
 
@@ -247,56 +302,6 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 - **解決策**:
   - 1台同居環境では、ホストファイルシステムを直接参照する DaemonSet が競合の原因になりやすい。
   - ノードメトリクスは `metrics-server`（k3s/edged の API 経由）で取得できているため、`node-exporter` は無効化（`enabled: false`）して解決。
-
----
-
-## 稼働結果と Grafana 可視化
-
-各種設定を行った後のクラスタの稼働状況です。
-
-### 1. Pod 稼働状況
-```bash
-$ kubectl get pods -A
-NAMESPACE            NAME                                                        READY   STATUS    AGE
-container-registry   local-registry-9d959d85f-j2656                              1/1     Running   35m
-default              satellite-tracker-59994966b5-vlzjp                          1/1     Running   30m
-kube-system          coredns-7cfb7bc9c7-2rbxd                                    1/1     Running   122m
-kube-system          local-path-provisioner-77b9867795-wbdkx                     1/1     Running   122m
-kube-system          metrics-server-6f58cdc499-mzswn                             1/1     Running   26m
-kubeedge             cloud-iptables-manager-nxww4                                1/1     Running   116m
-kubeedge             cloudcore-7499476549-t29qs                                  1/1     Running   116m
-monitoring           kube-prometheus-stack-grafana-79d88bc745-4d5cz              3/3     Running   8m
-monitoring           kube-prometheus-stack-kube-state-metrics-687686d88b-64xr8   1/1     Running   10m
-monitoring           kube-prometheus-stack-operator-bdbf4977d-jxftd              1/1     Running   10m
-monitoring           prometheus-kube-prometheus-stack-prometheus-0               2/2     Running   9m
-```
-
-### 2. メモリ消費量（約 770MB）
-```bash
-$ kubectl top pods -n monitoring
-NAME                                                        CPU(cores)   MEMORY(bytes)   
-kube-prometheus-stack-grafana-79d88bc745-4d5cz              17m          382Mi           
-kube-prometheus-stack-kube-state-metrics-687686d88b-64xr8   2m           23Mi            
-kube-prometheus-stack-operator-bdbf4977d-jxftd              15m          30Mi            
-prometheus-kube-prometheus-stack-prometheus-0               11m          335Mi           
-```
-
-### 3. Grafana ダッシュボードの実測可視化画面
-
-GPD Pocket3 上で稼働しているリアルタイムダッシュボードのキャプチャです：
-
-![Grafana 衛星追尾ダッシュボード全体](https://raw.githubusercontent.com/tozastation/radio-astronomy/main/docs/images/grafana_satellite_tracker_full.png)
-
-*(※ローカルリポジトリの `docs/images/grafana_satellite_tracker_full.png` および `grafana_satellite_tracker_overview.png` に高解像度画像を格納しています。Qiita 投稿時は Qiita の画像アップローダーにドラッグ＆ドロップして差し替えてください)*
-
-#### 各パネルの解説
-1. **ドップラーS字カーブ（中央パネル）**:
-   - 緑線（SGP4 軌道力学による理論予測）と黄線（RTL-SDR v4 の FFT パワースペクトルピーク実測値）を表示しています。
-   - 衛星接近時の **+10,000 Hz** から最接近（TCA）の **0 Hz ゼロクロス** を経て、離脱時の **-10,000 Hz** へと推移する逆S字カーブを描いています。理論値と実測値の誤差は約 52.7 Hz（相対誤差 0.5%）で推移しています。
-2. **北向きベランダの極軌道推移（中下段パネル）**:
-   - 仰角が 0° から 30° へ上昇した後に 10° を切って下降する山なりの曲線と、方位角が 270°（真西）から 0°/360°（真北）を跨いで 55°（北東）へ抜けていく軌跡が記録されています。
-3. **エッジリソース消費（最下段パネル）**:
-   - エッジノード上の `satellite-tracker` Pod の CPU 使用率は **0.28〜0.34 Cores**、物理メモリ消費（RSS）は **約 50 MB** となっており、常時観測を行っても負荷は低く抑えられています。
 
 ---
 
