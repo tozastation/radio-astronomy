@@ -167,29 +167,95 @@ sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
 
 ---
 
-## 🛠️ まとめ & 完全勝利のクラスタ状態
+### Q11. 「巨大な Prometheus Operator CRD で `kubectl apply` が 256KB 制限で爆死する話」
+> **A. `kubectl apply` はマニフェスト全文をアノテーションに保存しようとするため、Server-Side Apply (`--server-side`) が必須！**
 
-数々のアーキテクチャ上の難所を突破し、1台の GPD Pocket3 上で **k3s と KubeEdge が完全に調和して稼働** することに成功した：
+- **遭遇した現象**:
+  - `helm show crds prometheus-community/kube-prometheus-stack | kubectl apply -f -` を実行したところ、以下のエラーで失敗：
+    ```text
+    CustomResourceDefinition ... "prometheuses.monitoring.coreos.com" is invalid:
+    metadata.annotations: Too long: may not be more than 262144 bytes
+    ```
+- **SRE 的深掘りとメカニズム**:
+  - `kubectl apply` (Client-Side Apply) は、前回の適用状態との差分（3-way merge）を計算するために、`kubectl.kubernetes.io/last-applied-configuration` というアノテーションにマニフェスト JSON 全文を書き込む。
+  - しかし Kubernetes の etcd/API Server において、アノテーション 1 つの最大容量は **262,144 bytes（256KB）**。
+  - 近年の Prometheus Operator の CRD（OpenAPI v3 スキーマ定義）は非常にリッチで巨大なため、この 256KB 制限をあっさり超過して弾かれてしまう。
+- **解決策**:
+  - **Server-Side Apply (SSA)** を利用する：
+    ```bash
+    kubectl apply --server-side -f -
+    ```
+  - SSA はアノテーションではなく API Server 側のフィールド管理機構（`managedFields`）で差分を追跡するため、256KB 制限に引っかかることなく巨大な CRD も一撃で適用できる。
+
+---
+
+### Q12. 「Prometheus Operator の `spec.retentionSize` バリデーション罠（`2Gi` vs `2GiB`）」
+> **A. Kubernetes のリソース単位 `2Gi` を書くと、Prometheus の正規表現バリデーションで弾かれる！**
+
+- **遭遇した現象**:
+  - Helmfile apply 時に以下のエラーで適用失敗：
+    ```text
+    spec.retentionSize in body should match '(^0|([0-9]*[.])?[0-9]+((K|M|G|T|E|P)i?)?B)$'
+    ```
+- **SRE 的深掘りとメカニズム**:
+  - Kubernetes の PVC や Pod リソース（CPU/メモリ）では `2Gi`（2 Gibibytes）と書くのが標準。
+  - しかし Prometheus 本体の TSDB フラグ（`--storage.tsdb.retention.size`）は末尾に **`B`**（Bytes）を要求する仕様（例: `2GB`, `2GiB`）。
+  - Prometheus Operator の CRD OpenAPI スキーマでも厳格に末尾 `B` を強制する正規表現が設定されているため、`2Gi` だとバリデーションに失敗する。
+- **解決策**:
+  - `retentionSize: "2GiB"` のように、明示的に `B` を付与して記述する。
+
+---
+
+### Q13. 「KubeEdge 1台同居環境における edged の『孤児ボリューム誤判定・削除ループ』」
+> **A. エッジノード上の edged が、control-plane 側 Pod のボリュームを『孤児』とみなして2秒おきに物理削除していた！**
+
+- **遭遇した現象**:
+  - `node-exporter` が `Exit Code: 137` で `CrashLoopBackOff` を繰り返す。
+  - Pod イベントには `Error: open /var/lib/kubelet/pods/<UID>/etc-hosts: no such file or directory` と `Pod sandbox changed, it will be killed and re-created.` が無限に記録される。
+- **SRE 的深掘りとメカニズム**:
+  - `node-exporter` を control-plane ノード上に配置した際、同じ物理ホスト上で root 権限で稼働している KubeEdge の `edgecore`（内蔵 edged）がローカルの `/var/lib/kubelet/pods` ディレクトリを走査した。
+  - `edgecore` は「この Pod UID はエッジノード（`gpd-pocket3-edge`）に割り当てられた Pod ではない（＝孤児ボリューム orphaned pod volumes だ！）」と誤認。
+  - `edgecore` ログ：
+    ```text
+    edgecore: Cleaned up orphaned pod volumes dir podUID="3816f16f..." path="/var/lib/kubelet/pods/3816f.../volumes"
+    ```
+  - kubelet が Pod を起動するそばから、edged が 2 秒おきにそのボリューム（etc-hosts 等）を消し去るため、kubelet 側でサンドボックス破損とみなされて再作成ループに陥っていた。
+- **解決策**:
+  - 1台同居 PoC 環境において、ホスト直結の DaemonSet（特に `/var/lib/kubelet` 周辺に依存するもの）を無理に動かすのはアンチパターン。
+  - ノードメトリクスは `metrics-server`（k3s/edged の API 経由）で完全に取得できているため、`node-exporter` は無効化（`enabled: false`）し、リソース消費も節約した。
+
+---
+
+## 🏆 結論：超軽量・完全自律型 電波天文学 KubeEdge クラスタの完成
+
+すべての障害を論理的に解明・克服した結果、GPD Pocket3（メモリ 16GB / Ubuntu 26.04）単一端末上で、以下のスタックが完全自律稼働を達成した：
 
 ```bash
-$ kubectl top nodes
-NAME                   CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
-gpd-pocket3-edge       599m         14%      4468Mi          29%         
-tozastation-g1621-02   579m         14%      4468Mi          29%         
-
-$ kubectl top pods -A
-NAMESPACE            NAME                                      CPU(cores)   MEMORY(bytes)   
-container-registry   local-registry-9d959d85f-j2656            1m           4Mi             
-default              satellite-tracker-59994966b5-vlzjp        292m         29Mi            
-kube-system          coredns-7cfb7bc9c7-2rbxd                  3m           12Mi            
-kube-system          local-path-provisioner-77b9867795-wbdkx   1m           7Mi             
-kube-system          metrics-server-6f58cdc499-mzswn           7m           16Mi            
-kubeedge             cloud-iptables-manager-nxww4              3m           7Mi             
-kubeedge             cloudcore-7499476549-t29qs                2m           30Mi            
+$ kubectl get pods -A
+NAMESPACE            NAME                                                        READY   STATUS    AGE
+container-registry   local-registry-9d959d85f-j2656                              1/1     Running   35m
+default              satellite-tracker-59994966b5-vlzjp                          1/1     Running   30m
+kube-system          coredns-7cfb7bc9c7-2rbxd                                    1/1     Running   122m
+kube-system          local-path-provisioner-77b9867795-wbdkx                     1/1     Running   122m
+kube-system          metrics-server-6f58cdc499-mzswn                             1/1     Running   26m
+kubeedge             cloud-iptables-manager-nxww4                                1/1     Running   116m
+kubeedge             cloudcore-7499476549-t29qs                                  1/1     Running   116m
+monitoring           kube-prometheus-stack-grafana-79d88bc745-4d5cz              3/3     Running   8m
+monitoring           kube-prometheus-stack-kube-state-metrics-687686d88b-64xr8   1/1     Running   10m
+monitoring           kube-prometheus-stack-operator-bdbf4977d-jxftd              1/1     Running   10m
+monitoring           prometheus-kube-prometheus-stack-prometheus-0               2/2     Running   9m
 ```
 
-エッジノード上で動く **`satellite-tracker`** は、RTL-SDR v4 から直接 IQ 信号を吸い上げ、SGP4 軌道力学計算と FFT ドップラー解析を実行しながら、ポート 9100 で Prometheus メトリクスを刻み続けている。
+```bash
+$ kubectl top pods -n monitoring
+NAME                                                        CPU(cores)   MEMORY(bytes)   
+kube-prometheus-stack-grafana-79d88bc745-4d5cz              17m          382Mi           
+kube-prometheus-stack-kube-state-metrics-687686d88b-64xr8   2m           23Mi            
+kube-prometheus-stack-operator-bdbf4977d-jxftd              15m          30Mi            
+prometheus-kube-prometheus-stack-prometheus-0               11m          335Mi           
+```
 
-次回は、このエッジ観測データを Prometheus ＆ Grafana で美麗なリアルタイムダッシュボード（ドップラーS字カーブ、RSSI、極軌道推移）として描画する！
+監視基盤全体のメモリ消費量は **わずか約 770MB**。
+エッジノード上で動く **`satellite-tracker`** が RTL-SDR v4 から吸い上げた観測データ（SGP4 軌道追尾・ドップラー偏移・RSSI）は、Prometheus によってリアルタイムに収集され、Grafana（`http://localhost:30080/d/satellite-radio-tracker/c97e60f`）上に美しく可視化されている。
 
-
+分散エッジシステムの真骨頂は、「現場のエッジノードが壊れても自律的に観測を続け、クラウドと再接続した瞬間にテレメトリを同期・統合できる」レジリエンスにある。この 1台 PoC 環境の完成により、将来のマルチノード分散観測所展開への盤石な基盤が整った！
