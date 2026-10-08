@@ -106,16 +106,90 @@ sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
   - 1台の Linux マシン上で複数の Kubelet（または Kubelet と EdgeCore）を動かす場合、**CRI ランタイム（containerd デーモン・ソケット・ストレージ）は絶対に共用してはならず、完全に分離しなければならない**。
   - エッジ専用の `containerd-edge.service`（`/run/containerd-edge/containerd.sock`）を立てることで、ホストの既存 Docker や k3s に一切干渉しない堅牢な 1 台完結 PoC が実現できる。
 
+### Q7. 「CNI ブリッジ名が競合！ `cni0 already has an IP address different from ...`」
+> **A. k3s 既存の `cni0`（10.42.0.1/24）とエッジの PodCIDR（10.42.3.0/24）が同一ブリッジ名を奪い合っていたためです！**
+
+- **遭遇した現象**:
+  - `containerd-edge` を起動したものの、Pod が `ContainerCreating` のまま進まず、`kubectl describe node` に `cni plugin not initialized` が記録される。
+  - edgecore ログに `plugin type="bridge" failed (add): failed to set bridge addr: "cni0" already has an IP address different from 10.42.3.1/24` が大量出力。
+- **SRE 的深掘りとメカニズム**:
+  - k3s 側の Flannel CNI がホスト上にすでに `cni0`（IP: `10.42.0.1/24`）を作成していた。
+  - エッジ用の CNI 設定（`/etc/cni/net.d/10-containerd-net.conflist`）でも同じブリッジ名 `"bridge": "cni0"` を指定したため、Linux カーネルのネットワークスタックが「同一ブリッジに異なるサブネット（`10.42.3.1/24`）を共存させられない」と拒絶した。
+- **解決策**:
+  - エッジ用 CNI 設定のブリッジ名を `"bridge": "edge-cni0"` にリネーム。
+  - k3s 側のネットワークブリッジとエッジ側のネットワークブリッジを物理的に分離することで、綺麗に IP が払い出されるようになった。
+
 ---
 
-## 🛠️ まとめ & 実機でのノード開通
+### Q8. 「公式推奨の iptables DNAT ルールを入れたら、エッジが `400 Bad Request` で自爆した話」
+> **A. 「1台同居環境」では、エッジ自身のローカルヘルスチェックまでトンネルに曲げられてしまう Self-loopback DNAT トラップ！**
+
+- **遭遇した現象**:
+  - `edgecore` のログに `edged.go:660] internal error and status code: 400` が 50ms ごとに無限に出力され、ノード初期化が完了しない。
+- **SRE 的深掘りとメカニズム**:
+  - KubeEdge 公式ドキュメントの推奨ルール：
+    ```bash
+    sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
+    ```
+    は本来、**「別マシンの Cloud 側からエッジ宛て（10350）の通信を CloudStream トンネル（10003）に中継する」** ためのもの。
+  - しかし 1台同居環境でこのルールを無邪気に入れると、`edged` 自身が自分自身の起動確認のために叩く `http://localhost:10350/healthz/syncloop`（HTTP 平文）まで CloudStream の HTTPS（TLS）ポート `10003` に強制転送されてしまう。
+  - CloudStream は「HTTPS ポートに HTTP リクエストが来た」ので当然 `400 Bad Request` を返し、`edged` はヘルスチェック失敗とみなして永遠に起動完了しなかった。
+- **解決策**:
+  - 1台同居環境ではそもそも不要。もし適用する場合でも、`-d <エッジIP>` に限定し `localhost (127.0.0.1)` を絶対に曲げないように除外する。
+
+---
+
+### Q9. 「なぜエッジノードに `NoSchedule` テイントが必須なのか？（Pod 誤配置事故）」
+> **A. テイントがないと、k3s のコントロールプレーン系アドオン（metrics-server 等）がエッジノードに流れてきて自滅する！**
+
+- **遭遇した現象**:
+  - `metrics-server` がエッジノード `gpd-pocket3-edge` にスケジュールされ、`CrashLoopBackOff` で死亡。
+- **SRE 的深掘りとメカニズム**:
+  - KubeEdge のエッジノードは軽量化された別環境（API Server 直結ではない、CNI トポロジーが異なる等）。
+  - 一般的なクラスタ管理 Pod や k3s 内蔵アドオンはエッジノード上で動くことを想定していない。
+  - エッジノードにテイントが付いていないと、K8s スケジューラは「空いている通常ノード」とみなして重要 Pod をエッジに配置してしまう。
+- **解決策**:
+  - エッジノードに `node-role.kubernetes.io/edge:NoSchedule` を付与。
+  - エッジで動かしたい業務 Pod（`satellite-tracker` 等）にのみ `tolerations` を明記して、明確にワークロードを隔離する。
+
+---
+
+### Q10. 「non-root Pod と emptyDir の権限罠（`metrics-server` の panic）」
+> **A. `runAsUser: 1000` なのに `fsGroup: 1000` がなく、`/tmp` への自己署名証明書書き込みが Permission Denied に！**
+
+- **遭遇した現象**:
+  - `metrics-server` が `panic: error creating self-signed certificates: open /tmp/apiserver.crt: permission denied` でクラッシュ。
+- **SRE 的深掘りとメカニズム**:
+  - コンテナは非 root（`runAsUser: 1000`）で動作。
+  - `/tmp` には `emptyDir` ボリュームがマウントされていたが、Pod レベルの `securityContext.fsGroup` が未定義だったため、マウントディレクトリの所有権が `root:root (0755)` のままになり、一般ユーザーから書き込めなかった。
+- **解決策**:
+  - `pod.spec.securityContext.fsGroup: 1000` を付与し、さらにエッジノードの cAdvisor スクレイプ用に `--kubelet-insecure-tls` を追加して完全解決。
+
+---
+
+## 🛠️ まとめ & 完全勝利のクラスタ状態
+
+数々のアーキテクチャ上の難所を突破し、1台の GPD Pocket3 上で **k3s と KubeEdge が完全に調和して稼働** することに成功した：
 
 ```bash
-$ kubectl get nodes -o wide
-NAME                   STATUS     ROLES           AGE   VERSION                     CONTAINER-RUNTIME
-tozastation-g1621-02   Ready      control-plane   26m   v1.36.5+k3s1                containerd://2.3.4-k3s1.36
-gpd-pocket3-edge       NotReady   agent,edge      16m   v1.31.12-kubeedge-v1.22.0   containerd://2.3.4-k3s1.36
+$ kubectl top nodes
+NAME                   CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+gpd-pocket3-edge       599m         14%      4468Mi          29%         
+tozastation-g1621-02   579m         14%      4468Mi          29%         
+
+$ kubectl top pods -A
+NAMESPACE            NAME                                      CPU(cores)   MEMORY(bytes)   
+container-registry   local-registry-9d959d85f-j2656            1m           4Mi             
+default              satellite-tracker-59994966b5-vlzjp        292m         29Mi            
+kube-system          coredns-7cfb7bc9c7-2rbxd                  3m           12Mi            
+kube-system          local-path-provisioner-77b9867795-wbdkx   1m           7Mi             
+kube-system          metrics-server-6f58cdc499-mzswn           7m           16Mi            
+kubeedge             cloud-iptables-manager-nxww4              3m           7Mi             
+kubeedge             cloudcore-7499476549-t29qs                2m           30Mi            
 ```
-エッジ端末が Kubernetes クラスタの 1 ノードとして認識された瞬間、インフラエンジニアとしての感動がある。
-次回は、このエッジノード上で RTL-SDR v4 を USB パススルー制御し、UHF 435MHz CubeSat のドップラーS字カーブを Grafana に描画するまでを解説する。
+
+エッジノード上で動く **`satellite-tracker`** は、RTL-SDR v4 から直接 IQ 信号を吸い上げ、SGP4 軌道力学計算と FFT ドップラー解析を実行しながら、ポート 9100 で Prometheus メトリクスを刻み続けている。
+
+次回は、このエッジ観測データを Prometheus ＆ Grafana で美麗なリアルタイムダッシュボード（ドップラーS字カーブ、RSSI、極軌道推移）として描画する！
+
 
