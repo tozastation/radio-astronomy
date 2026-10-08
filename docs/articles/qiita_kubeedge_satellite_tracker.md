@@ -81,6 +81,20 @@ flowchart TB
     GRAF -->|"Query"| PROM
 ```
 
+### KubeEdge の主要コンポーネント
+
+KubeEdge はクラウド側（CloudCore）とエッジ端末側（EdgeCore）で役割を分担して動作します。
+
+| コンポーネント | 配置 | 主な役割 |
+| :--- | :--- | :--- |
+| **CloudHub** | CloudCore | エッジノードとの通信エンドポイント（WebSocket / QUIC）。メタデータの送受信を担う |
+| **EdgeController** | CloudCore | Kubernetes API Server を監視し、エッジノード向けのリソース情報を同期 |
+| **CloudStream** | CloudCore | `kubectl logs` や `kubectl exec` のストリーミング通信をエッジ側へトンネリング中継 |
+| **EdgeHub** | EdgeCore | CloudHub と接続し、同期メッセージを送受信する通信クライアント |
+| **MetaManager** | EdgeCore | ローカル SQLite キャッシュ。ネットワーク切断時でも Pod が自律稼働できるようメタデータを保持 |
+| **edged** | EdgeCore | エッジ向けに軽量化された kubelet。CRI（containerd）経由で Pod のライフサイクルを管理 |
+| **EdgeStream** | EdgeCore | CloudStream からのリクエストを受け、ローカル containerd のストリーミングエンドポイントへ転送 |
+
 ### スペックとリソース配分
 - **ハードウェア**: GPD Pocket3 (Intel Core i7-1195G7 / RAM 16GB / NVMe 1TB)
 - **エッジ観測アプリ (`satellite-tracker`)**: Python 3.11, SGP4 軌道力学計算, NumPy FFT スペクトル解析, Prometheus Exporter
@@ -133,13 +147,13 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ## 単一ノード同居環境でのトラブルシューティング
 
-1台のマシン上で k3s と KubeEdge を同居させた際に発生したトラブルと、その原因および解決策をまとめます。
+1台のマシン上で k3s と KubeEdge を同居させた際に発生したトラブルと、その調査結果および解決策をまとめます。
 
 ---
 
 ### 1. CRIソケット共有による Pod の再作成ループ
 - **現象**: Pod を起動すると、数秒後に `Unknown` や `Terminating` になり、再作成と削除が繰り返される。
-- **メカニズム**:
+- **調査と原因**:
   - k3s の kubelet と KubeEdge の edged が、同一の `/run/k3s/containerd/containerd.sock` を参照していた。
   - k3s 側の kubelet は「自分の管理外のコンテナが containerd にいる（edged の Pod）」と判断してコンテナを GC 削除。
   - edged 側も「自分の管理外のコンテナがいる（k3s の Pod）」と判断して GC 削除。
@@ -152,7 +166,7 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ### 2. CNI ブリッジ名の重複衝突 (`cni0`)
 - **現象**: エッジ側でコンテナを起動しようとすると、`failed to setup network: bridge cni0 already exists with different IP` でネットワーク設定が失敗。
-- **メカニズム**:
+- **調査と原因**:
   - k3s 側の Flannel CNI がすでに `cni0`（`10.42.0.1/24`）というブリッジを作成していた。
   - エッジ側の containerd がデフォルトの `/etc/cni/net.d/10-containerd-net.conflist` を読んだところ、そこにも `"bridge": "cni0"`（`10.42.3.1/24`）と定義されていたため、同一名で異なる CIDR を持つブリッジを作ろうとしてカーネルで衝突。
 - **解決策**:
@@ -162,7 +176,7 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ### 3. iptables DNAT ルールによるローカル通信の転送
 - **現象**: `edgecore` のログに `edged.go:660] internal error and status code: 400` が 50ms ごとに出力され、ノード初期化が終わらない。
-- **メカニズム**:
+- **調査と原因**:
   - KubeEdge 公式ドキュメントにある推奨ルール：
     ```bash
     sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
@@ -177,7 +191,7 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ### 4. テイント欠落によるアドオン Pod のエッジ誤配置
 - **現象**: `metrics-server` などのクラスタ管理 Pod が `gpd-pocket3-edge`（エッジ側）にスケジュールされ、正常に起動しない。
-- **メカニズム**:
+- **調査と原因**:
   - KubeEdge のエッジノードは軽量化されており、API Server 直結のフルトポロジーを持たない。
   - エッジノードにテイントが付いていないと、K8s スケジューラは通常のワーカーノードとみなして重要なコントロールプレーン系アドオンをエッジに配置してしまう。
 - **解決策**:
@@ -186,52 +200,9 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ---
 
-### 5. non-root Pod と emptyDir の権限設定
-- **現象**: `metrics-server` が `panic: error creating self-signed certificates: open /tmp/apiserver.crt: permission denied` でクラッシュ。
-- **メカニズム**:
-  - コンテナは非 root（`runAsUser: 1000`）で動作。
-  - `/tmp` には `emptyDir` がマウントされていたが、Pod の `securityContext.fsGroup` が未定義だったため、マウントディレクトリの所有権が `root:root (0755)` になり、一般ユーザーから証明書ファイルを作成できなかった。
-- **解決策**:
-  - Deployment に `pod.spec.securityContext.fsGroup: 1000` を付与し、さらにエッジノードの cAdvisor スクレイプ用に `--kubelet-insecure-tls` を追加して解決。
-
----
-
-### 6. Prometheus CRD 投入時の 256KB アノテーション上限
-- **現象**: `helm show crds ... | kubectl apply -f -` を実行したところ、以下のエラーで失敗：
-  ```text
-  CustomResourceDefinition ... "prometheuses.monitoring.coreos.com" is invalid:
-  metadata.annotations: Too long: may not be more than 262144 bytes
-  ```
-- **メカニズム**:
-  - 通常の `kubectl apply`（Client-Side Apply）は、差分計算のために `kubectl.kubernetes.io/last-applied-configuration` というアノテーションにマニフェスト JSON 全文を保存する。
-  - しかし Kubernetes（etcd）において、アノテーション 1 つの最大容量は **262,144 bytes（256KB）**。
-  - 近年の Prometheus Operator CRD（OpenAPI v3 スキーマ）は定義が大きいため、256KB 制限を超えてしまう。
-- **解決策**:
-  - **Server-Side Apply (SSA)** を利用：
-    ```bash
-    helm show crds prometheus-community/kube-prometheus-stack | kubectl apply --server-side -f -
-    ```
-  - SSA はアノテーションではなく API Server 側の `managedFields` で管理するため、256KB 制限を受けずに適用できる。
-
----
-
-### 7. `spec.retentionSize` の OpenAPI 正規表現バリデーション
-- **現象**: Helmfile 適用時にバリデーションエラー：
-  ```text
-  spec.retentionSize in body should match '(^0|([0-9]*[.])?[0-9]+((K|M|G|T|E|P)i?)?B)$'
-  ```
-- **メカニズム**:
-  - Kubernetes のリソース指定（PVC 等）では `2Gi`（2 Gibibytes）と書くのが通例。
-  - しかし Prometheus の TSDB 仕様（`--storage.tsdb.retention.size`）は末尾に **`B`**（Bytes）を要求する（例: `2GiB`）。
-  - Prometheus Operator の CRD でも正規表現で末尾 `B` を要求しているため、`2Gi` だと弾かれる。
-- **解決策**:
-  - `retentionSize: "2GiB"` と明記。
-
----
-
-### 8. edged による孤児ボリューム削除ループ
+### 5. edged による孤児ボリューム削除ループ
 - **現象**: `node-exporter` が `Exit Code: 137` で `CrashLoopBackOff` を繰り返す。Pod イベントには `open /var/lib/kubelet/pods/<UID>/etc-hosts: no such file or directory` と `Pod sandbox changed` が記録される。
-- **メカニズム**:
+- **調査と原因**:
   - `node-exporter` を control-plane ノード上に配置した際、同じマシンで root 権限で稼働している KubeEdge の `edgecore`（内蔵 edged）がローカルの `/var/lib/kubelet/pods` ディレクトリを巡回走査した。
   - `edgecore` は「この Pod UID はエッジノード（`gpd-pocket3-edge`）に割り当てられた Pod ではない（孤児ボリューム orphaned pod volumes）」と誤認。
   - `edgecore` のログ：
