@@ -45,9 +45,35 @@ prometheus:
     # 不要なボリュームの無効化
     storageSpec: {}
 
-# Alertmanager の無効化 (観測初期PoCではメモリ節約のためOFF)
+# Alertmanager 設定 (初期PoCではメモリ節約のため false、Discord通知を有効化する際は true に変更)
 alertmanager:
   enabled: false
+  # 有効化時のリソース制限 (最小構成)
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 50m
+        memory: 128Mi
+  # Alertmanager ネイティブ Discord Webhook 設定例 (v0.25+)
+  # config:
+  #   global:
+  #     resolve_timeout: 5m
+  #   route:
+  #     group_by: ['alertname', 'namespace']
+  #     group_wait: 30s
+  #     group_interval: 5m
+  #     repeat_interval: 4h
+  #     receiver: 'discord-notifications'
+  #   receivers:
+  #   - name: 'discord-notifications'
+  #     discord_configs:
+  #     - webhook_url: 'https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN'
+  #       send_resolved: true
+  #       title: '{{ if eq .Status "firing" }}🚨 [ALERT]{{ else }}✅ [RESOLVED]{{ end }} {{ .CommonAnnotations.summary }}'
+  #       message: '{{ .CommonAnnotations.description }}'
 
 # Grafana ダッシュボード設定
 grafana:
