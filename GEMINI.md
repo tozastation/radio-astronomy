@@ -18,16 +18,13 @@
     3. **展開ステップ・直感イメージ**: 高校数学〜大学初年級の数学（三角関数、複素数、ベクトル、微積分等）や基礎物理で追える途中式の展開や幾何学的・物理的直感イメージの補足。
   - **作業ペース**: 一方的に進めず、必ずユーザーの承認や確認を挟みながら1ステップずつ進める。
 
-## 🏗️ システムアーキテクチャ (2台体制)
-- **エッジ観測ノード (GPD Pocket3: Ubuntu 26.04)**:
+## 🏗️ システムアーキテクチャ (GPD Pocket3 1台完結PoC ＆ 将来分散構想)
+- **エッジ観測・管理ホスト (GPD Pocket3: Ubuntu 26.04 LTS)**:
   - アンテナ直下に設置。RTL-SDR v4 から2.4MSPSのIQ信号を受信。
   - エッジDSP（高速FFT & 1秒積算）によりデータを 8 KB/s に圧縮。
-  - CNCF **KubeEdge (EdgeCore)** により、クラウドPCの電源状態に依存せず24時間完全自律稼働。
-  - ローカルストレージ（DuckDB / SQLite / Parquet）に数ヶ月〜数年分を常時蓄積。
-- **分析・開発ワークステーション (Ubuntu PC)**:
-  - Kubernetes (`k3s`) + KubeEdge `cloudcore` をホスト。
-  - オンデマンド（または常時）で起動し、LAN越しにGPD Pocket3のデータを直接SQL/Jupyterで高速分析。
-  - ネイティブ Linux 上のブラウザ（Grafana / JupyterLab）や VS Code, kubectl, k9s から開発・運用。
+  - **初期PoCフェーズ**: GPD Pocket3 単一端末上で k3s (`cloudcore`) と `edgecore` を同居させ、超軽量 `kube-prometheus-stack` を含めて完全自律稼働と監視を検証。
+  - ローカルストレージ（DuckDB / SQLite / Parquet）に常時蓄積。
+  - **将来分散フェーズ**: 分析専用PC（Ubuntu）追加時に、CloudCore を切り離してシームレスに2台体制（エッジ常時稼働 + オンデマンド分析）へ拡張可能。
 
 ## 🛠️ 技術スタック
 - **データ分析 & 天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
