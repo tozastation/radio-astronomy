@@ -1,5 +1,5 @@
 ---
-title: 【ベランダ電波観測所 #2】GPD Pocket3をKubeEdgeエッジ観測所に魔改造！UHF衛星電波の自動追尾とGrafana可視化 〜1台同居で踏み抜いた地獄のトラブルシューティング8選〜
+title: 【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録
 tags:
   - Kubernetes
   - KubeEdge
@@ -15,7 +15,7 @@ slide: false
 ignorePublish: false
 ---
 
-# 【ベランダ電波観測所 #2】GPD Pocket3をKubeEdgeエッジ観測所に魔改造！UHF衛星電波の自動追尾とGrafana可視化 〜1台同居で踏み抜いた地獄のトラブルシューティング8選〜
+# 【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録
 
 ## はじめに
 
