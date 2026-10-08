@@ -4,11 +4,12 @@ import sys
 import time
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from orbit_predictor import OrbitPredictor
 from sdr_collector import SDRCollector
 from metrics_exporter import MetricsExporter
+from tle_fetcher import fetch_satellite_tles
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,6 +45,9 @@ def run_tracker():
         f"Starting satellite-tracker (Observer: Lat={lat}, Lon={lon}, Elev={elev_m}m, Facing={balcony_facing}, MockSDR={mock_sdr})"
     )
 
+    # 起動時に Celestrak から最新 TLE を動的取得（失敗時は静的キャッシュに安全フォールバック）
+    active_satellites = fetch_satellite_tles(DEFAULT_SATELLITES)
+
     predictor = OrbitPredictor(
         observer_lat=lat,
         observer_lon=lon,
@@ -70,16 +74,24 @@ def run_tracker():
 
     collector.start()
 
-    active_satellite = None
+    active_satellite: Optional[str] = None
     pass_in_progress = False
+    last_tle_update = time.time()
+    tle_refresh_interval = 86400.0  # 24時間ごとにTLEを再取得
 
     while running:
         now_utc = datetime.now(timezone.utc)
 
-        # ターゲット衛星の選定（北天視界に入っている衛星を探索）
-        current_tracked = None
+        # 定期的な TLE 更新チェック
+        if time.time() - last_tle_update > tle_refresh_interval:
+            logger.info("Periodic TLE update triggered.")
+            active_satellites = fetch_satellite_tles(DEFAULT_SATELLITES)
+            last_tle_update = time.time()
 
-        for sat_name, sat_data in DEFAULT_SATELLITES.items():
+        # 全衛星の現在位置と視界判定
+        visible_candidates = []
+
+        for sat_name, sat_data in active_satellites.items():
             pos = predictor.calculate_position(
                 satellite_name=sat_name,
                 tle_line1=sat_data["line1"],
@@ -91,11 +103,10 @@ def run_tracker():
             is_visible = predictor.is_in_view(pos.elevation_deg, pos.azimuth_deg)
 
             if is_visible:
-                current_tracked = (sat_name, sat_data, pos)
-                break
+                visible_candidates.append((sat_name, sat_data, pos))
             else:
+                # 視界外の衛星は待機ステータスと次回パスを更新
                 exporter.set_tracking_status(sat_name, active=False)
-                # 次回パス予定の更新
                 next_pass = predictor.get_next_pass(
                     satellite_name=sat_name,
                     tle_line1=sat_data["line1"],
@@ -107,28 +118,40 @@ def run_tracker():
                 if next_pass:
                     exporter.set_next_pass(sat_name, next_pass.aos_time.timestamp())
 
-        if current_tracked:
-            sat_name, sat_data, pos = current_tracked
-            if not pass_in_progress or active_satellite != sat_name:
-                logger.info(f"Satellite AOS entered: {sat_name} (El: {pos.elevation_deg:.1f}°, Az: {pos.azimuth_deg:.1f}°)")
-                pass_in_progress = True
-                active_satellite = sat_name
+        # 視界内の衛星がある場合、最も仰角の高い衛星を優先追尾
+        if visible_candidates:
+            # 仰角（pos.elevation_deg）でソート
+            visible_candidates.sort(key=lambda x: x[2].elevation_deg, reverse=True)
+            chosen_sat_name, chosen_sat_data, chosen_pos = visible_candidates[0]
 
-            exporter.set_tracking_status(sat_name, active=True)
+            # 追尾衛星が切り替わった場合（重複パス時）
+            if active_satellite and active_satellite != chosen_sat_name:
+                logger.info(f"Switching tracking target from {active_satellite} to {chosen_sat_name}")
+                exporter.record_pass_completed(active_satellite, status="completed")
+                exporter.set_tracking_status(active_satellite, active=False)
+
+            if not pass_in_progress or active_satellite != chosen_sat_name:
+                logger.info(
+                    f"Satellite AOS entered: {chosen_sat_name} (El: {chosen_pos.elevation_deg:.1f}°, Az: {chosen_pos.azimuth_deg:.1f}°)"
+                )
+                pass_in_progress = True
+                active_satellite = chosen_sat_name
+
+            exporter.set_tracking_status(chosen_sat_name, active=True)
             exporter.update_orbit_metrics(
-                satellite_name=sat_name,
-                elevation_deg=pos.elevation_deg,
-                azimuth_deg=pos.azimuth_deg,
-                doppler_predicted_hz=pos.doppler_shift_hz,
+                satellite_name=chosen_sat_name,
+                elevation_deg=chosen_pos.elevation_deg,
+                azimuth_deg=chosen_pos.azimuth_deg,
+                doppler_predicted_hz=chosen_pos.doppler_shift_hz,
             )
 
             # SDR RF 測定
             spec = collector.measure_spectrum(
-                center_freq_hz=sat_data["freq_hz"],
-                expected_doppler_hz=pos.doppler_shift_hz,
+                center_freq_hz=chosen_sat_data["freq_hz"],
+                expected_doppler_hz=chosen_pos.doppler_shift_hz,
             )
             exporter.update_rf_metrics(
-                satellite_name=sat_name,
+                satellite_name=chosen_sat_name,
                 rssi_dbm=spec.rssi_dbm,
                 snr_db=spec.snr_db,
                 doppler_measured_hz=spec.measured_doppler_hz,
@@ -137,6 +160,7 @@ def run_tracker():
             if pass_in_progress and active_satellite:
                 logger.info(f"Satellite LOS completed: {active_satellite}")
                 exporter.record_pass_completed(active_satellite, status="completed")
+                exporter.set_tracking_status(active_satellite, active=False)
                 pass_in_progress = False
                 active_satellite = None
 
