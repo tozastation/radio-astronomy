@@ -79,8 +79,8 @@ flowchart TB
     end
 
     %% Edge-Cloud 相互通信トンネル
-    EdgeHub ==>|① コントロール通信: WebSocket アウトバウンド (:10000/:10002)| CloudHub
-    EdgeStream ==>|② データ通信トンネル: WebSocket/gRPC (:10003)| CloudStream
+    EdgeHub -->|"① コントロール通信: WebSocket アウトバウンド (:10000/:10002)"| CloudHub
+    EdgeStream -->|"② データ通信トンネル: WebSocket/gRPC (:10003)"| CloudStream
 ```
 
 ---

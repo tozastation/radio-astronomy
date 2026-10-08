@@ -1,0 +1,50 @@
+# KubeEdge EdgeCore 設定ファイル (/etc/kubeedge/config/edgecore.yaml)
+# GPD Pocket3 (Ubuntu 26.04 LTS: cgroups v2 / systemd) 向け設定例
+
+apiVersion: edgecore.config.kubeedge.io/v1alpha2
+kind: EdgeCore
+modules:
+  edged:
+    enable: true
+    cgroupDriver: systemd
+    cgroupRoot: ""
+    cgroupsPerQOS: true
+    # k3s 内蔵 containerd ソケット、またはスタンドアロン containerd ソケットを指定
+    remoteRuntimeEndpoint: "unix:///run/containerd/containerd.sock"
+    remoteImageEndpoint: "unix:///run/containerd/containerd.sock"
+    hostnameOverride: "gpd-pocket3-edge"
+    registerNode: true
+  
+  edgeHub:
+    enable: true
+    heartbeat: 15
+    projectID: "e632c2f5b47042f343e7697a26f14068"
+    tlsCaFile: "/etc/kubeedge/ca/rootCA.crt"
+    tlsCertFile: "/etc/kubeedge/certs/edge.crt"
+    tlsPrivateKeyFile: "/etc/kubeedge/certs/edge.key"
+    token: "" # keadm gettoken で取得した値を設定
+    websocket:
+      enable: true
+      handshakeTimeout: 30
+      readDeadline: 15
+      server: "127.0.0.1:10000" # CloudHub 待ち受けポート
+      writeDeadline: 15
+  
+  edgeStream:
+    enable: true
+    handshakeTimeout: 30
+    readDeadline: 15
+    server: "127.0.0.1:10003" # CloudStream トンネルポート
+    tlsTunnelCAFile: "/etc/kubeedge/ca/rootCA.crt"
+    tlsTunnelCertFile: "/etc/kubeedge/certs/server.crt"
+    tlsTunnelPrivateKeyFile: "/etc/kubeedge/certs/server.key"
+    writeDeadline: 15
+
+  metaManager:
+    enable: true
+    contextSendGroup: hub
+    contextSendModule: websocket
+    podStatusSyncInterval: 60
+    # SQLite データベース配置パス (自律稼働キャッシュ)
+    metaServer:
+      enable: true

@@ -205,22 +205,26 @@ RTL-SDR V4 ─── 付属アンテナ / 自作ダイポールアンテナ ─�
 
 ## 🛰️ 自宅KubeEdgeシステム構成
 
-**GPD Pocket3（Ubuntu 26.04）** と **分析・運用ワークステーション（Ubuntu PC）** の2台を活用し、CNCF **KubeEdge** を中核に据えた「**エッジ完結・オフライン自律稼働型 電波観測基盤**」のアーキテクチャです。詳細な仕様とデータフローは [docs/03_system_architecture.md](docs/03_system_architecture.md)、Edge-Cloud 相互通信の詳細は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください。
+本プロジェクトでは、**GPD Pocket3（Ubuntu 26.04 LTS）** 単一端末上で CNCF **KubeEdge**（`cloudcore` + `edgecore`）と超軽量 **kube-prometheus-stack** を稼働させる「**1台完結型エッジ自律観測 PoC 基盤**」を構成しています。詳細な仕様とデータフローは [docs/03_system_architecture.md](docs/03_system_architecture.md)、Edge-Cloud 相互通信の詳細は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください。
 
 ```mermaid
 flowchart LR
-    GPD["💻 GPD Pocket3 (Ubuntu 26.04)<br/>KubeEdge EdgeCore (EdgeHub / EdgeStream / Edged)<br/>RTL-SDR v4 直結 / 24h自律観測<br/>リアルタイムFFT & 1秒積算 (8KB/s)<br/>DuckDB / Parquet ローカル常時蓄積"]
-    Desktop["🖥️ 分析・運用PC (Ubuntu)<br/>k3s + KubeEdge CloudCore (CloudHub / CloudStream)<br/>オンデマンド分析 & 開発 (停止時もエッジ自律稼働)<br/>・JupyterLab (Astropy/GPU解析)<br/>・Grafana (ウォーターフォール可視化)<br/>・VS Code / kubectl"]
+    subgraph Host["💻 GPD Pocket3 (Ubuntu 26.04 LTS: 1台完結PoC)"]
+        direction LR
+        Edge["⚡ EdgeCore (EdgeHub / Edged)<br/>・RTL-SDR v4 観測<br/>・FFT/積算 (8KB/s)<br/>・DuckDB/Parquet"]
+        Cloud["☁️ k3s + CloudCore (CloudHub)<br/>・Kubernetes API Server<br/>・kube-prometheus-stack<br/>・Grafana / Jupyter"]
 
-    GPD -->|① EdgeHub: WebSocket 接続 (:10000/:10002)| Desktop
-    GPD -->|② EdgeStream: リバーストンネル (:10003)| Desktop
-    Desktop -->|③ LAN経由 高速SQLクエリ (DuckDB/Parquet)| GPD
+        Edge -->|"① WebSocket (:10000/:10002)"| Cloud
+        Edge -->|"② リバーストンネル (:10003)"| Cloud
+        Cloud -->|"③ 高速SQLクエリ"| Edge
+    end
 ```
 
-| マシン | 役割 | 主なワークロード / 動作ポリシー |
+| レイヤー | 実行場所 | 主なワークロード / 動作ポリシー |
 | :--- | :--- | :--- |
-| **GPD Pocket3** | **【常時自律】エッジ観測ノード** | Ubuntu 26.04 LTS。アンテナ直下設置、SDR制御、リアルタイムFFT・1秒積算（8KB/s圧縮）、DuckDB/Parquetローカル蓄積。**クラウドPCの電源状態に依存せず24h単独自律稼働**。 |
-| **Ubuntu PC** | **【オンデマンド】分析 & コントロールプレーン** | Ubuntu Desktop / Server (`k3s` + KubeEdge `cloudcore`)。分析時や運用時に起動。LAN越しにGPD Pocket3のデータを直接SQL/Jupyterで高速分析。`kubectl logs` / `exec` もリバーストンネル経由で実行可能。 |
+| **エッジ観測レイヤー** | GPD Pocket3 (`edgecore`) | RTL-SDR v4 直結、エッジDSP（リアルタイムFFT・1秒積算で8KB/s圧縮）、DuckDB/Parquetローカル蓄積。**k3s停止時もMetaManagerキャッシュにより24h自律継続**。 |
+| **クラウド管理レイヤー** | GPD Pocket3 (`cloudcore` / `k3s`) | Kubernetes (`k3s`) コントロールプレーン、KubeEdge `cloudcore`。ノード管理およびエッジ設定の同期。 |
+| **監視・運用レイヤー** | GPD Pocket3 (`kube-prometheus-stack`) | 超軽量チューニング（Prometheus 256Mi〜512Mi / 30s間隔 / Grafana WebUI）。リソース最低限でSDR温度やDSP負荷を可視化。 |
 
 ---
 
