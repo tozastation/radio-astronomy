@@ -49,7 +49,7 @@ sudo udevadm trigger
 
 ### 2.2 k3s containerd のローカルレジストリ信頼設定
 
-k3s の containerd がクラスタ内のローカルレジストリ（`localhost:5000` / `127.0.0.1:5000`）と平文 HTTP 通信できるように設定します。
+k3s の containerd がクラスタ内のローカルレジストリ（`localhost:5000` / `127.0.0.1:5000`）と平文 HTTP 通信できるように、**k3s インストール前に** 設定ファイルを事前配置します。
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
@@ -62,12 +62,44 @@ mirrors:
     endpoint:
       - "http://127.0.0.1:5000"
 EOF
-
-# k3s が稼働中の場合は再起動して設定を反映
-# sudo systemctl restart k3s
 ```
 
-### 2.3 keadm CLI ツールのインストール
+### 2.3 k3s Server（軽量 Kubernetes コントロールプレーン）のインストール
+
+CloudCore が接続するバックエンドとして、軽量 Kubernetes である k3s Server をインストールします。
+エッジ環境でのリソース（メモリ・CPU）消費を最小限に抑えるため、今回は不要なデフォルトアドオン（Traefik Ingress Controller や ServiceLB）を無効化（`--disable`）して起動します。
+
+- **公式一次情報**: [k3s Quick-Start Guide (k3s.io)](https://docs.k3s.io/quick-start)
+
+```bash
+# 1. k3s Server のインストール
+# --write-kubeconfig-mode=644 により一般ユーザーでも kubectl が利用可能になります
+curl -sfL https://get.k3s.io | sh -s - server \
+  --disable=traefik \
+  --disable=servicelb \
+  --write-kubeconfig-mode=644
+
+# 2. サービス稼働状態の確認
+sudo systemctl status k3s
+
+# 3. 一般ユーザー環境への kubeconfig 設定
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $(id -u):$(id -g) ~/.kube/config
+chmod 600 ~/.kube/config
+export KUBECONFIG=~/.kube/config
+
+# 4. ノード状態の確認
+kubectl get nodes
+```
+
+> **将来の分離時やリセット用（参考）**:
+> 将来分析PC（Ubuntu）を追加して GPD Pocket3 から k3s を切り離す際、または最初からやり直す際は、以下の公式スクリプトで完全にアンインストール可能です。
+> ```bash
+> /usr/local/bin/k3s-uninstall.sh
+> ```
+
+### 2.4 keadm CLI ツールのインストール
 
 KubeEdge 公式の管理 CLI である `keadm` をダウンロードして配置します。
 

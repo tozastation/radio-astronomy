@@ -17,16 +17,33 @@
 
 ## 1. なぜ通常の Kubernetes ではなく KubeEdge なのか？
 
+### 1.1 クラスタ数は「2個」ではなく「1個」である（単一クラスタモデル）
+KubeEdge はマルチクラスタ（複数の独立した Kubernetes クラスタをフェデレーションする構成）ではありません。
+**「1つの Kubernetes クラスタの中に、エッジ端末が『特殊なワーカーノード（Node）』としてぶら下がっている」** という構造です。
+
+```bash
+$ kubectl get nodes
+NAME                 STATUS   ROLES    AGE   VERSION
+cloud-server         Ready    master   5d    v1.30.0+k3s1      ← Cloud 側（k3s server コントロールプレーン）
+gpd-pocket3-edge     Ready    agent    5d    v1.18.0-kubeedge  ← Edge 側（ベランダの端末 / EdgeCore）
+```
+
+- **統一管理**: `kubectl apply -f deployment.yaml` でエッジ宛てに Pod を配備し、手元から `kubectl logs` や `kubectl exec` で直接エッジ上のコンテナを操作可能。
+- **CloudCore の正体は Custom Controller 群**:
+  CloudCore の中身は、Kubernetes API Server を watch する一連の Custom Controller（`EdgeController`, `DeviceController` 等）です。エッジ端末が直接 etcd / API Server を叩くのではなく、CloudCore がイベントを集約・圧縮して WebSocket 1本でエッジへ中継します。これにより、何千台のエッジノードが存在しても API Server や etcd の負荷爆発（Thundering Herd）を防ぎます。
+
+### 1.2 通常の Kubelet との決定的な違い（WAN耐性とLocal-First自律性）
+
 通常の Kubernetes ワーカーノード（Kubelet）を宅内エッジ端末（GPD Pocket3 等）にそのまま配置する場合、以下の深刻な課題が発生します：
 
 1. **常時接続前提（ネットワーク切断時の Pod Eviction）**:
    - 標準の Kubelet は Kubernetes API Server と常にハートビートを交わします。通信が途絶えると（デフォルト `node-monitor-grace-period: 40s`）、コントロールプレーンはノードを `NotReady` と判定し、数分後に Pod を強制終了（Evict）しようとします。
+   - **KubeEdge の解決策**: エッジ側にローカル SQLite（`MetaManager`）を内包し、直前の状態をキャッシュ。回線が何時間切断されても、Pod は停止せず自律して動き続けます（**Local-First アーキテクチャ**）。
 2. **NAT / ファイアウォール越えの困難**:
    - `kubectl logs` や `kubectl exec` は、API Server から各ノードの Kubelet（TCP 10250）へ **直接インバウンド接続** することで動作します。エッジ端末が宅内 LAN やモバイル回線、NAT 配下にある場合、外部から直接 TCP 接続を開くことができません。
+   - **KubeEdge の解決策**: エッジからクラウドへ張る **アウトバウンド WebSocket トンネル（10000番）** の中で、CloudStream が双方向ストリームを透過中継します（Cloudflare Tunnel や Tailscale と同等の構造）。
 3. **リソースフットプリント**:
-   - フルスペックの Kubelet や kube-proxy、etcd キャッシュはメモリ・CPU 消費が大きく、エッジ端末のリソースを圧迫します。
-
-**KubeEdge はこれらの課題を解決するために設計された CNCF インキュベーティングプロジェクト** です。
+   - フルスペックの Kubelet や kube-proxy、etcd キャッシュはメモリ・CPU 消費が大きく、エッジ端末のリソースを圧迫します。KubeEdge の `Edged` は軽量化されており省電力・省メモリです。
 
 ---
 
