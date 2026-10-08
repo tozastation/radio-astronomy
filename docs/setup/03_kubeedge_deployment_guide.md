@@ -130,13 +130,13 @@ k3s Server 側で CloudCore を初期化し、エッジノード参加用の認�
 ```bash
 # 1. CloudCore の初期化（k3s クラスタの kubeconfig を指定）
 sudo keadm init --advertise-address="127.0.0.1" \
-  --kubeconfig="/etc/rancher/k3s/k3s.yaml"
+  --kube-config="/etc/rancher/k3s/k3s.yaml"
 
 # 2. CloudCore Pod が running になったことを確認
 kubectl get pods -n kubeedge -l k8s-app=kubeedge -o wide
 
 # 3. EdgeCore 参加用トークンを取得（後ほど EdgeCore で使用）
-sudo keadm gettoken --kubeconfig="/etc/rancher/k3s/k3s.yaml"
+sudo keadm gettoken --kube-config="/etc/rancher/k3s/k3s.yaml"
 # 出力例: 9a7b5... (このトークン文字列をコピーしておく)
 ```
 
@@ -154,13 +154,13 @@ GPD Pocket3（Edged）側で EdgeCore を起動し、k3s クラスタへエッ�
 export EDGE_TOKEN="<先ほど取得したトークン>"
 
 # 2. EdgeCore の参加
-# ※ containerd ソケットと systemd cgroup driver を明示指定
+# ※ containerd ソケット、systemd cgroup driver、ノード名を明示指定
 sudo keadm join \
   --cloudcore-ipport="127.0.0.1:10000" \
   --token="${EDGE_TOKEN}" \
   --cgroupdriver="systemd" \
   --remote-runtime-endpoint="unix:///run/k3s/containerd/containerd.sock" \
-  --edgename="gpd-pocket3-edge"
+  --edgenode-name="gpd-pocket3-edge"
 
 # 3. EdgeCore サービス（systemd）の稼働確認
 sudo systemctl status edgecore
