@@ -110,8 +110,8 @@ sudo systemctl restart k3s
 KubeEdge 公式の管理 CLI である `keadm` をダウンロードして配置します。
 
 ```bash
-# 最新安定版バージョン（例: v1.18.0 等）を指定
-export KUBEEDGE_VERSION="v1.18.0"
+# 最新安定版バージョン（v1.22.1）を指定
+export KUBEEDGE_VERSION="v1.22.1"
 curl -sSL "https://github.com/kubeedge/kubeedge/releases/download/${KUBEEDGE_VERSION}/keadm-${KUBEEDGE_VERSION}-linux-amd64.tar.gz" -o keadm.tar.gz
 tar -zxvf keadm.tar.gz
 sudo cp "keadm-${KUBEEDGE_VERSION}-linux-amd64/keadm/keadm" /usr/local/bin/keadm
@@ -146,39 +146,46 @@ sudo keadm gettoken --kubeconfig="/etc/rancher/k3s/k3s.yaml"
 
 GPD Pocket3（Edged）側で EdgeCore を起動し、k3s クラスタへエッジノードとして参加させます。
 
+> [!IMPORTANT]
+> **cgroup driver の一致（必須）**: Ubuntu 24.04 / 26.04 および k3s の containerd はデフォルトで `systemd` cgroup ドライバーを使用します。KubeEdge のデフォルトは `cgroupfs` のため、不一致による OCI 起動エラーを防ぐために `--cgroupdriver="systemd"` を必ず指定します。
+
 ```bash
-# トークンを環境変数に設定（先ほど取得した文字列）
+# 1. トークンを環境変数に設定（先ほど取得した文字列）
 export EDGE_TOKEN="<先ほど取得したトークン>"
 
-# EdgeCore の参加
-# ※ containerd ソケットとして k3s 内蔵 containerd を指定
+# 2. EdgeCore の参加
+# ※ containerd ソケットと systemd cgroup driver を明示指定
 sudo keadm join \
   --cloudcore-ipport="127.0.0.1:10000" \
   --token="${EDGE_TOKEN}" \
-  --runtimetype="remote" \
+  --cgroupdriver="systemd" \
   --remote-runtime-endpoint="unix:///run/k3s/containerd/containerd.sock" \
   --edgename="gpd-pocket3-edge"
 
-# EdgeCore サービス（systemd）の稼働確認
+# 3. EdgeCore サービス（systemd）の稼働確認
 sudo systemctl status edgecore
 ```
 
-### 4.1 Edged 10350 ポートのメトリクス有効化
+### 4.1 EdgeStream トンネルとメトリクス転送（iptables）の設定
 
-Prometheus からコンテナ別 CPU/メモリ使用量を取得するため、`/etc/kubeedge/config/edgecore.yaml` を確認・調整します。
+Prometheus や `kubectl logs` / `exec` がエッジ端末へアクセスできるよう、リバーストンネル（EdgeStream / CloudStream）を設定します。
 
-```yaml
-edged:
-  cadvisorInterface: ""
-  cgroupDriver: systemd
-  cgroupsPerQOS: true
-  enableMetricsServer: true  # true に設定されていることを確認
-```
+1. **エッジ側設定（`/etc/kubeedge/config/edgecore.yaml`）**:
+   `edgeStream.enable` が `true` になっていることを確認します（keadm join で通常自動設定されます）。
+   ```yaml
+   edgeStream:
+     enable: true
+     handshakeTimeout: 30
+     readDeadline: 15
+     server: 127.0.0.1:10003
+     writeDeadline: 15
+   ```
 
-設定変更後は EdgeCore を再起動します：
-```bash
-sudo systemctl restart edgecore
-```
+2. **Cloud 側（k3s Server 側）の iptables 転送ルール**:
+   Cloud 側の Prometheus や API Server がエッジノードのポート `10350`（cAdvisor/リソースメトリクス）へ通信しようとした際、CloudStream のトンネルポート（`10003`）へ中継する DNAT ルールを適用します。
+   ```bash
+   sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
+   ```
 
 ---
 

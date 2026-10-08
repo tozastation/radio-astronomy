@@ -121,6 +121,13 @@ KubeEdge のエッジデーモン `edgecore` に含まれる `Edged` は、軽�
 | **CLI リソース確認 (`kubectl top`)** | HTTPS | `kubectl` $\rightarrow$ API Server $\rightarrow$ **metrics-server** $\rightarrow$ CloudStream $\rightarrow$ Edged | k3s 内蔵または公式 `metrics-server` |
 | **ホストOS詳細 (CPU温度 / SSD I/O)** | HTTP (明文) | Prometheus $\rightarrow$ **宅内 LAN 直接アクセス** $\rightarrow$ node-exporter (:9100) | `values-minimal.yaml` の `additionalScrapeConfigs` |
 
+> [!NOTE]
+> **CloudStream トンネル転送の iptables ルール（公式仕様）**:
+> Cloud 側の API Server や Prometheus、metrics-server がエッジノードのポート `10350` へリクエストを送る際、CloudCore のトンネルエンドポイント（`10003`）へ中継するために Cloud ホスト側で以下の DNAT ルールを適用します：
+> ```bash
+> sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
+> ```
+
 ---
 
 ## 5. 1台完結PoCから物理2台体制への移行チェックリスト
