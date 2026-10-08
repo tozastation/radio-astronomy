@@ -327,7 +327,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{container=\"tracker\"}[1m]))",
+          "expr": "sum(rate(process_cpu_seconds_total{job=\"satellite-tracker\"}[1m]))",
           "legendFormat": "SDR Tracker CPU Cores",
           "refId": "A"
         }
@@ -354,12 +354,12 @@
       },
       "targets": [
         {
-          "expr": "sum(container_memory_working_set_bytes{container=\"tracker\"})",
-          "legendFormat": "SDR Tracker Memory Working Set",
+          "expr": "sum(process_resident_memory_bytes{job=\"satellite-tracker\"})",
+          "legendFormat": "SDR Tracker Resident Memory (RSS)",
           "refId": "A"
         }
       ],
-      "title": "SDR 観測 Pod メモリ使用量 (Working Set)",
+      "title": "SDR 観測 Pod メモリ使用量 (RSS)",
       "type": "timeseries"
     }
   ],

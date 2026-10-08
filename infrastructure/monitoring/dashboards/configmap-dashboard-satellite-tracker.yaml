@@ -123,7 +123,7 @@ data:
     \           \"lineWidth\": 2\n          },\n          \"unit\": \"short\"\n        }\n
     \     },\n      \"gridPos\": { \"h\": 7, \"w\": 12, \"x\": 0, \"y\": 31 },\n      \"id\":
     9,\n      \"options\": {\n        \"legend\": { \"displayMode\": \"list\", \"placement\":
-    \"bottom\" }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"sum(rate(container_cpu_usage_seconds_total{container=\\\"tracker\\\"}[1m]))\",\n
+    \"bottom\" }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"sum(rate(process_cpu_seconds_total{job=\\\"satellite-tracker\\\"}[1m]))\",\n
     \         \"legendFormat\": \"SDR Tracker CPU Cores\",\n          \"refId\": \"A\"\n
     \       }\n      ],\n      \"title\": \"SDR 観測 Pod CPU使用率 (Cores)\",\n      \"type\":
     \"timeseries\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\",
@@ -133,11 +133,11 @@ data:
     \       }\n      },\n      \"gridPos\": { \"h\": 7, \"w\": 12, \"x\": 12, \"y\":
     31 },\n      \"id\": 10,\n      \"options\": {\n        \"legend\": { \"displayMode\":
     \"list\", \"placement\": \"bottom\" }\n      },\n      \"targets\": [\n        {\n
-    \         \"expr\": \"sum(container_memory_working_set_bytes{container=\\\"tracker\\\"})\",\n
-    \         \"legendFormat\": \"SDR Tracker Memory Working Set\",\n          \"refId\":
-    \"A\"\n        }\n      ],\n      \"title\": \"SDR 観測 Pod メモリ使用量 (Working Set)\",\n
-    \     \"type\": \"timeseries\"\n    }\n  ],\n  \"refresh\": \"5s\",\n  \"schemaVersion\":
-    38,\n  \"style\": \"dark\",\n  \"tags\": [\"radio-astronomy\", \"cubesat\", \"satellite\",
+    \         \"expr\": \"sum(process_resident_memory_bytes{job=\\\"satellite-tracker\\\"})\",\n
+    \         \"legendFormat\": \"SDR Tracker Resident Memory (RSS)\",\n          \"refId\":
+    \"A\"\n        }\n      ],\n      \"title\": \"SDR 観測 Pod メモリ使用量 (RSS)\",\n      \"type\":
+    \"timeseries\"\n    }\n  ],\n  \"refresh\": \"5s\",\n  \"schemaVersion\": 38,\n
+    \ \"style\": \"dark\",\n  \"tags\": [\"radio-astronomy\", \"cubesat\", \"satellite\",
     \"kubeedge\", \"sdr\"],\n  \"time\": {\n    \"from\": \"now-30m\",\n    \"to\":
     \"now\"\n  },\n  \"timepicker\": {\n    \"refresh_intervals\": [\"1s\", \"5s\",
     \"10s\", \"30s\", \"1m\"]\n  },\n  \"timezone\": \"browser\",\n  \"title\": \"\U0001F6F0️
@@ -145,7 +145,7 @@ data:
     \"satellite-radio-tracker\",\n  \"version\": 1\n}\n"
 kind: ConfigMap
 metadata:
-  name: grafana-dashboard-satellite-tracker
-  namespace: monitoring
   labels:
     grafana_dashboard: "1"
+  name: grafana-dashboard-satellite-tracker
+  namespace: monitoring
