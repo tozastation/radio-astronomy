@@ -1,0 +1,22 @@
+# k3s 設定ファイル (/etc/rancher/k3s/config.yaml)
+# GPD Pocket3 (Ubuntu 26.04) 向け超軽量チューニング構成
+#
+# 目的:
+# - KubeEdge CloudCore および kube-prometheus-stack が動作する最小構成の K8s コントロールプレーン
+# - 余分な組み込みコンポーネント (Traefik Ingress, ServiceLB) を無効化してメモリ消費を極小化 (約500MB以下)
+
+write-kubeconfig-mode: "0644"
+
+# 余分なコンポーネントの無効化 (省リソース化)
+disable:
+  - traefik        # 外部Ingressコントローラは不要、ポートを節約
+  - servicelb      # クラスタ外ロードバランサーは不要
+  - local-storage  # 観測ストレージはホストマウントまたはParquet直接アクセスを使用
+
+# KubeEdge 連携用の API Server フラグ
+# apiserver-network-proxy や CloudStream トンネル経由の logs/exec 転送用
+kube-apiserver-arg:
+  - "service-node-port-range=30000-32767"
+
+# ノード情報 (GPD Pocket3 単一ノード PoC)
+node-name: "gpd-pocket3-cloud"
