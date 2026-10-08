@@ -17,6 +17,10 @@ spec:
     spec:
       nodeSelector:
         node-role.kubernetes.io/edge: ""
+      tolerations:
+        - key: "node-role.kubernetes.io/edge"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
         - name: tracker
           image: localhost:5000/radio-astronomy-tracker:dev
