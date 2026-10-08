@@ -1,0 +1,13 @@
+# k3s containerd 用のプライベートレジストリ設定ファイル
+# 配置先: /etc/rancher/k3s/registries.yaml
+# 反映方法: 配置後に k3s サービスを再起動（sudo systemctl restart k3s）
+mirrors:
+  "localhost:5000":
+    endpoint:
+      - "http://127.0.0.1:5000"
+  "127.0.0.1:5000":
+    endpoint:
+      - "http://127.0.0.1:5000"
+  "local-registry.container-registry.svc.cluster.local:5000":
+    endpoint:
+      - "http://local-registry.container-registry.svc.cluster.local:5000"

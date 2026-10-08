@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: satellite-tracker
+  namespace: default
+  labels:
+    release: kube-prometheus-stack
+    app: satellite-tracker
+spec:
+  selector:
+    matchLabels:
+      app: satellite-tracker
+  endpoints:
+    - port: metrics
+      interval: 5s
+      scrapeTimeout: 3s
+      path: /metrics
