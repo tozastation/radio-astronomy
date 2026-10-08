@@ -88,6 +88,24 @@ sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
 
 > **「重いデータ処理と生存はエッジで完結させ、ガバナンスと監視だけを中央から宣言的に行う」** という現代の分散システムのベストプラクティスがここに凝縮されている。
 
+### Q6. 「1台同居環境（PoC）で全PodがCrashLoopBackOffに！ 何が起きたのか？」
+> **A. k3s の kubelet と KubeEdge の edged が同一 containerd ソケット（namespace `k8s.io`）を共有したことによる「Pod Sandbox 殺し合いループ（GC デッドロック）」です！**
+
+- **遭遇した現象**:
+  - `edgecore` を起動した直後、`kubectl get nodes` で `CIDRAssignmentFailed` が記録され、ノードが `NotReady`（`NodeStatusUnknown`）に転落。
+  - 同時にクラスタ内の全 Pod（`coredns`, `metrics-server`, `cloudcore`）が一斉に `CrashLoopBackOff` や `Completed`（再起動）を数秒おきに繰り返す異常事態に。
+- **SRE 的深掘りとメカニズム**:
+  1. k3s 側の kubelet は `/run/k3s/containerd/containerd.sock` を見て自ノード（`tozastation-g1621-02`）の Pod を管理している。
+  2. KubeEdge 側の edged（kubelet 互換デーモン）も設定ミスで同じ `/run/k3s/containerd/containerd.sock` を見に行っていた。
+  3. CRI 仕様上、双方が同じ `k8s.io` namespace のコンテナ一覧を取得する。
+  4. すると、k3s 側の kubelet は「自分のノードに割り当てていない謎の Pod/Sandbox」をゴミと判断して削除（Kill）する。
+  5. 逆に edged 側も「自分のエッジノードに割り当てていない謎の Pod/Sandbox」をゴミと判断して削除（Kill）する。
+  6. **結果、双方が相手の Pod Sandbox を「不要なゴミ」と判定して無限に殺し合う（Pod Sandbox Churn）デッドロックが発生！**
+  7. この巻き添えで `cloudcore` が死に、エッジとクラウドの WebSocket が切断され、ノードがハートビート途絶（`NotReady`）に陥った。
+- **得られた知見（ベストプラクティス）**:
+  - 1台の Linux マシン上で複数の Kubelet（または Kubelet と EdgeCore）を動かす場合、**CRI ランタイム（containerd デーモン・ソケット・ストレージ）は絶対に共用してはならず、完全に分離しなければならない**。
+  - エッジ専用の `containerd-edge.service`（`/run/containerd-edge/containerd.sock`）を立てることで、ホストの既存 Docker や k3s に一切干渉しない堅牢な 1 台完結 PoC が実現できる。
+
 ---
 
 ## 🛠️ まとめ & 実機でのノード開通
@@ -100,3 +118,4 @@ gpd-pocket3-edge       NotReady   agent,edge      16m   v1.31.12-kubeedge-v1.22.
 ```
 エッジ端末が Kubernetes クラスタの 1 ノードとして認識された瞬間、インフラエンジニアとしての感動がある。
 次回は、このエッジノード上で RTL-SDR v4 を USB パススルー制御し、UHF 435MHz CubeSat のドップラーS字カーブを Grafana に描画するまでを解説する。
+
