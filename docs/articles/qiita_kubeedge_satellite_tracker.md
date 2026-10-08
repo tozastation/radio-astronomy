@@ -43,11 +43,10 @@ ignorePublish: false
 > **「エッジ観測機なら、KubeEdge でコンテナオーケストレーションして完全自律稼働させるしかないのでは……！？」**
 
 電波天文学や人工衛星観測の現場では、山奥や屋外アンテナ直下にエッジPCを設置し、観測パイプラインを遠隔管理・監視することが求められます。  
-そこで今回は、**GPD Pocket3（メモリ 16GB / Ubuntu 26.04 LTS）単一端末上で、k3s（CloudCore）と KubeEdge（EdgeCore）を同居** させ、頭上を通過する人工衛星（CubeSat / ISS）の電波を SGP4 軌道予測 ＆ SDR FFT ドップラー解析で自動追尾し、Prometheus ＆ Grafana でリアルタイム可視化するエッジ観測所を構築しました！
+そこで今回は、**GPD Pocket3（メモリ 16GB / Ubuntu 26.04 LTS）単一端末上で、k3s（CloudCore）と KubeEdge（EdgeCore）を同居** させ、頭上を通過する人工衛星（CubeSat / ISS）の電波を SGP4 軌道予測と SDR FFT ドップラー解析で自動追尾し、Prometheus と Grafana でリアルタイム可視化するエッジ観測環境を構築しました。
 
-しかし……**「本来はクラウドとエッジの複数マシンに分けるべき KubeEdge を 1台に同居させた」** ことで、コンテナランタイム（CRI）、ネットワーク（CNI）、ファイルシステム（Volume）、iptables が互いに殺し合う **地獄のシステムトラブルのオンパレード** に遭遇することになります。
-
-本記事では、宇宙物理・DSP のロマンとともに、それら 8 つの泥臭い SRE トラブルをどうやって解明・ねじ伏せたのかを余すところなくお話しします！
+ただし、本来は複数マシンに分離して構成する KubeEdge を 1台に同居させたことで、コンテナランタイム（CRI）、ネットワーク（CNI）、ボリュームなどのリソース競合に伴うトラブルがいくつか発生しました。  
+本記事では、この構成の概要と、単一端末上で運用する際に遭遇したトラブルの解決手順をまとめます。
 
 ---
 
@@ -87,13 +86,13 @@ flowchart TB
 - **エッジ観測アプリ (`satellite-tracker`)**: Python 3.11, SGP4 軌道力学計算, NumPy FFT スペクトル解析, Prometheus Exporter
 - **全体メモリ消費**: **約 770MB**（Grafana 380MB, Prometheus 335MB, kube-state-metrics 23MB, Operator 30MB）
 
-UMPC の限られたリソースでも、エッジ観測ループを全く阻害しない超軽量フットプリントを実現しています。
+UMPC の限られたリソースでも、エッジ端末での常時監視や観測処理に支障なく動作しています。
 
 ---
 
-## 物理とDSP（デジタル信号処理）のロマン
+## 衛星追尾における数理モデルとDSP処理
 
-衛星観測パイプラインで処理している 2 つの重要な数理モデルです。
+衛星観測パイプラインで処理している 2 つの数理モデルです。
 
 ### 1. 第一宇宙速度とドップラー偏移（Doppler S-Curve）
 地上約 400〜600 km の地球低軌道（LEO）を周回する人工衛星は、秒速約 7.6 km（時速 27,000 km）の超高速で移動しています。  
@@ -108,11 +107,11 @@ $$\Delta f = - f_0 \frac{v_r}{c} = - f_0 \frac{\vec{v} \cdot \vec{r}}{c \|\vec{r
 | $v_r = \frac{\vec{v} \cdot \vec{r}}{\|\vec{r}\|}$ | 観測者から見た衛星の視線速度（Line-of-Sight Velocity） | $\text{m/s}$ |
 | $\Delta f$ | 受信周波数の偏移量（Doppler Shift） | $\text{Hz}$ |
 
-- **AOS（信号捕捉 / 水平線から出現）直後**: 衛星が猛スピードで接近してくるため、$v_r < 0$ となり周波数が **約 +8〜10 kHz** 高く受信されます。
+- **AOS（信号捕捉 / 水平線から出現）直後**: 衛星が接近してくるため、$v_r < 0$ となり周波数が **約 +8〜10 kHz** 高く受信されます。
 - **TCA（最接近時刻）**: 視線速度ベクトルがゼロ（進行方向が直角）になる瞬間、**ドップラー偏移が 0 Hz をクロス**（ゼロクロス点）します。
-- **LOS（信号消失 / 水平線へ没入）直前**: 衛星が遠ざかるため、$v_r > 0$ となり周波数が **約 -8〜10 kHz** 急降下します。
+- **LOS（信号消失 / 水平線へ没入）直前**: 衛星が遠ざかるため、$v_r > 0$ となり周波数が **約 -8〜10 kHz** 低くなります。
 
-この美しい「逆S字カーブ」が、SGP4 軌道力学による理論予測と、RTL-SDR v4 の FFT パワースペクトル解析による実測ピーク周波数で一致していく様子を Grafana でリアルタイム描画します。
+この逆S字カーブについて、SGP4 軌道力学による理論予測と、RTL-SDR v4 の FFT パワースペクトル解析による実測ピーク周波数を Grafana でリアルタイムに可視化します。
 
 ```text
 周波数偏移 Δf
@@ -132,26 +131,26 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ---
 
-## 1台同居環境で踏み抜いた「地獄のトラブルシューティング8選」
+## 単一ノード同居環境でのトラブルシューティング
 
-ここからが本題です。1台のマシン上で k3s と KubeEdge を同居させたことで、通常は遭遇しないディープなシステム競合が次々と牙を剥きました。
+1台のマシン上で k3s と KubeEdge を同居させた際に発生したトラブルと、その原因および解決策をまとめます。
 
 ---
 
-### トラブル 1: CRIソケット共有による「Pod 殺し合いループ」
-- **現象**: Pod を起動すると、数秒後に `Unknown` や `Terminating` になり、再作成されては消える無限ループが発生。
+### 1. CRIソケット共有による Pod の再作成ループ
+- **現象**: Pod を起動すると、数秒後に `Unknown` や `Terminating` になり、再作成と削除が繰り返される。
 - **メカニズム**:
   - k3s の kubelet と KubeEdge の edged が、同一の `/run/k3s/containerd/containerd.sock` を参照していた。
   - k3s 側の kubelet は「自分の管理外のコンテナが containerd にいる（edged の Pod）」と判断してコンテナを GC 削除。
   - edged 側も「自分の管理外のコンテナがいる（k3s の Pod）」と判断して GC 削除。
-  - **両者が互いの Pod を「不正な野良コンテナ」とみなして殺し合うデスループ** に陥っていた。
+  - 両者が互いの Pod を管理外コンテナと判断し、交互に GC 削除するループに陥っていた。
 - **解決策**:
-  - エッジ専用の `containerd-edge.service` を立ち上げ、ソケットを `/run/containerd-edge/containerd.sock` に完全分離。
-  - `edgecore.yaml` の `runtimeType: "remote"`, `remoteRuntimeEndpoint: "unix:///run/containerd-edge/containerd.sock"` を指定して平和が訪れた。
+  - エッジ専用の `containerd-edge.service` を立ち上げ、ソケットを `/run/containerd-edge/containerd.sock` に分離。
+  - `edgecore.yaml` の `runtimeType: "remote"`, `remoteRuntimeEndpoint: "unix:///run/containerd-edge/containerd.sock"` を指定してソケット競合を解消。
 
 ---
 
-### トラブル 2: CNI ブリッジ名の重複衝突 (`cni0`)
+### 2. CNI ブリッジ名の重複衝突 (`cni0`)
 - **現象**: エッジ側でコンテナを起動しようとすると、`failed to setup network: bridge cni0 already exists with different IP` でネットワーク設定が失敗。
 - **メカニズム**:
   - k3s 側の Flannel CNI がすでに `cni0`（`10.42.0.1/24`）というブリッジを作成していた。
@@ -161,33 +160,33 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ---
 
-### トラブル 3: 推奨 iptables DNAT による「Self-loopback 自爆」
-- **現象**: `edgecore` のログに `edged.go:660] internal error and status code: 400` が 50ms ごとに無限出力され、ノード初期化が終わらない。
+### 3. iptables DNAT ルールによるローカル通信の転送
+- **現象**: `edgecore` のログに `edged.go:660] internal error and status code: 400` が 50ms ごとに出力され、ノード初期化が終わらない。
 - **メカニズム**:
   - KubeEdge 公式ドキュメントにある推奨ルール：
     ```bash
     sudo iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 127.0.0.1:10003
     ```
     は本来、「別マシンの Cloud 側からエッジ宛て（10350）の通信を CloudStream トンネル（10003）に中継する」ためのもの。
-  - 1台同居環境でこのルールを無邪気に入れると、`edged` 自身が自分自身の起動確認のために叩く `http://localhost:10350/healthz/syncloop`（HTTP 平文）まで CloudStream の HTTPS（TLS）ポート `10003` に強制転送されてしまう。
-  - CloudStream は「HTTPS ポートに平文 HTTP リクエストが来た」ので当然 `400 Bad Request` を返し、`edged` はヘルスチェック失敗とみなして自滅していた。
+  - 1台同居環境でこのルールを適用すると、`edged` 自身が自分自身の起動確認のために叩く `http://localhost:10350/healthz/syncloop`（HTTP 平文）まで CloudStream の HTTPS（TLS）ポート `10003` に転送されてしまう。
+  - CloudStream は HTTPS ポートに平文 HTTP リクエストが到達したため `400 Bad Request` を返し、`edged` 側のヘルスチェックが失敗していた。
 - **解決策**:
-  - 1台同居環境ではこのルールは不要。即座に削除して解決。
+  - 1台同居環境ではこのルールは不要なため、ルールを削除して解決。
 
 ---
 
-### トラブル 4: テイント欠落による「アドオン Pod のエッジ誤配置事故」
-- **現象**: `metrics-server` などのクラスタ管理 Pod が `gpd-pocket3-edge`（エッジ側）にスケジュールされ、即死。
+### 4. テイント欠落によるアドオン Pod のエッジ誤配置
+- **現象**: `metrics-server` などのクラスタ管理 Pod が `gpd-pocket3-edge`（エッジ側）にスケジュールされ、正常に起動しない。
 - **メカニズム**:
   - KubeEdge のエッジノードは軽量化されており、API Server 直結のフルトポロジーを持たない。
-  - エッジノードにテイントが付いていないと、K8s スケジューラは「空いている通常ワーカーノード」とみなして重要なコントロールプレーン系アドオンをエッジに配置してしまう。
+  - エッジノードにテイントが付いていないと、K8s スケジューラは通常のワーカーノードとみなして重要なコントロールプレーン系アドオンをエッジに配置してしまう。
 - **解決策**:
   - エッジノードに `node-role.kubernetes.io/edge:NoSchedule` を付与。
-  - エッジで動かしたい観測 Pod（`satellite-tracker` 等）にのみ明示的に `tolerations` を設定してワークロードを厳格に隔離。
+  - エッジで動かしたい観測 Pod（`satellite-tracker` 等）にのみ明示的に `tolerations` を設定してワークロードを隔離。
 
 ---
 
-### トラブル 5: non-root Pod と emptyDir の権限罠
+### 5. non-root Pod と emptyDir の権限設定
 - **現象**: `metrics-server` が `panic: error creating self-signed certificates: open /tmp/apiserver.crt: permission denied` でクラッシュ。
 - **メカニズム**:
   - コンテナは非 root（`runAsUser: 1000`）で動作。
@@ -197,7 +196,7 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 
 ---
 
-### トラブル 6: Prometheus CRD 投入時の「256KB アノテーション上限」
+### 6. Prometheus CRD 投入時の 256KB アノテーション上限
 - **現象**: `helm show crds ... | kubectl apply -f -` を実行したところ、以下のエラーで失敗：
   ```text
   CustomResourceDefinition ... "prometheuses.monitoring.coreos.com" is invalid:
@@ -206,17 +205,17 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 - **メカニズム**:
   - 通常の `kubectl apply`（Client-Side Apply）は、差分計算のために `kubectl.kubernetes.io/last-applied-configuration` というアノテーションにマニフェスト JSON 全文を保存する。
   - しかし Kubernetes（etcd）において、アノテーション 1 つの最大容量は **262,144 bytes（256KB）**。
-  - 近年の Prometheus Operator CRD（OpenAPI v3 スキーマ）は非常にリッチで巨大なため、256KB 制限を軽々突破してしまう。
+  - 近年の Prometheus Operator CRD（OpenAPI v3 スキーマ）は定義が大きいため、256KB 制限を超えてしまう。
 - **解決策**:
   - **Server-Side Apply (SSA)** を利用：
     ```bash
     helm show crds prometheus-community/kube-prometheus-stack | kubectl apply --server-side -f -
     ```
-  - SSA はアノテーションではなく API Server 側の `managedFields` で管理するため、256KB 制限を受けずに一撃で適用できる。
+  - SSA はアノテーションではなく API Server 側の `managedFields` で管理するため、256KB 制限を受けずに適用できる。
 
 ---
 
-### トラブル 7: `spec.retentionSize` の OpenAPI 正規表現バリデーション
+### 7. `spec.retentionSize` の OpenAPI 正規表現バリデーション
 - **現象**: Helmfile 適用時にバリデーションエラー：
   ```text
   spec.retentionSize in body should match '(^0|([0-9]*[.])?[0-9]+((K|M|G|T|E|P)i?)?B)$'
@@ -224,34 +223,34 @@ SGP4 予測器に「北天視界フィルタ（方位角 $270^\circ \to 360^\cir
 - **メカニズム**:
   - Kubernetes のリソース指定（PVC 等）では `2Gi`（2 Gibibytes）と書くのが通例。
   - しかし Prometheus の TSDB 仕様（`--storage.tsdb.retention.size`）は末尾に **`B`**（Bytes）を要求する（例: `2GiB`）。
-  - Prometheus Operator の CRD でも厳格な正規表現で末尾 `B` を強制しているため、`2Gi` だと弾かれる。
+  - Prometheus Operator の CRD でも正規表現で末尾 `B` を要求しているため、`2Gi` だと弾かれる。
 - **解決策**:
   - `retentionSize: "2GiB"` と明記。
 
 ---
 
-### トラブル 8: edged による「孤児ボリューム物理削除ループ」
-- **現象**: `node-exporter` が `Exit Code: 137` で `CrashLoopBackOff` を繰り返す。Pod イベントには `open /var/lib/kubelet/pods/<UID>/etc-hosts: no such file or directory` と `Pod sandbox changed` が無限記録される。
+### 8. edged による孤児ボリューム削除ループ
+- **現象**: `node-exporter` が `Exit Code: 137` で `CrashLoopBackOff` を繰り返す。Pod イベントには `open /var/lib/kubelet/pods/<UID>/etc-hosts: no such file or directory` と `Pod sandbox changed` が記録される。
 - **メカニズム**:
   - `node-exporter` を control-plane ノード上に配置した際、同じマシンで root 権限で稼働している KubeEdge の `edgecore`（内蔵 edged）がローカルの `/var/lib/kubelet/pods` ディレクトリを巡回走査した。
-  - `edgecore` は「この Pod UID はエッジノード（`gpd-pocket3-edge`）に割り当てられた Pod ではない（＝孤児ボリューム orphaned pod volumes だ！）」と誤認。
+  - `edgecore` は「この Pod UID はエッジノード（`gpd-pocket3-edge`）に割り当てられた Pod ではない（孤児ボリューム orphaned pod volumes）」と誤認。
   - `edgecore` のログ：
     ```text
     edgecore: Cleaned up orphaned pod volumes dir podUID="3816f16f..." path="/var/lib/kubelet/pods/3816f.../volumes"
     ```
-  - **k3s kubelet が Pod を起動するそばから、edged が 2 秒おきにそのボリューム（etc-hosts 等）を物理削除していた！**
-  - kubelet は足元を消されたため「サンドボックス破損」とみなしてプロセスを SIGKILL（137）し、再作成ループに陥っていた。
+  - k3s kubelet が Pod を起動する一方で、edged が約2秒おきにそのボリューム（etc-hosts 等）を削除していた。
+  - kubelet はファイルが削除されたため「サンドボックス破損」とみなしてプロセスを SIGKILL（137）し、再作成ループに陥っていた。
 - **解決策**:
-  - 1台同居環境では、ホストファイルシステム直結の DaemonSet を無理に動かすのはアンチパターン。
-  - ノードメトリクスは `metrics-server`（k3s/edged の API 経由）で完全に取得できているため、`node-exporter` は無効化（`enabled: false`）して解決。
+  - 1台同居環境では、ホストファイルシステムを直接参照する DaemonSet が競合の原因になりやすい。
+  - ノードメトリクスは `metrics-server`（k3s/edged の API 経由）で取得できているため、`node-exporter` は無効化（`enabled: false`）して解決。
 
 ---
 
 ## 稼働結果と Grafana 可視化
 
-すべての地獄を突破し、安定稼働に到達したクラスタ状態です。
+各種設定を行った後のクラスタの稼働状況です。
 
-### 1. Pod 稼働状況（All Green）
+### 1. Pod 稼働状況
 ```bash
 $ kubectl get pods -A
 NAMESPACE            NAME                                                        READY   STATUS    AGE
@@ -268,7 +267,7 @@ monitoring           kube-prometheus-stack-operator-bdbf4977d-jxftd             
 monitoring           prometheus-kube-prometheus-stack-prometheus-0               2/2     Running   9m
 ```
 
-### 2. メモリ消費量（超軽量 約 770MB）
+### 2. メモリ消費量（約 770MB）
 ```bash
 $ kubectl top pods -n monitoring
 NAME                                                        CPU(cores)   MEMORY(bytes)   
@@ -280,33 +279,32 @@ prometheus-kube-prometheus-stack-prometheus-0               11m          335Mi
 
 ### 3. Grafana ダッシュボードの実測可視化画面
 
-実際に GPD Pocket3 上で完全自律稼働しているリアルタイムダッシュボードのキャプチャです：
+GPD Pocket3 上で稼働しているリアルタイムダッシュボードのキャプチャです：
 
 ![Grafana 衛星追尾ダッシュボード全体](https://raw.githubusercontent.com/tozastation/radio-astronomy/main/docs/images/grafana_satellite_tracker_full.png)
 
 *(※ローカルリポジトリの `docs/images/grafana_satellite_tracker_full.png` および `grafana_satellite_tracker_overview.png` に高解像度画像を格納しています。Qiita 投稿時は Qiita の画像アップローダーにドラッグ＆ドロップして差し替えてください)*
 
-#### 画面の物理・DSP 的みどころ
+#### 各パネルの解説
 1. **ドップラーS字カーブ（中央パネル）**:
-   - 緑線（SGP4 軌道力学による理論予測）と黄線（RTL-SDR v4 の FFT パワースペクトルピーク実測値）に注目してください。
-   - 衛星接近時の **+10,000 Hz** から最接近（TCA）の **0 Hz ゼロクロス** を経て、離脱時の **-10,000 Hz** へと急降下する美しい逆S字カーブを描き、**理論と実測の誤差わずか 52.7 Hz（相対誤差 0.5%）** で完全に重なり合っています！
+   - 緑線（SGP4 軌道力学による理論予測）と黄線（RTL-SDR v4 の FFT パワースペクトルピーク実測値）を表示しています。
+   - 衛星接近時の **+10,000 Hz** から最接近（TCA）の **0 Hz ゼロクロス** を経て、離脱時の **-10,000 Hz** へと推移する逆S字カーブを描いています。理論値と実測値の誤差は約 52.7 Hz（相対誤差 0.5%）で推移しています。
 2. **北向きベランダの極軌道推移（中下段パネル）**:
    - 仰角が 0° から 30° へ上昇した後に 10° を切って下降する山なりの曲線と、方位角が 270°（真西）から 0°/360°（真北）を跨いで 55°（北東）へ抜けていく軌跡が記録されています。
 3. **エッジリソース消費（最下段パネル）**:
-   - エッジノード上の `satellite-tracker` Pod の CPU 使用率は **0.28〜0.34 Cores**、物理メモリ消費（RSS）は **わずか約 50 MB**。UMPC 上で 24時間常時観測させても CPU・メモリを圧迫しない省エネ設計です。
+   - エッジノード上の `satellite-tracker` Pod の CPU 使用率は **0.28〜0.34 Cores**、物理メモリ消費（RSS）は **約 50 MB** となっており、常時観測を行っても負荷は低く抑えられています。
 
 ---
 
-## おわりに & 次回予告
+## おわりに
 
-1台の GPD Pocket3 上で k3s と KubeEdge を同居させる試みは、想像以上にエキサイティングな SRE トラブルの宝庫でした。
+1台の GPD Pocket3 上で k3s と KubeEdge を同居させて運用することで、システム内部の挙動について多くの知見が得られました。
 
-- **CRI や CNI、ディレクトリパスの衝突**: 仮想化やコンテナの抽象化の下にある「Linux カーネルとファイルシステムの真の姿」と向き合う最高の教材となりました。
-- **エッジ観測のレジリエンス**: 現場のエッジ側が一時的にネットワーク断になろうとも、SDR 観測ループはローカルで回り続け、再接続時にテレメトリが統合されるという「エッジコンピューティング本来の価値」を実感できました。
+- **CRI や CNI、ディレクトリパスの分離**: コンテナランタイムやファイルシステムの分離境界を理解する良い機会となりました。
+- **エッジ端末のレジリエンス**: ネットワークが一時的に切断されてもエッジ端末での常時観測は継続でき、再接続時にテレメトリが同期されるというエッジ運用の利点を確認できました。
 
-### 次なる目標：電波天文学の金字塔へ
-エッジ自律観測基盤が完成したことで、いよいよ本格的な宇宙物理観測の土台が整いました！  
-次回以降は、以下のテーマに挑戦していく予定です：
+### 今後の予定
+今後は以下のテーマに取り組んでいく予定です：
 
 1. **21cm 中性水素線（1420MHz）観測パイプラインの開発**:  
    銀河系の回転曲線を導出し、暗黒物質（ダークマター）の証拠を検証する長時間積算スペクトル解析。
@@ -315,4 +313,4 @@ prometheus-kube-prometheus-stack-prometheus-0               11m          335Mi
 3. **Rust 製太陽電波バースト監視デーモンとの統合**:  
    太陽フレアに伴う電波バーストを低レイテンシでリアルタイム検知するエッジストリーミング。
 
-次回もぜひお楽しみに！最後まで読んでいただきありがとうございました！
+最後まで読んでいただきありがとうございました。
