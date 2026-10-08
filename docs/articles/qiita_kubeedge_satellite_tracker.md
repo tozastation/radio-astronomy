@@ -50,39 +50,6 @@ ignorePublish: false
 
 ---
 
-## 通常の Kubernetes と KubeEdge の違い
-
-Kubernetes に慣れていると、「エッジ側にも k3s などの軽量クラスタを立てて、マルチクラスタ管理ツールで連携するのでは？」と想像されるかもしれません。  
-しかし、KubeEdge の設計思想は根本から異なります。
-
-### 1. エッジ側には Kubernetes クラスタを作らない（EdgeCore のみ）
-KubeEdge では、エッジ端末側に API Server や etcd、kube-scheduler などのコントロールプレーンを**一切配置しません**。  
-エッジ側で動かす常駐デーモンは単一バイナリである **`EdgeCore`** と、コンテナランタイム（`containerd`）のみです。
-
-クラウド側の Kubernetes クラスタから見ると、エッジ端末は単に「`node-role.kubernetes.io/edge` ラベルが付いた 1 つの Worker Node」として認識されます。
-
-```bash
-$ kubectl get nodes
-NAME                     STATUS   ROLES                  AGE    VERSION
-tozastation-g1621-02     Ready    control-plane,master   2d     v1.36.5+k3s1
-gpd-pocket3-edge         Ready    agent,edge             2d     v1.22.0-kubeedge
-```
-
-コントロールプレーンのリソース消費（etcd や API Server 等）がエッジ側に一切発生しないため、Raspberry Pi や UMPC などの低スペック端末でも最小限のオーバーヘッドでコンテナを動かせます。
-
-### 2. 単一 WebSocket トンネル（NAT・モバイル回線越え）
-通常の Kubernetes Worker Node（kubelet）は、コントロールプレーンの各ポートへ直接通信できるフラットなネットワークを前提とします。  
-しかし、屋外やベランダ、山奥のエッジ端末はプライベート IP（NAT 背後）にあり、LTE/Wi-Fi 回線など不安定な環境も珍しくありません。
-
-KubeEdge では、エッジ側の `EdgeHub` からクラウド側の `CloudHub` に対して**単一の WebSocket（または QUIC）トンネル**を外向きに確立します。すべてのメタデータ同期や `kubectl logs` / `exec`（CloudStream/EdgeStream 経由）がこの 1 本の暗号化トンネルを経由して多重化されるため、エッジ側のポート開放や複雑な VPN 構成が不要です。
-
-### 3. オフライン自律性（MetaManager と SQLite）
-通常の kubelet は API Server との接続が途切れると、一定時間後にノードが `NotReady` となり、最悪の場合は Pod が Evict されて停止します。  
-KubeEdge では、エッジ端末側の **`MetaManager`** がローカルの SQLite データベースに Pod 定義や ConfigMap などのメタデータをキャッシュしています。  
-そのため、ネットワークが一時的に切断（オフライン）されても、エッジ上のコンテナはそのまま稼働し続け、端末を再起動してもローカルキャッシュから自律的に Pod を復元できます。通信が復旧した段階で、クラウド側の状態と自動的に差分同期（Reconcile）されます。
-
----
-
 ## システムアーキテクチャ（1台完結PoC）
 
 GPD Pocket3 の単一マシン内で、Kubernetes コントロールプレーンと KubeEdge エッジノードを共存させています。
@@ -128,7 +95,42 @@ KubeEdge はクラウド側（CloudCore）とエッジ端末側（EdgeCore）で
 | **edged** | EdgeCore | エッジ向けに軽量化された kubelet。CRI（containerd）経由で Pod のライフサイクルを管理 |
 | **EdgeStream** | EdgeCore | CloudStream からのリクエストを受け、ローカル containerd のストリーミングエンドポイントへ転送 |
 
-### できたもの：ノードと Pod の配置
+---
+
+## 通常の Kubernetes と KubeEdge の違い
+
+この構成図を見ると、「エッジ側にも k3s などの軽量クラスタを立てて、マルチクラスタ管理ツールで連携するのでは？」と思われるかもしれません。  
+しかし、KubeEdge の設計思想は根本から異なります。
+
+### 1. エッジ側には Kubernetes クラスタを作らない（EdgeCore のみ）
+KubeEdge では、エッジ端末側に API Server や etcd、kube-scheduler などのコントロールプレーンを**一切配置しません**。  
+エッジ側で動かす常駐デーモンは単一バイナリである **`EdgeCore`** と、コンテナランタイム（`containerd`）のみです。
+
+クラウド側の Kubernetes クラスタから見ると、エッジ端末は単に「`node-role.kubernetes.io/edge` ラベルが付いた 1 つの Worker Node」として認識されます。
+
+```bash
+$ kubectl get nodes
+NAME                     STATUS   ROLES                  AGE    VERSION
+tozastation-g1621-02     Ready    control-plane,master   2d     v1.36.5+k3s1
+gpd-pocket3-edge         Ready    agent,edge             2d     v1.22.0-kubeedge
+```
+
+コントロールプレーンのリソース消費（etcd や API Server 等）がエッジ側に一切発生しないため、Raspberry Pi や UMPC などの低スペック端末でも最小限のオーバーヘッドでコンテナを動かせます。
+
+### 2. 単一 WebSocket トンネル（NAT・モバイル回線越え）
+通常の Kubernetes Worker Node（kubelet）は、コントロールプレーンの各ポートへ直接通信できるフラットなネットワークを前提とします。  
+しかし、屋外やベランダ、山奥のエッジ端末はプライベート IP（NAT 背後）にあり、LTE/Wi-Fi 回線など不安定な環境も珍しくありません。
+
+KubeEdge では、エッジ側の `EdgeHub` からクラウド側の `CloudHub` に対して**単一の WebSocket（または QUIC）トンネル**を外向きに確立します。すべてのメタデータ同期や `kubectl logs` / `exec`（CloudStream/EdgeStream 経由）がこの 1 本の暗号化トンネルを経由して多重化されるため、エッジ側のポート開放や複雑な VPN 構成が不要です。
+
+### 3. オフライン自律性（MetaManager と SQLite）
+通常の kubelet は API Server との接続が途切れると、一定時間後にノードが `NotReady` となり、最悪の場合は Pod が Evict されて停止します。  
+KubeEdge では、エッジ端末側の **`MetaManager`** がローカルの SQLite データベースに Pod 定義や ConfigMap などのメタデータをキャッシュしています。  
+そのため、ネットワークが一時的に切断（オフライン）されても、エッジ上のコンテナはそのまま稼働し続け、端末を再起動してもローカルキャッシュから自律的に Pod を復元できます。通信が復旧した段階で、クラウド側の状態と自動的に差分同期（Reconcile）されます。
+
+---
+
+## できたもの：ノード・Pod 配置と Grafana 可視化
 実際に単一端末（GPD Pocket3）内で構成したクラスタの Pod 配置です。`-o wide` で確認すると、どの Pod がどちらのノードで稼働しているかが分かります。
 
 ```bash
