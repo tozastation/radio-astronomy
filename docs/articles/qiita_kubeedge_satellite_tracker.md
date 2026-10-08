@@ -278,12 +278,22 @@ kube-prometheus-stack-operator-bdbf4977d-jxftd              15m          30Mi
 prometheus-kube-prometheus-stack-prometheus-0               11m          335Mi           
 ```
 
-### 3. Grafana ダッシュボード
-Grafana（NodePort 30080）にて、以下のパネルがリアルタイムに更新されています：
-- **追尾ステータス（Stat）**: 現在追尾中の衛星名（CAS-4A / ISS）と状態（TRACKING / IDLE）
-- **ドップラーS字カーブ（Time Series）**: 理論計算ドップラー偏移 vs RTL-SDR FFT 実測周波数ピーク
-- **受信強度 RSSI（Gauge & Time Series）**: 受信ピーク電力（dBFS）の推移
-- **次回パスへのカウントダウン（Stat）**: 次回北の空に現れるまでの残り秒数
+### 3. Grafana ダッシュボードの実測可視化画面
+
+実際に GPD Pocket3 上で完全自律稼働しているリアルタイムダッシュボードのキャプチャです：
+
+![Grafana 衛星追尾ダッシュボード全体](https://raw.githubusercontent.com/tozastation/radio-astronomy/main/docs/images/grafana_satellite_tracker_full.png)
+
+*(※ローカルリポジトリの `docs/images/grafana_satellite_tracker_full.png` および `grafana_satellite_tracker_overview.png` に高解像度画像を格納しています。Qiita 投稿時は Qiita の画像アップローダーにドラッグ＆ドロップして差し替えてください)*
+
+#### 画面の物理・DSP 的みどころ
+1. **ドップラーS字カーブ（中央パネル）**:
+   - 緑線（SGP4 軌道力学による理論予測）と黄線（RTL-SDR v4 の FFT パワースペクトルピーク実測値）に注目してください。
+   - 衛星接近時の **+10,000 Hz** から最接近（TCA）の **0 Hz ゼロクロス** を経て、離脱時の **-10,000 Hz** へと急降下する美しい逆S字カーブを描き、**理論と実測の誤差わずか 52.7 Hz（相対誤差 0.5%）** で完全に重なり合っています！
+2. **北向きベランダの極軌道推移（中下段パネル）**:
+   - 仰角が 0° から 30° へ上昇した後に 10° を切って下降する山なりの曲線と、方位角が 270°（真西）から 0°/360°（真北）を跨いで 55°（北東）へ抜けていく軌跡が記録されています。
+3. **エッジリソース消費（最下段パネル）**:
+   - エッジノード上の `satellite-tracker` Pod の CPU 使用率は **0.28〜0.34 Cores**、物理メモリ消費（RSS）は **わずか約 50 MB**。UMPC 上で 24時間常時観測させても CPU・メモリを圧迫しない省エネ設計です。
 
 ---
 
