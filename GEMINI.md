@@ -19,15 +19,15 @@
   - **作業ペース**: 一方的に進めず、必ずユーザーの承認や確認を挟みながら1ステップずつ進める。
 
 ## 🏗️ システムアーキテクチャ (2台体制)
-- **エッジ観測ノード (GPD Pocket3)**:
+- **エッジ観測ノード (GPD Pocket3: Ubuntu 26.04)**:
   - アンテナ直下に設置。RTL-SDR v4 から2.4MSPSのIQ信号を受信。
   - エッジDSP（高速FFT & 1秒積算）によりデータを 8 KB/s に圧縮。
-  - CNCF **KubeEdge (EdgeCore)** により、ゲーミングPCの電源状態に依存せず24時間完全自律稼働。
+  - CNCF **KubeEdge (EdgeCore)** により、クラウドPCの電源状態に依存せず24時間完全自律稼働。
   - ローカルストレージ（DuckDB / SQLite / Parquet）に数ヶ月〜数年分を常時蓄積。
-- **分析・開発ワークステーション (ゲーミングデスクトップ: Windows 11 + WSL2)**:
-  - WSL2 上で Kubernetes (`k3s`) + KubeEdge `cloudcore` をホスト。
-  - ゲームをしていない時にオンデマンドで起動し、LAN越しにGPD Pocket3のデータを直接SQL/Jupyterで高速分析。
-  - ホスト側（Windows）のブラウザ（Grafana / JupyterLab）や VS Code から開発・運用。
+- **分析・開発ワークステーション (Ubuntu PC)**:
+  - Kubernetes (`k3s`) + KubeEdge `cloudcore` をホスト。
+  - オンデマンド（または常時）で起動し、LAN越しにGPD Pocket3のデータを直接SQL/Jupyterで高速分析。
+  - ネイティブ Linux 上のブラウザ（Grafana / JupyterLab）や VS Code, kubectl, k9s から開発・運用。
 
 ## 🛠️ 技術スタック
 - **データ分析 & 天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
