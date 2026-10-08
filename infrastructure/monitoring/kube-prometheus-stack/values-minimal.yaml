@@ -1,0 +1,104 @@
+# kube-prometheus-stack 超軽量設定 (Minimal Footprint)
+# 対象: GPD Pocket3 (Ubuntu 26.04: メモリ 8GB〜16GB UMPC 環境)
+#
+# 設計方針:
+# 1. Prometheus メモリ使用量を 256Mi〜512Mi に厳格に抑制 (デフォルトの 1.5GB〜2GB から大幅削減)
+# 2. スクレイプ間隔を 30s に延長し、時系列データ生成量と CPU 負荷を半減
+# 3. データ保持期間を 2日 (2Gi) に設定し、観測用 NVMe SSD の容量を圧迫しない
+# 4. k3s で露出していないコンポーネント (etcd, scheduler 等) のスクレイプを無効化
+# 5. Alertmanager を無効化してメモリをさらに 250MB 節約
+
+# Prometheus Operator 自体のリソース制限
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 100Mi
+    limits:
+      cpu: 200m
+      memory: 200Mi
+
+# Prometheus サーバ本体の設定
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # スクレイプと評価の間隔 (秒)
+    scrapeInterval: "30s"
+    evaluationInterval: "30s"
+    
+    # データ保持ポリシー (ディスク極小化)
+    retention: "2d"
+    retentionSize: "2Gi"
+    
+    # メモリ & CPU 制限 (最低スペック保証)
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    
+    # レプリカ数は 1 (単一ノード PoC)
+    replicas: 1
+    
+    # 不要なボリュームの無効化
+    storageSpec: {}
+
+# Alertmanager の無効化 (観測初期PoCではメモリ節約のためOFF)
+alertmanager:
+  enabled: false
+
+# Grafana ダッシュボード設定
+grafana:
+  enabled: true
+  adminPassword: "admin"
+  
+  # リソース制限
+  resources:
+    requests:
+      cpu: 50m
+      memory: 100Mi
+    limits:
+      cpu: 200m
+      memory: 200Mi
+  
+  # ブラウザから直接アクセスできるよう NodePort を設定 (ポート 30080)
+  service:
+    type: NodePort
+    nodePort: 30080
+
+# ホストメトリクス収集 (node-exporter)
+nodeExporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
+# K8s オブジェクト状態メトリクス (kube-state-metrics)
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 50m
+      memory: 128Mi
+
+# k3s では外部露出していない標準コンポーネントのスクレイプを無効化
+kubeScheduler:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeProxy:
+  enabled: false
