@@ -293,7 +293,7 @@ $$\Delta f = - f_0 \frac{v_r}{c} = - f_0 \frac{\vec{v} \cdot \vec{r}}{c \|\vec{r
 ### 4. テイント欠落によるアドオン Pod のエッジ誤配置
 - **現象**: `metrics-server` などのクラスタ管理 Pod が `gpd-pocket3-edge`（エッジ側）にスケジュールされ、正常に起動しない。
 - **調査と原因**:
-  - KubeEdge のエッジノードは軽量化されており、API Server 直結のフルトポロジーを持たない。
+  - KubeEdge のエッジノードは軽量化されており、通常のワーカーノードのように API Server への直接アクセスや完全なクラスタ内部通信機能を持たない。
   - エッジノードにテイントが付いていないと、K8s スケジューラは通常のワーカーノードとみなして重要なコントロールプレーン系アドオンをエッジに配置してしまう。
 - **解決策**:
   - エッジノードに `node-role.kubernetes.io/edge:NoSchedule` を付与。
@@ -301,17 +301,17 @@ $$\Delta f = - f_0 \frac{v_r}{c} = - f_0 \frac{\vec{v} \cdot \vec{r}}{c \|\vec{r
 
 ---
 
-### 5. edged による孤児ボリューム削除ループ
+### 5. edged による管轄外 Pod のボリューム誤削除ループ
 - **現象**: `node-exporter` が `Exit Code: 137` で `CrashLoopBackOff` を繰り返す。Pod イベントには `open /var/lib/kubelet/pods/<UID>/etc-hosts: no such file or directory` と `Pod sandbox changed` が記録される。
 - **調査と原因**:
   - `node-exporter` を control-plane ノード上に配置した際、同じマシンで root 権限で稼働している KubeEdge の `edgecore`（内蔵 edged）がローカルの `/var/lib/kubelet/pods` ディレクトリを巡回走査した。
-  - `edgecore` は「この Pod UID はエッジノード（`gpd-pocket3-edge`）に割り当てられた Pod ではない（孤児ボリューム orphaned pod volumes）」と誤認。
+  - `edgecore` は「この Pod は自分のエッジノード管轄外の不要な残骸（Kubernetes の自動削除対象である orphaned pod volumes）だ」と誤認。
   - `edgecore` のログ：
     ```text
     edgecore: Cleaned up orphaned pod volumes dir podUID="3816f16f..." path="/var/lib/kubelet/pods/3816f.../volumes"
     ```
-  - k3s kubelet が Pod を起動する一方で、edged が約2秒おきにそのボリューム（etc-hosts 等）を削除していた。
-  - kubelet はファイルが削除されたため「サンドボックス破損」とみなしてプロセスを SIGKILL（137）し、再作成ループに陥っていた。
+  - k3s の kubelet が Pod を起動するそばから、edged が約2秒おきにそのマウントファイル（`etc-hosts` 等）を不要ファイルとして削除していた。
+  - kubelet は足元のファイルが削除されたため「サンドボックス破損」と判定してプロセスを停止し、再作成ループに陥っていた。
 - **解決策**:
   - 1台同居環境では、ホストファイルシステムを直接参照する DaemonSet が競合の原因になりやすい。
   - ノードメトリクスは `metrics-server`（k3s/edged の API 経由）で取得できているため、`node-exporter` は無効化（`enabled: false`）して解決。
