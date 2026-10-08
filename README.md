@@ -205,21 +205,22 @@ RTL-SDR V4 ─── 付属アンテナ / 自作ダイポールアンテナ ─�
 
 ## 🛰️ 自宅KubeEdgeシステム構成
 
-**GPD Pocket3** と **ゲーミングデスクトップ（Windows + WSL2）** の2台を活用し、CNCF **KubeEdge** を中核に据えた「**エッジ完結・オフライン自律稼働型 電波観測基盤**」のアーキテクチャです。詳細な仕様とデータフローは [docs/03_system_architecture.md](docs/03_system_architecture.md) を参照してください。
+**GPD Pocket3（Ubuntu 26.04）** と **分析・運用ワークステーション（Ubuntu PC）** の2台を活用し、CNCF **KubeEdge** を中核に据えた「**エッジ完結・オフライン自律稼働型 電波観測基盤**」のアーキテクチャです。詳細な仕様とデータフローは [docs/03_system_architecture.md](docs/03_system_architecture.md)、Edge-Cloud 相互通信の詳細は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください。
 
 ```mermaid
 flowchart LR
-    GPD["💻 GPD Pocket3 (EdgeCore)<br/>RTL-SDR v4 直結 / 24h自律観測<br/>リアルタイムFFT & 1秒積算 (8KB/s)<br/>DuckDB / Parquet ローカル常時蓄積"]
-    Desktop["🎮 ゲーミングPC (WSL2 + Windows)<br/>オンデマンド分析 & 開発 (ゲーム時OFF可)<br/>・JupyterLab (Astropy/GPU解析)<br/>・Grafana (ウォーターフォール可視化)<br/>・VS Code / kubectl"]
+    GPD["💻 GPD Pocket3 (Ubuntu 26.04)<br/>KubeEdge EdgeCore (EdgeHub / EdgeStream / Edged)<br/>RTL-SDR v4 直結 / 24h自律観測<br/>リアルタイムFFT & 1秒積算 (8KB/s)<br/>DuckDB / Parquet ローカル常時蓄積"]
+    Desktop["🖥️ 分析・運用PC (Ubuntu)<br/>k3s + KubeEdge CloudCore (CloudHub / CloudStream)<br/>オンデマンド分析 & 開発 (停止時もエッジ自律稼働)<br/>・JupyterLab (Astropy/GPU解析)<br/>・Grafana (ウォーターフォール可視化)<br/>・VS Code / kubectl"]
 
-    Desktop -.->|KubeEdge 管理トンネル| GPD
-    Desktop -->|LAN経由 高速SQLクエリ| GPD
+    GPD -->|① EdgeHub: WebSocket 接続 (:10000/:10002)| Desktop
+    GPD -->|② EdgeStream: リバーストンネル (:10003)| Desktop
+    Desktop -->|③ LAN経由 高速SQLクエリ (DuckDB/Parquet)| GPD
 ```
 
 | マシン | 役割 | 主なワークロード / 動作ポリシー |
 | :--- | :--- | :--- |
-| **GPD Pocket3** | **【常時自律】エッジ観測ノード** | アンテナ直下設置、SDR制御、リアルタイムFFT・1秒積算（8KB/s圧縮）、DuckDB/Parquetローカル蓄積。**ゲーミングPCの電源状態に依存せず24h単独稼働**。 |
-| **ゲーミングデスクトップ** | **【オンデマンド】分析 & 開発・運用** | Windows 11 + WSL2 (`k3s` + KubeEdge `cloudcore`)。ゲームをしていない時間に起動し、LAN越しにGPD Pocket3のデータを直接SQL/Jupyterで高速分析。VS Codeやブラウザも同マシンで完結。 |
+| **GPD Pocket3** | **【常時自律】エッジ観測ノード** | Ubuntu 26.04 LTS。アンテナ直下設置、SDR制御、リアルタイムFFT・1秒積算（8KB/s圧縮）、DuckDB/Parquetローカル蓄積。**クラウドPCの電源状態に依存せず24h単独自律稼働**。 |
+| **Ubuntu PC** | **【オンデマンド】分析 & コントロールプレーン** | Ubuntu Desktop / Server (`k3s` + KubeEdge `cloudcore`)。分析時や運用時に起動。LAN越しにGPD Pocket3のデータを直接SQL/Jupyterで高速分析。`kubectl logs` / `exec` もリバーストンネル経由で実行可能。 |
 
 ---
 
