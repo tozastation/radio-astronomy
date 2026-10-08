@@ -28,7 +28,7 @@ prometheus:
     
     # データ保持ポリシー (ディスク極小化)
     retention: "2d"
-    retentionSize: "2Gi"
+    retentionSize: "2GiB"
     
     # メモリ & CPU 制限 (最低スペック保証)
     resources:
@@ -44,6 +44,12 @@ prometheus:
     
     # 不要なボリュームの無効化
     storageSpec: {}
+
+    # 全名前空間の ServiceMonitor / PodMonitor を自動検出
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorNamespaceSelector: {}
 
 # Alertmanager 設定 (初期PoCではメモリ節約のため false、Discord通知を有効化する際は true に変更)
 alertmanager:
@@ -80,30 +86,34 @@ grafana:
   enabled: true
   adminPassword: "admin"
   
-  # リソース制限
+  # リソース制限 (Grafana 13.x 初期化フットプリントに対応)
   resources:
     requests:
       cpu: 50m
-      memory: 100Mi
+      memory: 150Mi
     limits:
-      cpu: 200m
-      memory: 200Mi
+      cpu: 500m
+      memory: 512Mi
   
   # ブラウザから直接アクセスできるよう NodePort を設定 (ポート 30080)
   service:
     type: NodePort
     nodePort: 30080
 
+  # ConfigMap によるダッシュボード自動読み込み
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+
 # ホストメトリクス収集 (node-exporter)
+# 1台完結PoC環境では KubeEdge edged が /var/lib/kubelet/pods 下のボリュームを
+# 孤児(orphaned)と判定して削除してしまう競合が発生するため無効化 (metrics-server で代替)
 nodeExporter:
-  enabled: true
-  resources:
-    requests:
-      cpu: 10m
-      memory: 32Mi
-    limits:
-      cpu: 50m
-      memory: 64Mi
+  enabled: false
+
+prometheus-node-exporter:
+  enabled: false
 
 # K8s オブジェクト状態メトリクス (kube-state-metrics)
 kubeStateMetrics:

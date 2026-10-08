@@ -1,0 +1,151 @@
+apiVersion: v1
+data:
+  satellite-tracker.json: "{\n  \"annotations\": {\n    \"list\": []\n  },\n  \"editable\":
+    true,\n  \"fiscalYearStartMonth\": 0,\n  \"graphTooltip\": 1,\n  \"id\": null,\n
+    \ \"links\": [],\n  \"liveNow\": false,\n  \"panels\": [\n    {\n      \"collapsed\":
+    false,\n      \"gridPos\": { \"h\": 1, \"w\": 24, \"x\": 0, \"y\": 0 },\n      \"id\":
+    100,\n      \"title\": \"\U0001F6F0️ 衛星追尾ステータス & 概要 (Status & Overview)\",\n      \"type\":
+    \"row\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\", \"uid\":
+    \"prometheus\" },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"mappings\":
+    [\n            {\n              \"options\": {\n                \"0\": { \"color\":
+    \"dark-gray\", \"index\": 0, \"text\": \"待機中 (IDLE)\" },\n                \"1\":
+    { \"color\": \"green\", \"index\": 1, \"text\": \"追尾中 (TRACKING)\" }\n              },\n
+    \             \"type\": \"value\"\n            }\n          ],\n          \"thresholds\":
+    {\n            \"mode\": \"absolute\",\n            \"steps\": [\n              {
+    \"color\": \"dark-gray\", \"value\": null },\n              { \"color\": \"green\",
+    \"value\": 1 }\n            ]\n          }\n        }\n      },\n      \"gridPos\":
+    { \"h\": 4, \"w\": 8, \"x\": 0, \"y\": 1 },\n      \"id\": 1,\n      \"options\":
+    {\n        \"colorMode\": \"background\",\n        \"graphMode\": \"none\",\n
+    \       \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n        \"reduceOptions\":
+    { \"calcs\": [\"lastNotNull\"], \"fields\": \"\", \"values\": false },\n        \"textMode\":
+    \"auto\"\n      },\n      \"pluginVersion\": \"10.0.0\",\n      \"targets\": [\n
+    \       {\n          \"expr\": \"max(satellite_tracking_active) by (satellite)\",\n
+    \         \"legendFormat\": \"{{satellite}}\",\n          \"refId\": \"A\"\n        }\n
+    \     ],\n      \"title\": \"トラッキング状態 (Tracking Status)\",\n      \"type\": \"stat\"\n
+    \   },\n    {\n      \"datasource\": { \"type\": \"prometheus\", \"uid\": \"prometheus\"
+    },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"color\": {
+    \"mode\": \"thresholds\" },\n          \"thresholds\": {\n            \"mode\":
+    \"absolute\",\n            \"steps\": [\n              { \"color\": \"blue\",
+    \"value\": null },\n              { \"color\": \"yellow\", \"value\": 300 },\n
+    \             { \"color\": \"red\", \"value\": 60 }\n            ]\n          },\n
+    \         \"unit\": \"s\"\n        }\n      },\n      \"gridPos\": { \"h\": 4,
+    \"w\": 8, \"x\": 8, \"y\": 1 },\n      \"id\": 2,\n      \"options\": {\n        \"colorMode\":
+    \"value\",\n        \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\",\n
+    \       \"orientation\": \"auto\",\n        \"reduceOptions\": { \"calcs\": [\"lastNotNull\"],
+    \"fields\": \"\", \"values\": false },\n        \"textMode\": \"auto\"\n      },\n
+    \     \"pluginVersion\": \"10.0.0\",\n      \"targets\": [\n        {\n          \"expr\":
+    \"clamp_min(satellite_next_aos_timestamp_seconds - time(), 0)\",\n          \"legendFormat\":
+    \"{{satellite}} 次回AOSまで\",\n          \"refId\": \"A\"\n        }\n      ],\n
+    \     \"title\": \"次回パス開始カウントダウン (Next AOS Countdown)\",\n      \"type\": \"stat\"\n
+    \   },\n    {\n      \"datasource\": { \"type\": \"prometheus\", \"uid\": \"prometheus\"
+    },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"color\": {
+    \"mode\": \"palette-classic\" },\n          \"mappings\": [],\n          \"thresholds\":
+    {\n            \"mode\": \"absolute\",\n            \"steps\": [{ \"color\": \"green\",
+    \"value\": null }]\n          },\n          \"unit\": \"none\"\n        }\n      },\n
+    \     \"gridPos\": { \"h\": 4, \"w\": 8, \"x\": 16, \"y\": 1 },\n      \"id\":
+    3,\n      \"options\": {\n        \"colorMode\": \"value\",\n        \"graphMode\":
+    \"area\",\n        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n
+    \       \"reduceOptions\": { \"calcs\": [\"lastNotNull\"], \"fields\": \"\", \"values\":
+    false },\n        \"textMode\": \"auto\"\n      },\n      \"pluginVersion\": \"10.0.0\",\n
+    \     \"targets\": [\n        {\n          \"expr\": \"sum(satellite_passes_total)
+    by (satellite)\",\n          \"legendFormat\": \"{{satellite}} 総パス数\",\n          \"refId\":
+    \"A\"\n        }\n      ],\n      \"title\": \"観測完了パス累積 (Total Passes)\",\n      \"type\":
+    \"stat\"\n    },\n    {\n      \"collapsed\": false,\n      \"gridPos\": { \"h\":
+    1, \"w\": 24, \"x\": 0, \"y\": 5 },\n      \"id\": 101,\n      \"title\": \"\U0001F4F6
+    電波品質 & 信号強度 (RF Quality & Signal Strength)\",\n      \"type\": \"row\"\n    },\n
+    \   {\n      \"datasource\": { \"type\": \"prometheus\", \"uid\": \"prometheus\"
+    },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"custom\": {\n
+    \           \"drawStyle\": \"line\",\n            \"lineInterpolation\": \"smooth\",\n
+    \           \"lineWidth\": 2,\n            \"showPoints\": \"auto\"\n          },\n
+    \         \"unit\": \"dBm\"\n        }\n      },\n      \"gridPos\": { \"h\":
+    7, \"w\": 12, \"x\": 0, \"y\": 6 },\n      \"id\": 4,\n      \"options\": {\n
+    \       \"legend\": { \"calcs\": [\"mean\", \"max\"], \"displayMode\": \"table\",
+    \"placement\": \"bottom\" },\n        \"tooltip\": { \"mode\": \"single\", \"sort\":
+    \"none\" }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"satellite_rssi_dbm\",\n
+    \         \"legendFormat\": \"{{satellite}} RSSI\",\n          \"refId\": \"A\"\n
+    \       }\n      ],\n      \"title\": \"受信電波強度 (RSSI / 放物線プロファイル)\",\n      \"type\":
+    \"timeseries\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\",
+    \"uid\": \"prometheus\" },\n      \"fieldConfig\": {\n        \"defaults\": {\n
+    \         \"custom\": {\n            \"drawStyle\": \"line\",\n            \"lineInterpolation\":
+    \"smooth\",\n            \"lineWidth\": 2,\n            \"showPoints\": \"auto\"\n
+    \         },\n          \"unit\": \"dB\"\n        }\n      },\n      \"gridPos\":
+    { \"h\": 7, \"w\": 12, \"x\": 12, \"y\": 6 },\n      \"id\": 5,\n      \"options\":
+    {\n        \"legend\": { \"calcs\": [\"mean\", \"max\"], \"displayMode\": \"table\",
+    \"placement\": \"bottom\" },\n        \"tooltip\": { \"mode\": \"single\", \"sort\":
+    \"none\" }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"satellite_snr_db\",\n
+    \         \"legendFormat\": \"{{satellite}} SNR\",\n          \"refId\": \"A\"\n
+    \       }\n      ],\n      \"title\": \"信号対雑音比 (Signal-to-Noise Ratio)\",\n      \"type\":
+    \"timeseries\"\n    },\n    {\n      \"collapsed\": false,\n      \"gridPos\":
+    { \"h\": 1, \"w\": 24, \"x\": 0, \"y\": 13 },\n      \"id\": 102,\n      \"title\":
+    \"\U0001F4D0 ドップラー偏移解析 (Doppler S-Curve Analysis)\",\n      \"type\": \"row\"\n
+    \   },\n    {\n      \"datasource\": { \"type\": \"prometheus\", \"uid\": \"prometheus\"
+    },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"custom\": {\n
+    \           \"drawStyle\": \"line\",\n            \"lineInterpolation\": \"smooth\",\n
+    \           \"lineWidth\": 2,\n            \"showPoints\": \"auto\"\n          },\n
+    \         \"unit\": \"Hz\"\n        }\n      },\n      \"gridPos\": { \"h\": 8,
+    \"w\": 24, \"x\": 0, \"y\": 14 },\n      \"id\": 6,\n      \"options\": {\n        \"legend\":
+    { \"calcs\": [\"mean\", \"lastNotNull\"], \"displayMode\": \"table\", \"placement\":
+    \"bottom\" },\n        \"tooltip\": { \"mode\": \"multi\", \"sort\": \"none\"
+    }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"satellite_doppler_predicted_hz\",\n
+    \         \"legendFormat\": \"{{satellite}} (理論値 SGP4予測)\",\n          \"refId\":
+    \"A\"\n        },\n        {\n          \"expr\": \"satellite_doppler_measured_hz\",\n
+    \         \"legendFormat\": \"{{satellite}} (実測値 FFTピーク)\",\n          \"refId\":
+    \"B\"\n        }\n      ],\n      \"title\": \"ドップラー周波数シフト (Doppler Shift S-Curve:
+    理論 vs 実測)\",\n      \"type\": \"timeseries\"\n    },\n    {\n      \"collapsed\":
+    false,\n      \"gridPos\": { \"h\": 1, \"w\": 24, \"x\": 0, \"y\": 22 },\n      \"id\":
+    103,\n      \"title\": \"\U0001F9ED 衛星軌道・空域モニタ (Sky View / Elevation & Azimuth)\",\n
+    \     \"type\": \"row\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\",
+    \"uid\": \"prometheus\" },\n      \"fieldConfig\": {\n        \"defaults\": {\n
+    \         \"custom\": {\n            \"drawStyle\": \"line\",\n            \"lineInterpolation\":
+    \"smooth\",\n            \"lineWidth\": 2\n          },\n          \"max\": 90,\n
+    \         \"min\": 0,\n          \"unit\": \"degree\"\n        }\n      },\n      \"gridPos\":
+    { \"h\": 7, \"w\": 12, \"x\": 0, \"y\": 23 },\n      \"id\": 7,\n      \"options\":
+    {\n        \"legend\": { \"displayMode\": \"list\", \"placement\": \"bottom\"
+    }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"satellite_elevation_degrees\",\n
+    \         \"legendFormat\": \"{{satellite}} 仰角 (Elevation)\",\n          \"refId\":
+    \"A\"\n        }\n      ],\n      \"title\": \"衛星仰角 (Elevation °)\",\n      \"type\":
+    \"timeseries\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\",
+    \"uid\": \"prometheus\" },\n      \"fieldConfig\": {\n        \"defaults\": {\n
+    \         \"custom\": {\n            \"drawStyle\": \"line\",\n            \"lineInterpolation\":
+    \"smooth\",\n            \"lineWidth\": 2\n          },\n          \"max\": 360,\n
+    \         \"min\": 0,\n          \"unit\": \"degree\"\n        }\n      },\n      \"gridPos\":
+    { \"h\": 7, \"w\": 12, \"x\": 12, \"y\": 23 },\n      \"id\": 8,\n      \"options\":
+    {\n        \"legend\": { \"displayMode\": \"list\", \"placement\": \"bottom\"
+    }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"satellite_azimuth_degrees\",\n
+    \         \"legendFormat\": \"{{satellite}} 方位角 (Azimuth)\",\n          \"refId\":
+    \"A\"\n        }\n      ],\n      \"title\": \"衛星方位角 (Azimuth °)\",\n      \"type\":
+    \"timeseries\"\n    },\n    {\n      \"collapsed\": false,\n      \"gridPos\":
+    { \"h\": 1, \"w\": 24, \"x\": 0, \"y\": 30 },\n      \"id\": 104,\n      \"title\":
+    \"\U0001F4BB エッジリソース消費 (Edge Resource Footprint / Edged :10350)\",\n      \"type\":
+    \"row\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\", \"uid\":
+    \"prometheus\" },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"custom\":
+    {\n            \"drawStyle\": \"line\",\n            \"lineInterpolation\": \"smooth\",\n
+    \           \"lineWidth\": 2\n          },\n          \"unit\": \"short\"\n        }\n
+    \     },\n      \"gridPos\": { \"h\": 7, \"w\": 12, \"x\": 0, \"y\": 31 },\n      \"id\":
+    9,\n      \"options\": {\n        \"legend\": { \"displayMode\": \"list\", \"placement\":
+    \"bottom\" }\n      },\n      \"targets\": [\n        {\n          \"expr\": \"sum(rate(container_cpu_usage_seconds_total{container=\\\"tracker\\\"}[1m]))\",\n
+    \         \"legendFormat\": \"SDR Tracker CPU Cores\",\n          \"refId\": \"A\"\n
+    \       }\n      ],\n      \"title\": \"SDR 観測 Pod CPU使用率 (Cores)\",\n      \"type\":
+    \"timeseries\"\n    },\n    {\n      \"datasource\": { \"type\": \"prometheus\",
+    \"uid\": \"prometheus\" },\n      \"fieldConfig\": {\n        \"defaults\": {\n
+    \         \"custom\": {\n            \"drawStyle\": \"line\",\n            \"lineInterpolation\":
+    \"smooth\",\n            \"lineWidth\": 2\n          },\n          \"unit\": \"bytes\"\n
+    \       }\n      },\n      \"gridPos\": { \"h\": 7, \"w\": 12, \"x\": 12, \"y\":
+    31 },\n      \"id\": 10,\n      \"options\": {\n        \"legend\": { \"displayMode\":
+    \"list\", \"placement\": \"bottom\" }\n      },\n      \"targets\": [\n        {\n
+    \         \"expr\": \"sum(container_memory_working_set_bytes{container=\\\"tracker\\\"})\",\n
+    \         \"legendFormat\": \"SDR Tracker Memory Working Set\",\n          \"refId\":
+    \"A\"\n        }\n      ],\n      \"title\": \"SDR 観測 Pod メモリ使用量 (Working Set)\",\n
+    \     \"type\": \"timeseries\"\n    }\n  ],\n  \"refresh\": \"5s\",\n  \"schemaVersion\":
+    38,\n  \"style\": \"dark\",\n  \"tags\": [\"radio-astronomy\", \"cubesat\", \"satellite\",
+    \"kubeedge\", \"sdr\"],\n  \"time\": {\n    \"from\": \"now-30m\",\n    \"to\":
+    \"now\"\n  },\n  \"timepicker\": {\n    \"refresh_intervals\": [\"1s\", \"5s\",
+    \"10s\", \"30s\", \"1m\"]\n  },\n  \"timezone\": \"browser\",\n  \"title\": \"\U0001F6F0️
+    CubeSat & Satellite Radio Tracker (UHF 435MHz / North Balcony)\",\n  \"uid\":
+    \"satellite-radio-tracker\",\n  \"version\": 1\n}\n"
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-satellite-tracker
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
