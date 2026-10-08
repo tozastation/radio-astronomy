@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: satellite-tracker
+  namespace: default
+  labels:
+    app: satellite-tracker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: satellite-tracker
+  template:
+    metadata:
+      labels:
+        app: satellite-tracker
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/edge: ""
+      containers:
+        - name: tracker
+          image: localhost:5000/radio-astronomy-tracker:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          securityContext:
+            privileged: true
+          env:
+            - name: OBSERVER_LATITUDE
+              value: "35.6895"
+            - name: OBSERVER_LONGITUDE
+              value: "139.6917"
+            - name: OBSERVER_ELEVATION_M
+              value: "30.0"
+            - name: BALCONY_FACING
+              value: "NORTH"
+            - name: MOCK_SDR
+              value: "false"
+            - name: METRICS_PORT
+              value: "9100"
+            - name: UPDATE_INTERVAL_SEC
+              value: "2.0"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          volumeMounts:
+            - name: dev-bus-usb
+              mountPath: /dev/bus/usb
+      volumes:
+        - name: dev-bus-usb
+          hostPath:
+            path: /dev/bus/usb
