@@ -47,24 +47,7 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### 2.2 k3s containerd のローカルレジストリ信頼設定
-
-k3s の containerd がクラスタ内のローカルレジストリ（`localhost:5000` / `127.0.0.1:5000`）と平文 HTTP 通信できるように、**k3s インストール前に** 設定ファイルを事前配置します。
-
-```bash
-sudo mkdir -p /etc/rancher/k3s
-sudo tee /etc/rancher/k3s/registries.yaml << 'EOF'
-mirrors:
-  "localhost:5000":
-    endpoint:
-      - "http://127.0.0.1:5000"
-  "127.0.0.1:5000":
-    endpoint:
-      - "http://127.0.0.1:5000"
-EOF
-```
-
-### 2.3 k3s Server（軽量 Kubernetes コントロールプレーン）のインストール
+### 2.2 k3s Server（軽量 Kubernetes コントロールプレーン）のインストール
 
 CloudCore が接続するバックエンドとして、軽量 Kubernetes である k3s Server をインストールします。
 エッジ環境でのリソース（メモリ・CPU）消費を最小限に抑えるため、今回は不要なデフォルトアドオン（Traefik Ingress Controller や ServiceLB）を無効化（`--disable`）して起動します。
@@ -98,6 +81,29 @@ kubectl get nodes
 > ```bash
 > /usr/local/bin/k3s-uninstall.sh
 > ```
+
+### 2.3 k3s containerd のローカルレジストリ信頼設定
+
+k3s の containerd がクラスタ内のローカルレジストリ（`localhost:5000` / `127.0.0.1:5000`）と平文 HTTP 通信できるように設定ファイルを配置し、k3s を再起動します。
+
+- **公式一次情報**: [k3s Private Registry Configuration (k3s.io)](https://docs.k3s.io/installation/private-registry)
+
+```bash
+# 1. 設定ファイルの配置
+sudo mkdir -p /etc/rancher/k3s
+sudo tee /etc/rancher/k3s/registries.yaml << 'EOF'
+mirrors:
+  "localhost:5000":
+    endpoint:
+      - "http://127.0.0.1:5000"
+  "127.0.0.1:5000":
+    endpoint:
+      - "http://127.0.0.1:5000"
+EOF
+
+# 2. 設定を反映するため k3s を再起動
+sudo systemctl restart k3s
+```
 
 ### 2.4 keadm CLI ツールのインストール
 
