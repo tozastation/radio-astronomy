@@ -737,6 +737,9 @@ async def run_dispatcher():
                     print(f"⏳ [Dispatcher] Starting Temporal workflow for {pass_id}...", flush=True)
 
                     try:
+                        import sys
+                        if "/app/src" not in sys.path:
+                            sys.path.insert(0, "/app/src")
                         from workflows import AnalyzeSatellitePassWorkflow, PassAnalysisParams
                         await temporal_client.start_workflow(
                             AnalyzeSatellitePassWorkflow.run,
@@ -769,9 +772,17 @@ def start_background_dispatcher():
         return
 
     def loop_runner():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_dispatcher())
+        while True:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(run_dispatcher())
+            except Exception as e:
+                print(f"❌ [Dispatcher Thread Crashed]: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
+                import time
+                time.sleep(5)
 
     t = threading.Thread(target=loop_runner, daemon=True)
     t.start()
