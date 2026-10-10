@@ -7,15 +7,23 @@ Ultra-lightweight web dashboard for mobile and desktop browsing.
 import os
 import json
 import urllib.parse
+import threading
+import asyncio
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import boto3
 from botocore.client import Config
+from temporalio.client import Client
 
 S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", "http://garage-s3.storage.svc.cluster.local:3900")
 S3_BUCKET = os.environ.get("S3_BUCKET", "satellite-recordings")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 PORT = int(os.environ.get("PORT", "8080"))
+TEMPORAL_HOST = os.environ.get("TEMPORAL_HOST", "temporal-server.temporal.svc.cluster.local:7233")
+TASK_QUEUE = "satellite-analysis"
+ENABLE_AUTO_DISPATCH = os.environ.get("ENABLE_AUTO_DISPATCH", "true").lower() in ["true", "1", "yes"]
+
+triggered_passes = set()
 
 s3_client = boto3.client(
     "s3",
@@ -687,7 +695,90 @@ class DashboardHandler(BaseHTTPRequestHandler):
         print(f"[{self.log_date_time_string()}] {format % args}")
 
 
+async def run_dispatcher():
+    print(f"📡 [Dispatcher] Background dispatcher started (Temporal: {TEMPORAL_HOST})", flush=True)
+    temporal_client = None
+
+    while True:
+        try:
+            if temporal_client is None:
+                try:
+                    temporal_client = await Client.connect(TEMPORAL_HOST)
+                    print(f"✅ [Dispatcher] Connected to Temporal Server at {TEMPORAL_HOST}", flush=True)
+                except Exception as e:
+                    await asyncio.sleep(5)
+                    continue
+
+            # S3 の raw/ プレフィックスをスキャン
+            resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
+            for item in resp.get("Contents", []):
+                key = item["Key"]
+                if not key.endswith(".wav"):
+                    continue
+                parts = key.split("/")
+                if len(parts) >= 3:
+                    satellite = parts[1]
+                    filename = parts[2]
+                    pass_id = os.path.splitext(filename)[0]
+
+                    if pass_id in triggered_passes:
+                        continue
+
+                    # 既に results/<satellite>/<pass_id>/summary.json が存在するか確認
+                    summary_key = f"results/{satellite}/{pass_id}/summary.json"
+                    try:
+                        s3_client.head_object(Bucket=S3_BUCKET, Key=summary_key)
+                        triggered_passes.add(pass_id)
+                        continue
+                    except Exception:
+                        pass  # 未解析の生録音！
+
+                    print(f"🚀 [Dispatcher] Found new raw recording: {key} ({satellite} / {pass_id})", flush=True)
+                    print(f"⏳ [Dispatcher] Starting Temporal workflow for {pass_id}...", flush=True)
+
+                    try:
+                        from workflows import AnalyzeSatellitePassWorkflow, PassAnalysisParams
+                        await temporal_client.start_workflow(
+                            AnalyzeSatellitePassWorkflow.run,
+                            PassAnalysisParams(
+                                s3_key=key,
+                                satellite=satellite,
+                                pass_id=pass_id,
+                                bucket_name=S3_BUCKET,
+                                keep_raw=False
+                            ),
+                            id=f"analyze-{pass_id}",
+                            task_queue=TASK_QUEUE
+                        )
+                        triggered_passes.add(pass_id)
+                        print(f"🎉 [Dispatcher] Workflow started successfully for {pass_id}!", flush=True)
+                    except Exception as wf_err:
+                        if "already running" in str(wf_err).lower() or "already started" in str(wf_err).lower():
+                            triggered_passes.add(pass_id)
+                        print(f"⚠️ [Dispatcher] Failed to start workflow: {wf_err}", flush=True)
+
+        except Exception as e:
+            print(f"⚠️ [Dispatcher Error]: {e}", flush=True)
+
+        await asyncio.sleep(8)
+
+
+def start_background_dispatcher():
+    if not ENABLE_AUTO_DISPATCH:
+        print("ℹ️ [Dispatcher] Auto-dispatch is disabled by config.", flush=True)
+        return
+
+    def loop_runner():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_dispatcher())
+
+    t = threading.Thread(target=loop_runner, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
+    start_background_dispatcher()
     server_address = ("0.0.0.0", PORT)
     httpd = ThreadingHTTPServer(server_address, DashboardHandler)
     print(f"🚀 Satellite Viewer listening on http://0.0.0.0:{PORT} (Bucket: {S3_BUCKET})")
