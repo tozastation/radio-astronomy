@@ -7,6 +7,6 @@ releases:
     namespace: keda
     createNamespace: true
     chart: kedacore/keda
-    version: 2.21.0
+    version: 2.20.0
     values:
       - values-minimal.yaml
