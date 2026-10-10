@@ -1,0 +1,22 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: satellite-analyzer-scaledobject
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: satellite-analyzer-worker
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  cooldownPeriod: 120
+  pollingInterval: 15
+  triggers:
+    # Prometheus 経由で Temporal の Task Queue バックログを監視
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: temporal_activity_pending_tasks
+        query: sum(temporal_activity_schedule_to_start_latency_seconds_count{task_queue="satellite-analysis"}) or vector(0)
+        threshold: "1"

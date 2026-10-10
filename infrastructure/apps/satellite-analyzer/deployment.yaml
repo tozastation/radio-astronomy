@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: satellite-analyzer-worker
+  namespace: default
+  labels:
+    app: satellite-analyzer-worker
+spec:
+  replicas: 0  # KEDA による 0-scale オートスケーリングのため初期値は 0
+  selector:
+    matchLabels:
+      app: satellite-analyzer-worker
+  template:
+    metadata:
+      labels:
+        app: satellite-analyzer-worker
+    spec:
+      containers:
+        - name: analyzer
+          image: localhost:5000/satellite-analyzer-worker:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODE
+              value: "temporal"
+            - name: TEMPORAL_HOST
+              value: "temporal-server.temporal.svc.cluster.local:7233"
+            - name: TEMPORAL_TASK_QUEUE
+              value: "satellite-analysis"
+            - name: GARAGE_S3_ENDPOINT
+              value: "http://garage-s3.storage.svc.cluster.local:3900"
+            - name: GARAGE_BUCKET
+              value: "satellite-recordings"
+            - name: GARAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-tracker-creds
+                  key: access-key
+                  optional: true
+            - name: GARAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-tracker-creds
+                  key: secret-key
+                  optional: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
