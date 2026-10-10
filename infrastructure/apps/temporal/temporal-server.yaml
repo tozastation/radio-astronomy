@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: temporal
-          image: temporalio/admin-tools:1.24.0
+          image: temporalio/temporal:latest
           imagePullPolicy: IfNotPresent
           command:
             - temporal
