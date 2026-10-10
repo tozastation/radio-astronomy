@@ -17,6 +17,8 @@ spec:
       labels:
         app: satellite-tracker
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       automountServiceAccountToken: false
       nodeSelector:
         node-role.kubernetes.io/edge: ""
@@ -27,7 +29,8 @@ spec:
       containers:
         - name: tracker
           image: localhost:5000/satellite-tracker-rs:v1.2.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", "satellite-tracker-rs 2>&1 | tee -a /tmp/spool/tracker.log"]
           ports:
             - containerPort: 9100
               name: metrics
