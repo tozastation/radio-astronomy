@@ -1,5 +1,5 @@
 ---
-title: 【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築 〜Rust 3.8MiBエッジとTemporal×KEDAによる0-scale自律解析〜
+title: 【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築 〜Rust 3.8MiBの超軽量エッジとTemporal×KEDAによるゼロスケール自律解析〜
 tags:
   - Kubernetes
   - KubeEdge
@@ -15,7 +15,7 @@ slide: false
 ignorePublish: false
 ---
 
-# 【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築 〜Rust 3.8MiBエッジとTemporal×KEDAによる0-scale自律解析〜
+# 【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築 〜Rust 3.8MiBの超軽量エッジとTemporal×KEDAによるゼロスケール自律解析〜
 
 ## はじめに
 
@@ -40,22 +40,22 @@ ignorePublish: false
 しかし、実際にベランダで連続稼働させていく中で、**SRE 的に無視できない「リソースの壁」** に直面しました。
 
 ### 直面した 3 つの課題
-1. **Python 製エッジ観測コンテナのフットプリント**:
-   - SGP4 軌道計算、RTL-SDR 受信（2.4MSPS）、FFT ドップラー追尾を Python で行うと常時約 100MiB を消費。GC（ガベージコレクション）によるレイテンシスパイクやバッファ詰まりのリスクが常に伴います。
-   - 屋外設置やバッテリー運用、Raspberry Pi 等の小型 Edge デバイス運用を見据えると、**消費電力や発熱は低ければ低いほど持続性の面で有利** です。
-2. **生音声ファイル（WAV）によるディスク逼迫**:
-   - 衛星通過（パス）ごとに広帯域を生録音すると、数分で数十〜数百 MB に達し、エッジのローカル SSD を圧迫します。
+1. **Python 製エッジ観測コンテナのメモリ消費**:
+   - SGP4 軌道計算、RTL-SDR からの信号受信（2.4MSPS）、FFT ドップラー追尾を Python で行うと、常時約 100MiB のメモリを消費していました。UMPC の限られたリソースでは、GC（ガベージコレクション）による処理の一時停止やバッファ詰まりのリスクが常に伴います。
+   - また、屋外設置やバッテリー運用、Raspberry Pi などの小型デバイス運用を見据えると、**消費電力や発熱は低ければ低いほど安定稼働の面で有利** です。
+2. **録音データ（WAV）によるストレージ容量の圧迫**:
+   - 衛星が通過するたびに広帯域の音声をそのまま録音すると、数分で数十〜数百 MB に達し、エッジ端末のストレージを圧迫してしまいます。
 3. **エッジで「観測」と「重い信号解析」を同居させる限界**:
-   - 受信音声からのパケットデコードやスペクトログラム画像生成は、CPU とメモリ（150〜200MiB）を瞬間的に激しく消費します。観測と解析を同じ場所で常駐させると、肝心の受信処理のドロップを招きます。
+   - 受信した音声からパケットを解析したり、高解像度のスペクトログラム画像を生成する処理は、CPU とメモリ（150〜200MiB）を瞬間的に激しく消費します。観測と解析を同じ場所で同時に動かすと、肝心の電波受信が途切れてしまう原因になります。
 
 ### 理想のアーキテクチャ像
 そこで、単一端末の中で無理にやりくりするのではなく、**「Cloud / Edge 本来の用途に立ち返った、以下のようなアプローチが理想ではないか」** と考えました：
 
-- **エッジはデータ収集に専念させる**: アンテナ直下で最小限のリソースと電力（Rust 3.8MiB、動的省電力）で観測に徹する。
-- **将来の物理分離を見据えたオフロード設計にする**: たとえ現在は 1台の UMPC 同居検証（PoC）であっても、将来物理マシンを分離した際に設定変更だけでそのまま成立する疎結合な構成にしておく。
-- **必要な時だけ動かす（0-scale）**: 衛星が飛んできた時だけ解析ワーカーを起動し、完了したらリソース消費ゼロに戻す。
+- **エッジはデータ収集に専念させる**: アンテナ直下では最小限のリソースと電力（Rust 3.8MiB、動的なスリープ制御）で観測だけに徹する。
+- **将来の物理分離を見据えたオフロード設計にする**: たとえ現在は 1台の UMPC 同居検証（PoC）であっても、将来物理マシンを分けた際に設定変更だけでそのまま成立する疎結合な構成にしておく。
+- **必要な時だけ動かす（0-scale）**: 衛星が飛んできた時だけ解析コンテナを起動し、処理が終わったらリソース消費ゼロに戻す。
 
-この理想像をもとに、KubeEdge の特性を活かした **「エッジ極小化 ＆ クラウド側への完全オフロードを前提とした、イベント駆動型 0-scale 解析パイプライン」** へ全面刷新しました！
+この理想像をもとに、KubeEdge の特性を活かした **「エッジを極限まで軽量化し、重い処理はクラウドへ逃がすイベント駆動型のゼロスケール解析パイプライン」** へ全面刷新しました！
 
 ---
 
@@ -64,14 +64,14 @@ ignorePublish: false
 ### 1. アーキテクチャの比較（Before vs After）
 
 #### 【Before: #2 の状態】単一観測コンテナ ＆ メトリクス監視のみ
-エッジで Python 製観測コンテナが常駐し、生 WAV をローカルに溜め込むだけでした。解析基盤はなく、メトリクス監視のみです。
+エッジで Python 製の観測コンテナが常駐し、生音声をローカルに溜め込むだけでした。解析基盤はなく、メトリクスの監視のみを行う構成です。
 
 ```mermaid
 flowchart TB
     subgraph Host["GPD Pocket3 (Ubuntu 26.04 LTS / 192.168.68.66)"]
         subgraph EdgeSide["🛰️ エッジ観測ノード (gpd-pocket3-edge / KubeEdge)"]
             RTLSDR["📻 RTL-SDR Blog V4<br/>(USB 直結)"]
-            TrackerOld["⚠️ satellite-tracker (Python)<br/>・メモリ常時 100MiB 消費<br/>・生 WAV をローカルに蓄積 (容量逼迫)"]
+            TrackerOld["⚠️ satellite-tracker (Python)<br/>・メモリ常時 100MiB 消費<br/>・音声をローカルに蓄積 (容量圧迫)"]
             RTLSDR --> TrackerOld
         end
         subgraph CloudSide["⚙️ コントロールプレーン (tozastation-g1621-02 / k3s)"]
@@ -83,34 +83,34 @@ flowchart TB
 ```
 
 #### 【After: #3 の状態】エッジ極小化 ＆ イベント駆動型 0-scale 解析パイプライン
-エッジを Rust で極限まで絞り込み、クラスタ側へ極小 S3（Garage）、ワークフロー（Temporal）、0-scale オートスケーラー（KEDA）を配備。**観測から解析・可視化・クリーンアップまで完全自律で完走するパイプライン** を構築しました。
+エッジを Rust で徹底的に軽量化し、クラスタ側へ超小型 S3（Garage）、ワークフロー（Temporal）、オートスケーラー（KEDA）を配備。**観測から解析・可視化・ファイルのクリーンアップまで完全自律で完走するパイプライン** を構築しました。
 
 ```mermaid
 flowchart TB
     subgraph Host["GPD Pocket3 (Ubuntu 26.04 LTS / 192.168.68.66)"]
         subgraph EdgeSide["🛰️ エッジ観測ノード (gpd-pocket3-edge / KubeEdge)"]
             RTLSDR["📻 RTL-SDR Blog V4<br/>(USB 直結)"]
-            TrackerNew["⚡ satellite-tracker-rs [RENEWED: Rust]<br/>・実測メモリ 3.8MiB / CPU 0.8m (96%削減)<br/>・48kHz ゼロコピースプール<br/>・動的省電力 (AOS時のみSDR駆動)<br/>・ISS / METEOR / FUNcube 自動追尾"]
-            Proxy["🔄 metrics-proxy [NEW]<br/>(cAdvisor :10350 プロキシ)"]
+            TrackerNew["⚡ satellite-tracker-rs [RENEWED: Rust]<br/>・実測メモリ 3.8MiB / CPU 0.8m (96%削減)<br/>・48kHz 狭帯域 WAV で直接保存<br/>・通過時のみSDRを起動する省電力制御<br/>・ISS / METEOR / FUNcube 自動追尾"]
+            Proxy["🔄 metrics-proxy [NEW]<br/>(cAdvisor :10350 中継プロキシ)"]
             RTLSDR --> TrackerNew
         end
 
         subgraph CloudSide["⚙️ クラスタ・解析基盤 (tozastation-g1621-02 / k3s)"]
-            Garage["📦 Garage S3 (:3900) [NEW]<br/>(Rust製 極小S3 / 実測メモリ 3MiB)"]
-            Temporal["⏳ Temporal Server (:7233) [NEW]<br/>(SQLite内包 / 耐久ワークフロー管理)"]
+            Garage["📦 Garage S3 (:3900) [NEW]<br/>(Rust製 小型S3 / 実測メモリ 3MiB)"]
+            Temporal["⏳ Temporal Server (:7233) [NEW]<br/>(SQLite内包 / ワークフロー自動再開管理)"]
             KEDA["⚖️ KEDA Operator v2.20.0 [NEW]<br/>(0-scale オートスケーラー)"]
-            Worker["🔬 satellite-analyzer-worker [NEW]<br/>(パケット解析 / FFT スペクトログラム)<br/>普段: 0 replicas (リソース消費 0)<br/>解析時: 1 replica (オンデマンド起動)"]
+            Worker["🔬 satellite-analyzer-worker [NEW]<br/>(パケットデコード / スペクトログラム生成)<br/>普段: 0 replicas (リソース消費 0)<br/>解析時: 1 replica (必要な時だけ起動)"]
             Viewer["📱 satellite-viewer (:30088) [NEW]<br/>(スマホ向け Web ビューア & ハブ)"]
             Prometheus["📈 Prometheus & Grafana (:30080)"]
 
             TrackerNew -->|"① 48kHz WAV 保存"| Garage
-            Garage -.->|"② 新規 WAV 検知"| Viewer
-            Viewer -->|"③ ワークフロー投入"| Temporal
-            Temporal -->|"④ キュー監視"| KEDA
+            Garage -.->|"② 新規音声の検知"| Viewer
+            Viewer -->|"③ ワークフロー起動"| Temporal
+            Temporal -->|"④ タスク監視"| KEDA
             KEDA -->|"⑤ 0 → 1 スケールアウト"| Worker
             Worker -->|"⑥ WAV 取得 & 解析実行"| Garage
-            Worker -->|"⑦ 成果物格納 & 生WAV削除"| Garage
-            Worker -.->|"⑧ 完了後 1 → 0 縮退"| KEDA
+            Worker -->|"⑦ 解析結果の保存 & 音声ファイルの削除"| Garage
+            Worker -.->|"⑧ 完了後に 0 レプリカへスケールダウン"| KEDA
             Proxy -.->|"メトリクス"| Prometheus
             Garage -.->|"プレビュー"| Viewer
         end
@@ -127,46 +127,46 @@ flowchart TB
 
 | コンポーネント | 配置ノード | #2 (前回) | #3 (今回) | 役割と特徴 |
 | :--- | :--- | :--- | :--- | :--- |
-| **`satellite-tracker-rs`** | EdgeCore | Python (約 100MiB) | **Rust (実測 3.8MiB)** | 衛星自動追尾・SDR 受信・48kHz WAV スプール・動的省電力 |
-| **`garage`** | CloudCore | なし (ローカル生蓄積) | **Garage S3 (実測 3MiB)** | 超軽量 S3 互換ストレージ。WAV 一時保管 ＆ 解析成果物永続化 |
-| **`temporal`** | CloudCore | なし | **Temporal Server** | 耐久実行ワークフローエンジン。解析タスクの障害耐性とリトライ担保 |
-| **`keda`** | CloudCore | なし | **KEDA v2.20.0** | イベント駆動オートスケーラー。解析ワーカーの 0 $\leftrightarrow$ 1 制御 |
-| **`satellite-analyzer`** | CloudCore | なし | **Python / direwolf** | 解析ワーカー（普段 0 レプリカ）。パケットデコード ＆ 画像生成 |
-| **`satellite-viewer`** | CloudCore | なし (CLIログ) | **Python (実測 40MiB)** | スマホ向け Web ビューア ＆ KEDA メトリクス API ハブ |
-| **`metrics-proxy`** | EdgeCore | なし | **Python DaemonSet** | KubeEdge cAdvisor（:10350）をクラスタ内に平文露出するプロキシ |
+| **`satellite-tracker-rs`** | EdgeCore | Python (約 100MiB) | **Rust (実測 3.8MiB)** | 衛星自動追尾・SDR 受信・48kHz WAV 保存・通過時のみ起動する省電力制御 |
+| **`garage`** | CloudCore | なし (ローカル生蓄積) | **Garage S3 (実測 3MiB)** | 超軽量な S3 互換ストレージ。音声の一時保管と、解析結果（画像やJSON）の保存 |
+| **`temporal`** | CloudCore | なし | **Temporal Server** | 耐障害性に優れたワークフローエンジン。処理が中断しても確実に自動再開 |
+| **`keda`** | CloudCore | なし | **KEDA v2.20.0** | イベント駆動オートスケーラー。解析ワーカーの 0 $\leftrightarrow$ 1 自動スケーリング |
+| **`satellite-analyzer`** | CloudCore | なし | **Python / direwolf** | 解析ワーカー（普段は 0 レプリカ）。パケットデコードとスペクトログラム生成 |
+| **`satellite-viewer`** | CloudCore | なし (CLIログ) | **Python (実測 40MiB)** | スマホ向け Web ビューア ＆ KEDA 用メトリクス API ハブ |
+| **`metrics-proxy`** | EdgeCore | なし | **Python DaemonSet** | KubeEdge の cAdvisor（:10350）をクラスタ内へ HTTP で中継するプロキシ |
 
 ---
 
-### 3. 主要テクノロジーの単体役割と選定理由
+### 3. 主要テクノロジーの役割と選定理由
 
 本パイプラインの中核を担う各 OSS テクノロジーが、単体としてどういう役割を持つツールなのか、なぜ選定したのかを解説します。
 
-#### 📦 Garage S3：超軽量・分散オブジェクトストレージ
+#### 📦 Garage S3：超軽量な分散オブジェクトストレージ
 - **単体での役割**:
   - フランスの研究機関発祥のオープンソース分散オブジェクトストレージ（[公式サイト](https://garagehq.opera.software/) / [GitHub (dxflrs/garage)](https://github.com/dxflrs/garage)）。
   - 大規模データセンターを前提とする MinIO 等と異なり、**エッジ環境や地理的分散、省リソース端末での運用を前提に Rust で開発** されています。
   - メタデータ管理に SQLite を内包しており、外部データベースを一切必要としません。
 - **本システムでの選定理由**:
-  - Kubernetes で S3 といえば MinIO が定番ですが、MinIO はアイドル時でも 150〜250MiB 以上のメモリを消費し、UMPC 環境には重すぎます。
+  - Kubernetes で S3 といえば MinIO が定番ですが、MinIO は初期化時でも 150〜250MiB 以上のメモリを消費し、小型端末には重すぎます。
   - Garage S3 は **実測メモリ消費量わずか 3 MiB** で動作し、標準の AWS CLI や boto3、Rust の aws-sdk-s3 から何一つ変更なく透過的に利用できます。
 
-#### ⏳ Temporal：コードファーストの耐久実行ワークフローエンジン
+#### ⏳ Temporal：処理の中断に強いワークフローエンジン
 - **単体での役割**:
   - 分散システム向けのマイクロサービス・オーケストレーション基盤（[公式サイト](https://temporal.io/) / [GitHub (temporalio/temporal)](https://github.com/temporalio/temporal)）。
-  - 最大の特徴は **Durable Execution（耐久実行）** です。ワークフローの実行状態（ステートマシン、タイマー、リトライ回数、変数）を自動でイベントソーシングとして永続化します。
-  - 処理途中でワーカープロセスがクラッシュしたりホストが再起動しても、最後に成功したステップの直後からコードが何事もなかったかのように自動再開されます。
+  - 最大の特徴は、**処理が途中で落ちても確実に自動再開できる「Durable Execution（耐久実行）」** です。ワークフローの実行状態（ステートマシン、タイマー、リトライ回数、変数）を自動でイベントとして永続化します。
+  - 処理途中でワーカープロセスがクラッシュしたり端末が再起動しても、最後に成功したステップの直後から何事もなかったかのように処理を再開できます。
 - **本システムでの選定理由**:
   - 「音声取得 $\to$ パケット解析 $\to$ スペクトログラム生成 $\to$ S3 保存 $\to$ 元音声削除」という一連の処理をコード（Python）として記述。
-  - 障害時の自動リトライや進捗を Web UI 上で可視化・追跡でき、解析途中のタスク消失を完全に防ぎます。
+  - 一時的なリソース不足でワーカーが停止してもタスクが消える心配がなく、自動リトライや進捗を Web 画面上で視覚的に追跡できます。
 
-#### ⚖️ KEDA：Kubernetes イベント駆動オートスケーラー
+#### ⚖️ KEDA：イベント駆動でコンテナ数を制御するオートスケーラー
 - **単体での役割**:
   - CNCF Graduated プロジェクトの Kubernetes イベント駆動オートスケーラー（[公式サイト](https://keda.sh/) / [GitHub (kedacore/keda)](https://github.com/kedacore/keda)）。
   - Kubernetes 標準の HPA（Horizontal Pod Autoscaler）は CPU やメモリ使用率をトリガーとするため「0 から 1 への起動（0-scale）」ができません。KEDA は各種メッセージキュー、DB、HTTP API、Prometheus などの外部イベントを監視し、**0 $\to$ 1 および 1 $\to$ 0 の完全自動スケーリング** を実現します。
 - **本システムでの選定理由**:
   - 人工衛星がベランダ上空を通過するのは 1日あたり数回・各 5〜10分程度であり、**1日の 95% 以上は待機時間** です。
   - 解析ワーカーを 24時間常駐させるのはリソースの無駄遣いであるため、普段は **`replicas: 0`（リソース消費ゼロ）** で完全待機。
-  - S3 に未処理音声が到着した瞬間だけワーカーを `0 → 1` 起動し、解析が完了したら再び `1 → 0` に自動縮退させます。
+  - S3 に未処理音声が到着した瞬間だけワーカーを `0 → 1` 起動し、解析が完了したら再び `1 → 0` に自動スケールダウンさせます。
 
 ---
 
@@ -178,7 +178,7 @@ flowchart TB
   - エッジ側（`satellite-tracker-rs`）は単純な HTTP PUT だけで完結するため、Temporal クライアントや重い解析ライブラリを一切持ちません。これにより、エッジのメモリ 3.8MiB、CPU 0.08% を死守しています。
 - **将来の物理分離へのシームレスな拡張**:
   - エッジ側（ベランダアンテナ直下）は音声を S3 に PUT するだけ。クラウド側（Garage S3, Temporal, KEDA, Worker, Viewer）はそれを受信して勝手に自律処理するだけです。
-  - そのため、将来室内 PC（GPU マシン）を投入した際も、クラスタ側の Pod 群をごっそり室内ノードへ移すだけで、**エッジ側の観測コードを 1行も変えずに完全オフロードされた真の分散エッジ基盤へ昇華** できます。
+  - そのため、将来室内 PC（GPU マシン）を投入した際も、クラスタ側の Pod 群をごっそり室内ノードへ移すだけで、**エッジ側の観測コードを 1行も変えずに、本格的な分散エッジ構成へスムーズに移行** できます。
 
 ---
 
@@ -193,16 +193,16 @@ $ python3 scripts/trigger_cluster_e2e.py
 ⏳ [E2E] Temporal ワークフロー開始: AnalyzeSatellitePassWorkflow
 ⚖️ [E2E] KEDA ワーカー起動検知: replicas = 0 → 1
 🔬 [E2E] 解析実行中 (パケット解析 & スペクトログラム生成)...
-📦 [E2E] 成果物格納完了 (spectrogram.png / summary.json)
-🧹 [E2E] 元生 WAV の自動クリーンアップ完了
-⚖️ [E2E] KEDA ワーカー縮退確認: replicas = 1 → 0 (リソース消費ゼロ復帰)
+📦 [E2E] 解析結果（画像・JSON）の保存完了
+🧹 [E2E] 処理済みの音声ファイルを自動削除
+⚖️ [E2E] KEDA ワーカーが 0 レプリカへスケールダウン (リソース消費ゼロ復帰)
 ✅ [E2E] すべてのパイプラインが完全自律で完走しました！
 ```
 
 ---
 
 ### 2. 本物の人工衛星（ISS）通過時の自律観測ログ
-実際にベランダ上空を通過した **ISS (ZARYA)**（145.825 MHz APRS、最大仰角 43.4°）の電波を捉えた際の実機ログです。人間が一切介入せずに全自動で完走しました。
+実際にベランダ上空を通過した **ISS (ZARYA)**（145.825 MHz APRS、最大仰角 43.4°）の電波を捉えた際の実機ログです。人間が一切コマンドを叩くことなく、全自動で完走しました。
 
 ```text
 # 1. AOS 突入（14:26:10 JST）: SGP4予測に基づきSDRが動的スタンバイから自動起動
@@ -220,19 +220,19 @@ $ python3 scripts/trigger_cluster_e2e.py
 2026-10-10 14:29:12 [INFO] satellite-analyzer-worker: Temporal Worker started.
 2026-10-10 14:29:14 [INFO] Running packet analysis & Generating Spectrogram (Matplotlib)...
 2026-10-10 14:29:16 [INFO] Uploading artifact spectrogram.png (931KB) to S3...
-2026-10-10 14:29:18 [INFO] Cleaning up raw WAV from S3 (容量自動維持)...
+2026-10-10 14:29:18 [INFO] Cleaning up raw WAV from S3 (ストレージ空き容量を自動維持)...
 2026-10-10 14:29:19 [INFO] Successfully completed AnalyzeSatellitePassWorkflow!
 
-# 5. KEDA による完全自動縮退 (1 → 0)
+# 5. KEDA による自動スケールダウン (1 → 0)
 satellite-analyzer-worker-7f7c765f7f-fbcvt   1/1     Terminating   0   42s
 ```
 
 #### 📊 生成された実測スペクトログラム成果物
-ベランダのモービルホイップアンテナと RTL-SDR v4 が受信し、パイプラインが全自動で生成した ISS 通過時のパワースペクトログラムです。
+ベランダのアンテナと RTL-SDR v4 が受信し、パイプラインが全自動で生成した ISS 通過時のパワースペクトログラムです。
 
 ![ISS Spectrogram Real](./images/iss_spectrogram_real.png)
 
-生録音（約 150KB）は解析完了と同時に Garage S3 およびエッジから自動消去され、成果物（スペクトログラム PNG: 約 932KB、サマリ JSON）のみが永続化されました。
+録音データ（約 150KB）は解析完了と同時に自動削除され、解析結果（スペクトログラム画像: 約 932KB、サマリ JSON）だけが Garage S3 に保存されました。
 
 ---
 
@@ -247,8 +247,8 @@ satellite-analyzer-worker-7f7c765f7f-fbcvt   1/1     Terminating   0   42s
 - **JSON アコーディオン**: `summary.json` や `packets.json` をブラウザ上で展開・閲覧。
 
 ### 2. Grafana によるエッジ全体 ＆ Pod別リソース監視（NodePort 30080）
-- **エッジノード全体**: CPU 約 0.43 cores（約 10%） / メモリ 約 6.8 GiB / 16GB
-- **Pod別（Rust観測Pod）**: **CPU 0.8m（約 0.08%） / メモリ 3.8 MiB**
+- **ノード全体**: CPU 約 0.43 cores（約 10%） / メモリ 約 6.8 GiB / 16GB
+- **Pod単位（Rust観測Pod）**: **CPU 0.8m（約 0.08%） / メモリ 3.8 MiB**
 
 ---
 
@@ -259,17 +259,17 @@ satellite-analyzer-worker-7f7c765f7f-fbcvt   1/1     Terminating   0   42s
 ### 1. KubeEdge cAdvisor（:10350）と CloudCore のポート競合
 - **事象**: Prometheus からエッジノードの cAdvisor メトリクスを取得しようとすると `Connection Refused` や TLS エラーが発生する。
 - **原因**: KubeEdge の `edged` はループバック（`127.0.0.1:10350`）のみでリッスンしており、ホスト外から遮断されていた。さらに隣接ポート `10351` は CloudCore が HTTPS で握っていた。
-- **解決策**: `hostNetwork: true` を持つ極小 Python プロキシ DaemonSet（`kubeedge-metrics-proxy`）を空きポート（`19095`）で動かし、cAdvisor を平文 HTTP でクラスタ内に露出して解決。
+- **解決策**: `hostNetwork: true` を持つ極小 Python プロキシ DaemonSet（`kubeedge-metrics-proxy`）を空きポート（`19095`）で動かし、cAdvisor のメトリクスをクラスタ内から HTTP で取得できるように中継して解決。
 
 ### 2. Temporal SDK Core（Rust）のメモリ特性と OOMKilled（Exit Code 137）の壁
 - **事象**: Web ビューア内にディスパッチャーを組み込んだ直後、`Exit Code: 137`（OOMKilled）で不定期にクラッシュする。
-- **原因**: 当初 `limits.memory: 64Mi` を割り当てていたが、Python 版 Temporal SDK は内部で Rust 製コア（`temporal-sdk-core`）を内包しており、gRPC 接続・スレッドプール初期化時に一時的にヒープを急激に消費してリミットを超過していた。
+- **原因**: 当初 `limits.memory: 64Mi` を割り当てていたが、Python 版 Temporal SDK は内部で Rust 製コア（`temporal-sdk-core`）を内包しており、通信接続やスレッドの初期化時に一時的にメモリを急激に消費してリミットを超過していた。
 - **解決策**: メモリプロファイリングに基づき、リミットを `64Mi` $\to$ **`160Mi`**（Requests: `48Mi`）へ緩和。平常時は約 59MiB で安定稼働。
 
 ### 3. Temporal Dev モードのメトリクス欠落と KEDA `metrics-api` scaler
 - **事象**: S3 へ音声が届いても、KEDA のワーカーが自動で立ち上がらず `0` レプリカのままスタックする。
 - **原因**: KEDA ScaledObject が Prometheus 経由で Temporal のキュー長メトリクスを監視していたが、軽量な Temporal 開発サーバー（Dev モード）がメトリクスを出力していなかった。
-- **解決策**: 常駐 Web ビューアに未処理ファイル数を返す極小エンドポイント `/api/pending-tasks` を追加。KEDA 公式の **`metrics-api` scaler** で直接ポーリング監視させ、S3 ファイル到着をトリガーとする確実な自律スケーリングを確立。
+- **解決策**: 常駐 Web ビューアに未処理ファイル数を返す極小エンドポイント `/api/pending-tasks` を追加。KEDA 公式の **`metrics-api` scaler** で直接ポーリング監視させ、S3 ファイル到着をトリガーとする確実な自動起動を確立。
 
 ---
 
@@ -290,9 +290,9 @@ satellite-analyzer-worker-7f7c765f7f-fbcvt   1/1     Terminating   0   42s
 - **原因**: KubeEdge のエッジコンテナはクラスタの CoreDNS ではなくホスト OS の `/etc/resolv.conf` を参照するため、内部ドメインが引けない。
 - **解決策**: エッジ Pod に渡す S3 エンドポイントをホスト物理 IP の NodePort（`http://192.168.68.66:30900`）に明示指定。
 
-### 7. コンテナ Ephemeral ストレージの教訓と hostPath 永続スプール
-- **事象**: Pod を再作成した際に、未アップロードの生録音（コンテナ内 `/tmp`）が消失するリスクに直面。
-- **解決策**: ホスト物理ディレクトリ `/tmp/satellite-recordings` を `hostPath` バインドマウントし、自己治癒スプール同期（`sync_pending_spool`）を実装してデータ保全を徹底。
+### 7. コンテナ Ephemeral ストレージの教訓と hostPath 永続化
+- **事象**: Pod を再作成した際に、未アップロードの音声ファイル（コンテナ内 `/tmp`）が消失するリスクに直面。
+- **解決策**: ホスト物理ディレクトリ `/tmp/satellite-recordings` を `hostPath` バインドマウントし、未送信ファイルの自動再送処理（`sync_pending_spool`）を実装してデータ保護を徹底。
 
 </details>
 
