@@ -323,16 +323,16 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 31 },
       "id": 9,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
+        "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }
       },
       "targets": [
         {
-          "expr": "sum(rate(process_cpu_seconds_total{job=\"satellite-tracker\"}[1m]))",
-          "legendFormat": "SDR Tracker CPU Cores",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{job=\"kubeedge-edged-cadvisor\", id=\"/\"}[1m]))",
+          "legendFormat": "エッジノード全体 (Host Total)",
           "refId": "A"
         }
       ],
-      "title": "SDR 観測 Pod CPU使用率 (Cores)",
+      "title": "🖥️ エッジノード全体 CPU消費 (Host Overall CPU Cores)",
       "type": "timeseries"
     },
     {
@@ -350,16 +350,70 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 31 },
       "id": 10,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
+        "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }
       },
       "targets": [
         {
-          "expr": "sum(process_resident_memory_bytes{job=\"satellite-tracker\"})",
-          "legendFormat": "SDR Tracker Resident Memory (RSS)",
+          "expr": "sum(container_memory_working_set_bytes{job=\"kubeedge-edged-cadvisor\", id=\"/\"})",
+          "legendFormat": "エッジノード全体 (Host Total Working Set)",
           "refId": "A"
         }
       ],
-      "title": "SDR 観測 Pod メモリ使用量 (RSS)",
+      "title": "🧠 エッジノード全体 メモリ消費 (Host Overall Working Set)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 38 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{job=\"kubeedge-edged-cadvisor\", pod!=\"\"}[1m]))",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ],
+      "title": "📦 Pod別 CPU消費量 (CPU Cores by Pod)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2
+          },
+          "unit": "bytes"
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 38 },
+      "id": 12,
+      "options": {
+        "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pod) (container_memory_working_set_bytes{job=\"kubeedge-edged-cadvisor\", pod!=\"\"})",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ],
+      "title": "💾 Pod別 メモリ使用量 (Working Set by Pod)",
       "type": "timeseries"
     }
   ],

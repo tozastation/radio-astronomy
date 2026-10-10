@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: kubeedge-edged-cadvisor
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  jobName: kubeedge-edged-cadvisor
+  metricsPath: /metrics/cadvisor
+  scheme: HTTP
+  scrapeInterval: 15s
+  staticConfigs:
+    - targets:
+        - "192.168.68.66:19095"
+      labels:
+        node: "gpd-pocket3-edge"
+        instance: "gpd-pocket3-edge"
+        job: "kubeedge-edged-cadvisor"

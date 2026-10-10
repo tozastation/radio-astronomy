@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubeedge-metrics-proxy
+  namespace: kubeedge
+  labels:
+    app: kubeedge-metrics-proxy
+spec:
+  selector:
+    matchLabels:
+      app: kubeedge-metrics-proxy
+  template:
+    metadata:
+      labels:
+        app: kubeedge-metrics-proxy
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: proxy
+          image: localhost:5000/kubeedge-metrics-proxy:v1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 19095
+              name: metrics
+          resources:
+            requests:
+              cpu: 5m
+              memory: 10Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
