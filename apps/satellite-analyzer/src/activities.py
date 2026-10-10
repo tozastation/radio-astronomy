@@ -183,3 +183,109 @@ async def cleanup_raw_recording_activity(s3_key: str) -> bool:
     logger.info(f"Deleting s3://{bucket}/{s3_key}...")
     s3.delete_object(Bucket=bucket, Key=s3_key)
     return True
+
+
+@activity.defn(name="analyze_satellite_pass_activity")
+async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Garage S3 からのダウンロード、デコード、スペクトログラム生成、成果物保存、クリーンアップを単一ワーカー内で不可分に完走する統合アクティビティ"""
+    bucket = os.getenv("GARAGE_BUCKET", "satellite-recordings")
+    s3 = _get_s3_client()
+
+    s3_key = params["s3_key"]
+    satellite = params.get("satellite", "")
+    pass_id = params.get("pass_id", "")
+    keep_raw = params.get("keep_raw", False)
+
+    tmp_dir = tempfile.mkdtemp(prefix="pass_")
+    local_wav = os.path.join(tmp_dir, os.path.basename(s3_key))
+
+    try:
+        # 1. WAV ダウンロード
+        logger.info(f"Downloading s3://{bucket}/{s3_key} to {local_wav}...")
+        s3.download_file(bucket, s3_key, local_wav)
+
+        # 2. 衛星種別に応じた信号解析 & パケットデコード
+        info = classify_satellite(satellite)
+        category = info["category"]
+        if category == "amateur_packet" or not satellite:
+            decoder = APRSDecoder()
+            frames = decoder.decode_wav(local_wav)
+            packets_count = len(frames)
+            packets = [f.to_dict() for f in frames]
+            summary_text = f"APRS パケット {packets_count} 件検出"
+        elif category == "weather_lrpt":
+            packets_count = 0
+            packets = []
+            summary_text = "METEOR-M2 4 気象衛星 LRPT (QPSK 72kbps) 信号受信完了 (SatDump 連携準備中)"
+        elif category == "cubesat_telemetry":
+            packets_count = 0
+            packets = []
+            summary_text = "FUNcube-1 (AO-73) CubeSat BPSK (1200bps) テレメトリ信号受信完了"
+        else:
+            packets_count = 0
+            packets = []
+            summary_text = "信号受信完了 (スペクトログラム生成)"
+
+        packets_data = {
+            "satellite": satellite,
+            "satellite_type": info["satellite_type"],
+            "signal_type": info["signal_type"],
+            "frequency_label": info["frequency_label"],
+            "display_icon": info["display_icon"],
+            "packets_count": packets_count,
+            "packets": packets,
+            "summary_text": summary_text,
+        }
+
+        # 3. スペクトログラム生成
+        generator = SpectrogramGenerator()
+        out_png = os.path.splitext(local_wav)[0] + "_spectrogram.png"
+        generator.generate(local_wav, out_png, title=f"{satellite} Pass Analysis")
+
+        # 4. S3 へ解析成果物を保存
+        prefix = f"results/{satellite}/{pass_id}"
+
+        packets_tmp = os.path.join(tmp_dir, "packets.json")
+        with open(packets_tmp, "w", encoding="utf-8") as f:
+            json.dump(packets_data, f, indent=2, ensure_ascii=False)
+        s3.upload_file(packets_tmp, bucket, f"{prefix}/packets.json")
+
+        if os.path.exists(out_png):
+            s3.upload_file(out_png, bucket, f"{prefix}/spectrogram.png")
+
+        summary_data = {
+            "satellite": satellite,
+            "pass_id": pass_id,
+            "satellite_type": info["satellite_type"],
+            "signal_type": info["signal_type"],
+            "frequency_label": info["frequency_label"],
+            "display_icon": info["display_icon"],
+            "packets_count": packets_count,
+            "summary_text": summary_text,
+            "status": "completed",
+        }
+        summary_tmp = os.path.join(tmp_dir, "summary.json")
+        with open(summary_tmp, "w", encoding="utf-8") as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
+        s3.upload_file(summary_tmp, bucket, f"{prefix}/summary.json")
+
+        # 5. 元 WAV の削除
+        if not keep_raw:
+            logger.info(f"Cleaning up raw WAV: s3://{bucket}/{s3_key}")
+            try:
+                s3.delete_object(Bucket=bucket, Key=s3_key)
+            except Exception as e:
+                logger.warning(f"Failed to delete raw WAV: {e}")
+
+        logger.info(f"Successfully processed pass: {pass_id} for {satellite}")
+        return {
+            "status": "completed",
+            "satellite": satellite,
+            "pass_id": pass_id,
+            "packets_count": packets_count,
+            "spectrogram_key": f"{prefix}/spectrogram.png",
+            "summary_key": f"{prefix}/summary.json",
+        }
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)

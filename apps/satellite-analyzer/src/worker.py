@@ -83,6 +83,7 @@ async def run_temporal_worker():
     from temporalio.worker import Worker
     from workflows import AnalyzeSatellitePassWorkflow
     from activities import (
+        analyze_satellite_pass_activity,
         download_recording_activity,
         decode_packets_activity,
         generate_spectrogram_activity,
@@ -101,6 +102,7 @@ async def run_temporal_worker():
         task_queue=task_queue,
         workflows=[AnalyzeSatellitePassWorkflow],
         activities=[
+            analyze_satellite_pass_activity,
             download_recording_activity,
             decode_packets_activity,
             generate_spectrogram_activity,

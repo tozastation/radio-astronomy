@@ -6,6 +6,7 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from activities import (
+        analyze_satellite_pass_activity,
         download_recording_activity,
         decode_packets_activity,
         generate_spectrogram_activity,
@@ -40,60 +41,23 @@ class AnalyzeSatellitePassWorkflow:
             maximum_attempts=3,
         )
 
-        # 1. WAV ダウンロード
-        local_wav_path = await workflow.execute_activity(
-            download_recording_activity,
-            params.s3_key,
-            start_to_close_timeout=timedelta(minutes=3),
-            retry_policy=retry_policy,
-        )
-
-        # 2. 衛星種別に応じた信号解析 & パケットデコード
-        packets_data = await workflow.execute_activity(
-            decode_packets_activity,
-            args=[local_wav_path, params.satellite],
-            start_to_close_timeout=timedelta(minutes=5),
-            retry_policy=retry_policy,
-        )
-
-        # 3. スペクトログラム画像生成
-        spectrogram_png_path = await workflow.execute_activity(
-            generate_spectrogram_activity,
-            local_wav_path,
-            start_to_close_timeout=timedelta(minutes=3),
-            retry_policy=retry_policy,
-        )
-
-        # 4. S3 へ解析結果保存
-        save_params = {
+        activity_params = {
+            "s3_key": params.s3_key,
             "satellite": params.satellite,
             "pass_id": params.pass_id,
-            "packets_data": packets_data,
-            "spectrogram_png_path": spectrogram_png_path,
+            "keep_raw": params.keep_raw,
         }
-        await workflow.execute_activity(
-            save_results_activity,
-            save_params,
-            start_to_close_timeout=timedelta(minutes=2),
+
+        # 統合アクティビティで不可分に完走（分散環境でのローカルパス共有問題を根絶）
+        result = await workflow.execute_activity(
+            analyze_satellite_pass_activity,
+            activity_params,
+            start_to_close_timeout=timedelta(minutes=10),
             retry_policy=retry_policy,
         )
-
-        # 5. 元 WAV ファイルの削除 (ストレージクリーンアップ)
-        if not params.keep_raw:
-            await workflow.execute_activity(
-                cleanup_raw_recording_activity,
-                params.s3_key,
-                start_to_close_timeout=timedelta(minutes=2),
-                retry_policy=retry_policy,
-            )
 
         workflow.logger.info(
             f"Successfully finished AnalyzeSatellitePassWorkflow for {params.satellite} ({params.pass_id})"
         )
 
-        return {
-            "status": "completed",
-            "satellite": params.satellite,
-            "pass_id": params.pass_id,
-            "packets_count": packets_data.get("packets_count", 0),
-        }
+        return result

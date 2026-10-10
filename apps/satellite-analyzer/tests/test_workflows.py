@@ -21,39 +21,25 @@ async def test_satellite_analysis_workflow_execution():
         from temporalio import activity
 
         # モック Activity の設定
-        @activity.defn(name="download_recording_activity")
-        async def mock_download(s3_key: str) -> str:
-            return "/tmp/mock_pass.wav"
-
-        @activity.defn(name="decode_packets_activity")
-        async def mock_decode(wav_path: str, satellite: str = "") -> dict:
+        @activity.defn(name="analyze_satellite_pass_activity")
+        async def mock_analyze_pass(params: dict) -> dict:
             return {
+                "status": "completed",
+                "success": True,
+                "satellite": params.get("satellite", "ISS"),
                 "packets_count": 1,
                 "packets": [{"source": "JA1XXX", "message": "Hello via ISS"}],
+                "spectrogram_key": f"results/{params.get('satellite', 'ISS')}/pass_test/spectrogram.png",
+                "summary_key": f"results/{params.get('satellite', 'ISS')}/pass_test/summary.json",
+                "raw_cleaned_up": True,
             }
-
-        @activity.defn(name="generate_spectrogram_activity")
-        async def mock_spectrogram(wav_path: str) -> str:
-            return "/tmp/mock_spectrogram.png"
-
-        @activity.defn(name="save_results_activity")
-        async def mock_save(params: dict) -> bool:
-            return True
-
-        @activity.defn(name="cleanup_raw_recording_activity")
-        async def mock_cleanup(s3_key: str) -> bool:
-            return True
 
         async with Worker(
             env.client,
             task_queue=task_queue,
             workflows=[AnalyzeSatellitePassWorkflow],
             activities=[
-                mock_download,
-                mock_decode,
-                mock_spectrogram,
-                mock_save,
-                mock_cleanup,
+                mock_analyze_pass,
             ],
         ):
             params = PassAnalysisParams(

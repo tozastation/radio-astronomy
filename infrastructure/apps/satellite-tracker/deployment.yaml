@@ -7,6 +7,8 @@ metadata:
     app: satellite-tracker
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: satellite-tracker
@@ -15,6 +17,7 @@ spec:
       labels:
         app: satellite-tracker
     spec:
+      automountServiceAccountToken: false
       nodeSelector:
         node-role.kubernetes.io/edge: ""
       tolerations:
@@ -31,6 +34,8 @@ spec:
           securityContext:
             privileged: true
           env:
+            - name: RUST_LOG
+              value: "info"
             # 観測地点: プライバシー保護のため広域公称値（東京都庁）を採用（受信感度への影響なし）
             - name: OBSERVER_LATITUDE
               value: "35.6895"
@@ -68,10 +73,10 @@ spec:
           resources:
             requests:
               cpu: 30m
-              memory: 32Mi
+              memory: 64Mi
             limits:
               cpu: 500m
-              memory: 64Mi
+              memory: 384Mi
           volumeMounts:
             - name: dev-bus-usb
               mountPath: /dev/bus/usb

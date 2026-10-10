@@ -879,7 +879,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 packets_data = p.get("packets") or {}
                 packet_items = packets_data.get("packets", [])
                 if packet_items:
-                    pretty_packets = "\n".join([str(item) for item in packet_items])
+                    pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
                     packets_accordion = f"""
                     <details class="data-accordion">
                       <summary>📡 受信パケット ({len(packet_items)} 件) の中身を見る</summary>

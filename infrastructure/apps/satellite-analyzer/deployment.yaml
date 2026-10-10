@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: analyzer
-          image: localhost:5000/satellite-analyzer-worker:v1.3.0
+          image: localhost:5000/satellite-analyzer-worker:v1.4.1
           imagePullPolicy: Always
           env:
             - name: MODE
@@ -45,7 +45,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
-              cpu: 1000m
-              memory: 512Mi
+              cpu: 1500m
+              memory: 1536Mi
