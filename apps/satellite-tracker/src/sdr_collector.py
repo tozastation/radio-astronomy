@@ -5,6 +5,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+RtlSdr = None
 # RTL-SDR ライブラリの動的ロード（未接続環境・未対応librtlsdrでの安全なフォールバックのため）
 try:
     from rtlsdr import RtlSdr
@@ -36,6 +37,33 @@ class SDRCollector:
         self.gain_db = gain_db
         self.sdr: Optional[object] = None
         self._is_running = False
+        self._is_standby = False
+
+    @property
+    def is_standby(self) -> bool:
+        """SDR デバイスが省電力スタンバイ（クローズ状態）中かどうか"""
+        return self._is_standby
+
+    def standby(self) -> None:
+        """非通過時に SDR をクローズし、USB 給電・発熱を停止する省電力モードへ移行"""
+        if self._is_standby:
+            return
+        logger.info("SDRCollector: Entering power-saving standby mode (closing SDR).")
+        self.stop()
+        self._is_standby = True
+
+    def warmup(self, center_freq_hz: Optional[float] = None) -> None:
+        """次回 AOS 接近時に SDR を再初期化して受信可能状態へ復帰"""
+        if not self._is_standby and self._is_running:
+            return
+        logger.info("SDRCollector: Warming up SDR hardware from standby.")
+        self._is_standby = False
+        self.start()
+        if center_freq_hz and self.sdr is not None and not self.mock_sdr:
+            try:
+                self.sdr.center_freq = center_freq_hz
+            except Exception as e:
+                logger.warning(f"Error setting center_freq during warmup: {e}")
 
     def start(self) -> None:
         """SDR デバイスを初期化し、受信待機状態にする"""
@@ -47,7 +75,7 @@ class SDRCollector:
             self._is_running = True
             return
 
-        if not HAS_RTLSDR:
+        if not HAS_RTLSDR or RtlSdr is None:
             logger.warning("pyrtlsdr not available. Falling back to MOCK_SDR mode.")
             self.mock_sdr = True
             self._is_running = True
