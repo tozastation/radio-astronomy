@@ -6,3 +6,4 @@ pyrtlsdr>=0.3.0
 prometheus-client>=0.20.0
 requests>=2.31.0
 pytest>=8.0.0
+boto3>=1.34.0
