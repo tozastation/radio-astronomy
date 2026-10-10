@@ -55,9 +55,17 @@ ignorePublish: false
 
 ---
 
-## リニューアルしたシステム構成図
+## システム構成の進化（#2 からの差分）
 
-GPD Pocket3（メモリ 16GB / Ubuntu 26.04 LTS）単一端末内で、エッジとクラスタ側の責務を完全に分離した構成です。将来自宅の分析専用 PC へ分離・分散する際にも、そのままシームレスにスケールアウトできる透過的な設計にしています。
+第2弾（#2）では「エッジで動かす単一観測コンテナからメトリクスを吸い上げて監視する」という基盤の立ち上げを行いました。  
+今回はそこに **「イベント駆動型の自律解析パイプライン」** を追加し、エッジ観測 Pod も **Rust 化によって極限まで軽量化** しました。
+
+まずは、#2（Before）と #3（After）で何がどう進化したのかを比較します。
+
+### 1. #2（Before）と #3（After）のアーキテクチャ比較
+
+#### 【Before: #2 の状態】単一観測コンテナ ＆ メトリクス監視のみ
+#2 の時点では、エッジで Python 製の観測コンテナが常駐し、生 WAV 音声はローカルディスクに溜め込むだけでした。解析処理は存在せず、クラウド側は Prometheus / Grafana によるメトリクス監視のみでした。
 
 ```mermaid
 flowchart TB
@@ -66,40 +74,80 @@ flowchart TB
 
         subgraph EdgeSide["🛰️ エッジ観測ノード (gpd-pocket3-edge / KubeEdge)"]
             direction TB
-            RTLSDR["📻 RTL-SDR Blog V4<br/>(ベランダ・USB直結)"]
-            Tracker["⚡ satellite-tracker-rs<br/>(Rust / メモリ 3MiB / CPU 0.8m)<br/>・SGP4 軌道予測 & ドップラー追尾<br/>・ゼロコピー 48kHz WAV スプール<br/>・動的省電力 (AOS時のみSDR駆動)"]
-            Proxy["🔄 metrics-proxy<br/>(KubeEdge cAdvisor :10350 プロキシ)"]
+            RTLSDR["📻 RTL-SDR Blog V4<br/>(USB 直結)"]
+            TrackerOld["⚠️ satellite-tracker (Python)<br/>・メモリ約 100MiB 消費<br/>・生 WAV をローカルディスクに蓄積 (容量逼迫)"]
+            RTLSDR --> TrackerOld
+        end
 
-            RTLSDR -->|"IQ サンプル (2.4MSPS)"| Tracker
+        subgraph CloudSide["⚙️ コントロールプレーン (tozastation-g1621-02 / k3s)"]
+            direction TB
+            K3S["☸️ k3s / KubeEdge CloudCore"]
+            Prometheus["📈 Prometheus & Grafana (:30080)<br/>(メトリクス監視のみ)"]
+            TrackerOld -.->|"メトリクス収集 (:9100)"| Prometheus
+        end
+    end
+```
+
+#### 【After: #3 の状態】エッジ極小化 ＆ イベント駆動型 0-scale 解析パイプライン
+#3 では、エッジを Rust で徹底的に絞り込み、クラスタ側に極小 S3 ストレージ（Garage）、ワークフロー（Temporal）、0-scale オートスケーラー（KEDA）を配備して、**観測から解析・可視化・クリーンアップまでが完全自律で完走するパイプライン** を構築しました。
+
+```mermaid
+flowchart TB
+    subgraph Host["GPD Pocket3 (Ubuntu 26.04 LTS / 192.168.68.66)"]
+        direction TB
+
+        subgraph EdgeSide["🛰️ エッジ観測ノード (gpd-pocket3-edge / KubeEdge)"]
+            direction TB
+            RTLSDR["📻 RTL-SDR Blog V4<br/>(USB 直結)"]
+            TrackerNew["⚡ satellite-tracker-rs [RENEWED: Rust]<br/>・メモリ 3MiB / CPU 0.8m (97%削減)<br/>・ゼロコピー 48kHz WAV スプール<br/>・動的省電力 (AOS時のみSDR駆動)"]
+            Proxy["🔄 metrics-proxy [NEW]<br/>(KubeEdge cAdvisor :10350 プロキシ)"]
+
+            RTLSDR -->|"IQ サンプル"| TrackerNew
         end
 
         subgraph CloudSide["⚙️ クラスタ・解析基盤 (tozastation-g1621-02 / k3s)"]
             direction TB
-            Garage["📦 Garage S3 (:3900)<br/>(Rust製 極小分散ストレージ / メモリ 3MiB)"]
-            Temporal["⏳ Temporal Server (:7233)<br/>(SQLite内包 / 耐久ワークフロー管理)"]
-            KEDA["⚖️ KEDA Operator v2.20.0<br/>(0-scale オートスケーラー)"]
-            Worker["🔬 satellite-analyzer-worker<br/>(direwolf APRS / FFT スペクトログラム)<br/>普段: 0 replicas (リソース消費ゼロ)<br/>解析時: 1 replica (約 80MiB)"]
-            Viewer["📱 satellite-viewer (:30088)<br/>(スマホ向け Web ビューア / メモリ 40MiB)"]
+            Garage["📦 Garage S3 (:3900) [NEW]<br/>(Rust製 極小分散ストレージ / メモリ 3MiB)"]
+            Temporal["⏳ Temporal Server (:7233) [NEW]<br/>(SQLite内包 / 耐久ワークフロー管理)"]
+            KEDA["⚖️ KEDA Operator v2.20.0 [NEW]<br/>(0-scale オートスケーラー)"]
+            Worker["🔬 satellite-analyzer-worker [NEW]<br/>(direwolf APRS / FFT スペクトログラム)<br/>普段: 0 replicas (リソース 0)<br/>解析時: 1 replica (オンデマンド起動)"]
+            Viewer["📱 satellite-viewer (:30088) [NEW]<br/>(スマホ向け Web ビューア / メモリ 40MiB)"]
 
-            Prometheus["📈 Prometheus & Grafana (:30080)<br/>(エッジ全体 & Pod別 リアルタイム監視)"]
+            Prometheus["📈 Prometheus & Grafana (:30080) [ENHANCED]<br/>(エッジ全体 & Pod別 リアルタイム監視)"]
 
-            Tracker -->|"① 狭帯域 48kHz WAV アップロード"| Garage
-            Tracker -->|"② 解析ワークフロー投入"| Temporal
-            Temporal -->|"③ ジョブキュー監視"| KEDA
+            TrackerNew -->|"① 48kHz WAV 保存"| Garage
+            TrackerNew -->|"② ワークフロー投入"| Temporal
+            Temporal -->|"③ キュー監視"| KEDA
             KEDA -->|"④ 0 → 1 スケールアウト"| Worker
-            Worker -->|"⑤ WAV 取得 & デコード/スペクトログラム生成"| Garage
-            Worker -->|"⑥ 成果物 (PNG/JSON) 格納 & 生WAV削除"| Garage
-            Worker -.->|"⑦ キュー消化後 1 → 0 縮退"| KEDA
+            Worker -->|"⑤ WAV 取得 & 解析実行"| Garage
+            Worker -->|"⑥ 成果物格納 & 生WAV削除"| Garage
+            Worker -.->|"⑦ 完了後 1 → 0 縮退"| KEDA
 
-            Proxy -.->|"メトリクス収集"| Prometheus
-            Garage -.->|"オブジェクト参照"| Viewer
+            Proxy -.->|"cAdvisor メトリクス"| Prometheus
+            Garage -.->|"成果物参照"| Viewer
         end
     end
 
-    UserPhone["📱 スマートフォン / ブラウザ"]
+    UserPhone["📱 スマホ / ブラウザ [NEW]"]
     UserPhone -->|"観測結果プレビュー (:30088)"| Viewer
-    UserPhone -->|"リソース・電波品質監視 (:30080)"| Prometheus
+    UserPhone -->|"統合リソース監視 (:30080)"| Prometheus
 ```
+
+---
+
+### 2. コンポーネント別・スペック別の進化一覧表
+
+| 比較項目 | #2 (前回) | #3 (今回) | 進化と SRE 的メリット |
+| :--- | :--- | :--- | :--- |
+| **エッジ観測実装** | Python 3.11 (`satellite-tracker`) | **Rust (`satellite-tracker-rs`)** | **メモリ 100MiB $\to$ 3MiB（97%削減）**。GC 停止がなくなりバッファドロップを撲滅 |
+| **SDR ハード駆動** | 常時チューナー受信稼働 | **動的省電力 (Dynamic Power Mgmt)** | 衛星が地平線上に現れる AOS 直前のみ起動。発熱・消費電力を最小化 |
+| **WAV 音声保存** | 2.4MSPS 広帯域を直接録音 (数百MB) | **48kHz ゼロコピー狭帯域スプール** | 音声通信に必要な帯域に絞り、**ファイルサイズを数十分の一（数MB）に圧縮** |
+| **ストレージ** | エッジのローカル SSD に生蓄積 | **Garage S3 (:3900) (分散ストレージ)** | **実測メモリ 3MiB** の超軽量 S3。成果物保存後に生 WAV を自動削除し容量維持 |
+| **ワークフロー** | なし (録音しっぱなし) | **Temporal Server (:7233)** | 取得 $\to$ 解析 $\to$ 保存 $\to$ 削除 をコードとして**耐久実行 (Durable Execution)** |
+| **信号解析処理** | なし (手動または未実装) | **`satellite-analyzer-worker`** | direwolf による APRS デコード ＆ 高解像度スペクトログラム画像を自動生成 |
+| **オートスケール** | なし (静的 Pod 配置) | **KEDA v2.20.0 による「0-scale」** | **待機時は 0 レプリカ（リソース 0）**。データ到着時のみ 1 に起動し、完了後 0 に自動縮退 |
+| **結果の確認方法** | ターミナルでログ確認 | **スマホ向け Web ビューア (:30088)** | 同一 Wi-Fi のスマホからブラウザを開くだけで、画像拡大や JSON プレビューが可能 |
+| **リソース監視** | Python プロセス内部値のみ | **KubeEdge cAdvisor (:10350) 連携** | **ホスト全体 (6.8GB / 0.4コア) と Pod毎 (Rust: 3.8MB)** の二層監視を実現 |
 
 ---
 
