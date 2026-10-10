@@ -229,27 +229,64 @@ $ python3 scripts/trigger_cluster_e2e.py
 
 ---
 
+---
+
 ## 実機による本物の衛星電波観測 ＆ 自律解析の完走
 
-E2E テストの成功に続き、**実際にベランダ上空を通過する本物の人工衛星（METEOR-M2 4 / ISS）** の電波を受信し、人間が一切介入せずに全自動で Garage S3 $\to$ Temporal $\to$ KEDA $\to$ スペクトログラム生成まで完走することを実証しました！
+E2E テストの成功に続き、**実際にベランダ上空を通過する本物の人工衛星（ISS: 国際宇宙ステーション）** の電波を受信し、人間が一切介入せずに全自動で Garage S3 $\to$ Temporal $\to$ KEDA $\to$ スペクトログラム生成まで完走することを実証しました！
 
 ### 🛰️ 本物パスの自動観測ログ & パイプライン推移
 
-1. **AOS (Acquisition of Signal)**:
-   - SGP4 軌道予測に基づき、衛星が地平線上（仰角 > 10°）に現れた瞬間に RTL-SDR チューナーが自動起動。
-   - ゼロコピー 48kHz WAV スプール録音が開始。
-2. **LOS (Loss of Signal) ＆ S3 自動アップロード**:
-   - 衛星が地平線下に沈むと同時に録音がクローズされ、Garage S3 へ自動アップロード。
-   - `s3://satellite-recordings/raw/<satellite>/<pass_id>.wav`
-3. **自動ディスパッチ & 0-scale オンデマンド起動**:
-   - `satellite-viewer` のディスパッチャーが新規録音を自動検知し、Temporal ワークフローを開始。
-   - KEDA がキューをトリガーにして `satellite-analyzer-worker` を `0 → 1` 起動。
-4. **解析完走 ＆ クリーンアップ**:
-   - スペクトログラム画像（PNG）および解析サマリ（JSON）を `results/<satellite>/<pass_id>/` に格納。
-   - 生 WAV を自動削除し、ワーカーが `1 → 0` に完全縮退。
+- **観測衛星**: **ISS (ZARYA)** (145.825 MHz APRS)
+- **通過時間**: 2026-10-10 14:26:10 〜 14:29:03 JST
+- **軌道諸元**: 最大仰角 **43.4°**、方位角 73.2° $\to$ 271.2°
+- **RF実測値**: RSSI **-62.6 dBm**, SNR **2.71 dB**, 理論ドップラー偏移 **+1,763 Hz**
 
-<!-- Real Pass Results Embed Placeholder -->
-*(※観測完了後のスペクトログラム画像プレビューと詳細メトリクス)*
+```text
+# 1. AOS 突入（14:26:10 JST）: SGP4予測に基づきSDRが動的スタンバイから自動起動
+2026-10-10 14:26:10 [INFO] AOS entered: ISS (ZARYA) (El: 10.2°, Az: 73.5°, Freq: 145.825 MHz)
+2026-10-10 14:26:10 [INFO] SDR warmup completed. 48kHz WAV streaming spool started.
+
+# 2. LOS 完了（14:29:03 JST）: 録音クローズと S3 への自動アップロード
+2026-10-10 14:29:03 [INFO] LOS completed: ISS (ZARYA) (Max El: 43.4°)
+2026-10-10 14:29:04 [INFO] S3Uploader: Uploading 152,576 bytes to raw/ISS (ZARYA)/ISS (ZARYA)_20261010_052606.wav...
+2026-10-10 14:29:05 [INFO] S3Uploader: Successfully uploaded: raw/ISS (ZARYA)/ISS (ZARYA)_20261010_052606.wav
+
+# 3. 自動ディスパッチ & Temporal ワークフロー発火
+🚀 [Dispatcher] Found new raw recording: raw/ISS (ZARYA)/ISS (ZARYA)_20261010_052606.wav
+⏳ [Dispatcher] Starting Temporal workflow for ISS (ZARYA)_20261010_052606...
+🎉 [Dispatcher] Workflow started successfully for ISS (ZARYA)_20261010_052606!
+
+# 4. KEDA ワーカー自動起動 & 解析実行
+2026-10-10 14:29:12 [INFO] satellite-analyzer-worker: Temporal Worker started. Listening on task queue: 'satellite-analysis'...
+2026-10-10 14:29:13 [INFO] Downloading raw WAV from S3...
+2026-10-10 14:29:14 [INFO] Decoding APRS packets (direwolf) & Generating Spectrogram (Matplotlib)...
+2026-10-10 14:29:16 [INFO] Uploading artifact spectrogram.png (931,933 bytes) to S3...
+2026-10-10 14:29:17 [INFO] Uploading artifact summary.json to S3...
+2026-10-10 14:29:18 [INFO] Cleaning up raw WAV from S3: raw/ISS (ZARYA)/ISS (ZARYA)_20261010_052606.wav...
+2026-10-10 14:29:19 [INFO] Successfully completed AnalyzeSatellitePassWorkflow!
+
+# 5. KEDA による完全自動縮退（1 → 0）
+satellite-analyzer-worker-7f7c765f7f-fbcvt   1/1     Terminating   0   42s
+```
+
+### 📊 実測スペクトログラム成果物
+
+以下は、ベランダのモービルホイップアンテナと RTL-SDR v4 が実際に受信し、パイプラインが全自動で生成した ISS 通過時の時間-周波数パワースペクトログラムです。
+
+![ISS Spectrogram Real](./images/iss_spectrogram_real.png)
+
+```json
+/* results/ISS (ZARYA)/ISS (ZARYA)_20261010_052606/summary.json */
+{
+  "satellite": "ISS (ZARYA)",
+  "pass_id": "ISS (ZARYA)_20261010_052606",
+  "packets_count": 0,
+  "status": "completed"
+}
+```
+
+生録音データ（150KB）は解析完了と同時に S3 およびローカルから自動消去され、成果物（スペクトログラム PNG: 約 932KB、サマリ JSON）のみが Garage S3 に永続化されました。
 
 ---
 
@@ -299,6 +336,21 @@ KubeEdge 環境におけるメトリクス監視の落とし穴を解消し、Gr
 - **解決策**:
   - メモリプロファイリングに基づき、マニフェストのリミットを `64Mi` $\to$ **`160Mi`**（Requests: `48Mi`）へ緩和。
   - さらにディスパッチャースレッド内部に自動リトライ・再接続ループを組み込むことで、リソース消費を最小限（平常時 59MiB）に抑えつつ堅牢な自律稼働を確立しました。
+
+### 5. KubeEdge エッジノードにおける内部 DNS 未解決と NodePort ルーティング
+- **事象**: エッジノード上の観測 Pod（`satellite-tracker`）からクラスタ内 S3 エンドポイント（`garage-s3.storage.svc.cluster.local:3900`）への HTTP PUT が `error sending request for url` で失敗する。
+- **原因**: 
+  - KubeEdge の `edged` 下で動作するエッジコンテナは、クラスタの CoreDNS（`10.43.0.10`）ではなく、ホスト OS の `/etc/resolv.conf`（プロバイダのパブリック DNS）をそのまま継承します。
+  - そのため、クラスタ内部専用の `*.svc.cluster.local` FQDN は名前解決できません。
+- **解決策**:
+  - エッジ Pod に渡す S3 エンドポイントを、ホスト物理 IP の NodePort（`http://192.168.68.66:30900`）に明示指定することで直接ルーティングを確立しました。
+
+### 6. コンテナ Ephemeral ストレージの教訓と hostPath 永続スプールによるデータ保全
+- **事象**: コンテナ内の `/tmp` に直接録音していた初期検証時、Pod を force delete / 再作成した際にコンテナ固有の overlayfs RW 層が破棄され、未アップロードの生録音が消失するリスクに直面。
+- **原因**: コンテナのライフサイクル（短命）と電波観測データ（一回限りの天文イベント）のライフサイクルが密結合していた。
+- **解決策**:
+  - ホスト物理ディレクトリ `/tmp/satellite-recordings` を `hostPath` バインドマウントし、コンテナの生死に関わらずデータが 100% ホストに残る完全分離構造を確立。
+  - さらに起動時・LOS 時に未送信ファイルを自動スキャンして再送する「自己治癒スプール同期（`sync_pending_spool`）」を実装。今回の DNS 障害時にも録音データが削除されず無傷で守られました。
 
 ---
 
