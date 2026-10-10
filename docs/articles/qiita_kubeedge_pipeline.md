@@ -116,15 +116,16 @@ flowchart TB
             Prometheus["📈 Prometheus & Grafana (:30080) [ENHANCED]<br/>(エッジ全体 & Pod別 リアルタイム監視)"]
 
             TrackerNew -->|"① 48kHz WAV 保存"| Garage
-            TrackerNew -->|"② ワークフロー投入"| Temporal
-            Temporal -->|"③ キュー監視"| KEDA
-            KEDA -->|"④ 0 → 1 スケールアウト"| Worker
-            Worker -->|"⑤ WAV 取得 & 解析実行"| Garage
-            Worker -->|"⑥ 成果物格納 & 生WAV削除"| Garage
-            Worker -.->|"⑦ 完了後 1 → 0 縮退"| KEDA
+            Garage -.->|"② 新規 WAV 検知"| Viewer
+            Viewer -->|"③ ワークフロー投入"| Temporal
+            Temporal -->|"④ キュー監視"| KEDA
+            KEDA -->|"⑤ 0 → 1 スケールアウト"| Worker
+            Worker -->|"⑥ WAV 取得 & 解析実行"| Garage
+            Worker -->|"⑦ 成果物格納 & 生WAV削除"| Garage
+            Worker -.->|"⑧ 完了後 1 → 0 縮退"| KEDA
 
             Proxy -.->|"cAdvisor メトリクス"| Prometheus
-            Garage -.->|"成果物参照"| Viewer
+            Garage -.->|"成果物プレビュー"| Viewer
         end
     end
 
@@ -147,7 +148,7 @@ flowchart TB
 | **信号解析処理** | なし (手動または未実装) | **`satellite-analyzer-worker`** | direwolf による APRS デコード ＆ 高解像度スペクトログラム画像を自動生成 |
 | **オートスケール** | なし (静的 Pod 配置) | **KEDA v2.20.0 による「0-scale」** | **待機時は 0 レプリカ（リソース 0）**。データ到着時のみ 1 に起動し、完了後 0 に自動縮退 |
 | **結果の確認方法** | ターミナルでログ確認 | **スマホ向け Web ビューア (:30088)** | 同一 Wi-Fi のスマホからブラウザを開くだけで、画像拡大や JSON プレビューが可能 |
-| **リソース監視** | Python プロセス内部値のみ | **KubeEdge cAdvisor (:10350) 連携** | **ホスト全体 (6.8GB / 0.4コア) と Pod毎 (Rust: 3.8MB)** の二層監視を実現 |
+| **リソース監視** | Python プロセス内部値のみ | **KubeEdge cAdvisor (:10350)連携** | **ホスト全体 (6.8GB / 0.4コア) と Pod毎 (Rust: 3.8MB)** の二層監視を実現 |
 
 ---
 
@@ -181,6 +182,13 @@ Kubernetes 環境のオブジェクトストレージといえば MinIO が有�
 - 解析中に UMPC が再起動したり、コンテナが OOMKilled された場合、タスクが途中で消滅して未解析の音声が放置される。
 - 音声ダウンロード $\to$ パケット解析 $\to$ スペクトログラム生成 $\to$ 結果保存 $\to$ 元音声削除、という一連のステップのどこで失敗したのかを追跡・自動リトライしたい。
 - **Temporal** を用いることで、ワークフローの各ステップがコードとして耐久実行（Durable Execution）され、障害耐性と履歴追跡が完璧に担保されます。
+
+### 5. エッジとクラウドを直接繋がない「S3 境界の疎結合イベント駆動」
+エッジコンテナに直接 Temporal の gRPC クライアントを持たせることも技術的には可能ですが、あえて **Garage S3 へのアップロード完了をイベントの境界線** としました。
+- **エッジの自律性と極限の軽量性**:
+  - Temporal クライアント（gRPC、Protobuf、TLS、接続管理スレッド）を Rust に含めると、バイナリサイズやランタイムメモリが増加します。S3 の単純な HTTP PUT だけで完結させることで、エッジのメモリ 3.8MiB を死守しています。
+- **ネットワーク断への耐性**:
+  - 万が一クラスタ基盤がメンテナンス中や再起動中であっても、エッジは淡々とローカルまたは S3 に音声を保存し続けます。クラスタ側は復帰した瞬間に未処理の WAV を検知して順次 Temporal ワークフローへ投入できるため、疎結合な信頼性を獲得しています。
 
 ---
 
