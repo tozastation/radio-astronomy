@@ -1,0 +1,31 @@
+# KEDA 最小リソース設定 (GPD Pocket3 1台完結PoC向け)
+image:
+  keda:
+    registry: ghcr.io
+  metricsApiServer:
+    registry: ghcr.io
+  webhooks:
+    registry: ghcr.io
+
+resources:
+  operator:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  metricsApiServer:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  webhooks:
+    requests:
+      cpu: 30m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

@@ -1,0 +1,12 @@
+repositories:
+  - name: kedacore
+    url: https://kedacore.github.io/charts
+
+releases:
+  - name: keda
+    namespace: keda
+    createNamespace: true
+    chart: kedacore/keda
+    version: 2.21.0
+    values:
+      - values-minimal.yaml
