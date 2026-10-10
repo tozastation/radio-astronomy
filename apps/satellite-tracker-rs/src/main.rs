@@ -34,10 +34,10 @@ const DEFAULT_TARGETS: &[TargetSatellite] = &[
         freq_hz: 137_900_000.0,
     },
     TargetSatellite {
-        name: "NOAA 19",
-        line1: "1 33591U 09005A   26247.26050863 -.00000003  00000+0  22278-4 0  9994",
-        line2: "2 33591  98.9457 318.1680 0014124 162.6873 197.4784 14.13484468905655",
-        freq_hz: 137_100_000.0,
+        name: "FUNCUBE-1 (AO-73)",
+        line1: "1 39444U 13066AE  26247.90903049  .00003511  00000-0  21472-3 0  9994",
+        line2: "2 39444  97.8363 221.1119 0033645 293.7219  66.0482 15.10481180691699",
+        freq_hz: 145_935_000.0,
     },
 ];
 
@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
                             let _ = sdr.standby();
                         }
                     } else if earliest_next_aos_sec <= 30.0 && sdr.is_standby() {
-                        let _ = sdr.warmup(145_800_000.0);
+                        let _ = sdr.warmup(145_825_000.0);
                     }
                 }
             }

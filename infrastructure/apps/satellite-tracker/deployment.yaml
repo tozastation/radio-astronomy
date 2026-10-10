@@ -23,7 +23,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tracker
-          image: localhost:5000/satellite-tracker-rs:v1.1.0
+          image: localhost:5000/satellite-tracker-rs:v1.2.0
           imagePullPolicy: Always
           ports:
             - containerPort: 9100

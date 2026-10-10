@@ -27,7 +27,7 @@ fn test_metrics_render_text() {
 #[tokio::test]
 async fn test_metrics_http_endpoint() {
     let exporter = Arc::new(MetricsExporter::new());
-    exporter.set_tracking_status("NOAA 19", false);
+    exporter.set_tracking_status("FUNCUBE-1 (AO-73)", false);
 
     let (server_future, addr) = exporter.clone().bind_server(0).await.expect("bind server succeeds");
     tokio::spawn(server_future);
@@ -38,5 +38,5 @@ async fn test_metrics_http_endpoint() {
 
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
     let body = resp.text().await.unwrap();
-    assert!(body.contains("satellite_tracking_active{satellite=\"NOAA 19\"} 0"));
+    assert!(body.contains("satellite_tracking_active{satellite=\"FUNCUBE-1 (AO-73)\"} 0"));
 }
