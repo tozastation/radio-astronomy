@@ -44,3 +44,19 @@ fn test_mock_sdr_sample_energy() {
     // 合成 IQ 信号 + ガウスノイズの平均電力が正の値で適正な範囲にあること
     assert!(power > 0.01 && power < 10.0, "平均パワーが適正範囲内であること: got {}", power);
 }
+
+#[test]
+fn test_mock_audio_generation_and_duty_cycle() {
+    let mut sdr = SdrCollector::new(true, 2_400_000.0, 40.0);
+    sdr.warmup(145_825_000.0).unwrap();
+
+    // 2.0 秒分のモック音声を生成
+    let audio = sdr.generate_mock_audio(2.0, true);
+
+    // 48kHz * 2.0s = 96,000 サンプル (デューティ比 100% 確保)
+    assert_eq!(audio.len(), 96_000, "2秒分のサンプリング数が正確に48kHzで96,000サンプルであること");
+
+    // PCM 振幅が有効な範囲内であり、無音（オールゼロ）ではないこと
+    let max_abs = audio.iter().map(|&s| s.abs()).max().unwrap_or(0);
+    assert!(max_abs > 5_000, "パケット波形とノイズに十分な振幅があること: max={}", max_abs);
+}

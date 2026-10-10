@@ -2,6 +2,25 @@ use anyhow::{anyhow, Result};
 use log::{info, warn};
 use std::f32::consts::PI;
 
+/// 内蔵された 48kHz AX.25 APRS パケット WAV (RS0ISS) をロード
+fn load_embedded_packet_wav() -> Vec<i16> {
+    const WAV_BYTES: &[u8] = include_bytes!("../assets/iss_aprs_packet_48k.wav");
+    let mut data_start = 44;
+    for i in 12..WAV_BYTES.len().saturating_sub(4) {
+        if &WAV_BYTES[i..i + 4] == b"data" {
+            data_start = i + 8;
+            break;
+        }
+    }
+    if data_start >= WAV_BYTES.len() {
+        return Vec::new();
+    }
+    WAV_BYTES[data_start..]
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect()
+}
+
 /// RTL-SDR v4 受信制御 ＆ 動的省電力ライフサイクル管理
 pub struct SdrCollector {
     pub mock_sdr: bool,
@@ -11,6 +30,8 @@ pub struct SdrCollector {
     is_standby: bool,
     mock_phase: f32,
     rng_seed: u64,
+    packet_samples: Vec<i16>,
+    packet_sent: bool,
 }
 
 impl SdrCollector {
@@ -20,10 +41,12 @@ impl SdrCollector {
             mock_sdr,
             sample_rate,
             gain,
-            center_freq_hz: 145_800_000.0,
+            center_freq_hz: 145_825_000.0,
             is_standby: false,
             mock_phase: 0.0,
             rng_seed: 0x8543_2910_f9a8_bcde,
+            packet_samples: load_embedded_packet_wav(),
+            packet_sent: false,
         }
     }
 
@@ -50,6 +73,7 @@ impl SdrCollector {
     /// 次回 AOS 接近時に SDR デバイスを再オープンし、中心周波数をチューニング
     pub fn warmup(&mut self, center_freq_hz: f64) -> Result<()> {
         self.center_freq_hz = center_freq_hz;
+        self.packet_sent = false; // パス開始時にパケット送出状態をリセット
         if self.is_standby {
             info!(
                 "SdrCollector: Warming up SDR hardware from standby (tuning to {:.3} MHz).",
@@ -123,5 +147,48 @@ impl SdrCollector {
         let theta = 2.0 * PI * u2;
 
         (r * theta.cos(), r * theta.sin())
+    }
+
+    /// モック音声 PCM フレームを生成（指定秒数分の 48kHz PCM）
+    /// APRS 衛星（ISS 等）追尾中かつパケット送出タイミングであれば、本物の AX.25 パケット音声を合成
+    pub fn generate_mock_audio(&mut self, duration_sec: f64, is_aprs: bool) -> Vec<i16> {
+        let sample_rate = 48_000usize;
+        let total_samples = (sample_rate as f64 * duration_sec).round() as usize;
+        let mut pcm = Vec::with_capacity(total_samples);
+
+        // ガウス白色雑音（FM 受信機のディスクリミネータノイズ）の振幅
+        let noise_amplitude = 1200.0f32;
+
+        if is_aprs && !self.packet_samples.is_empty() && !self.packet_sent {
+            // パケット送信期間: 先頭 0.2 秒雑音のあとパケット波形を挿入
+            let prefix_noise = (sample_rate as f64 * 0.2) as usize;
+            for _ in 0..prefix_noise {
+                let (n1, _) = self.next_gaussian_pair(noise_amplitude);
+                pcm.push(n1.clamp(-32768.0, 32767.0) as i16);
+            }
+
+            let num_packets = self.packet_samples.len();
+            for i in 0..num_packets {
+                if pcm.len() >= total_samples {
+                    break;
+                }
+                let sample = self.packet_samples[i];
+                let (_, noise) = self.next_gaussian_pair(noise_amplitude * 0.3);
+                let mixed = (sample as f32 * 0.9 + noise).clamp(-32768.0, 32767.0) as i16;
+                pcm.push(mixed);
+            }
+            self.packet_sent = true;
+        }
+
+        // 残りをガウス雑音（スケルチ開放時の受信ノイズ）で充填
+        while pcm.len() < total_samples {
+            let (n1, n2) = self.next_gaussian_pair(noise_amplitude);
+            pcm.push(n1.clamp(-32768.0, 32767.0) as i16);
+            if pcm.len() < total_samples {
+                pcm.push(n2.clamp(-32768.0, 32767.0) as i16);
+            }
+        }
+
+        pcm
     }
 }

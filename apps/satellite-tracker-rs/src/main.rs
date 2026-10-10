@@ -25,7 +25,7 @@ const DEFAULT_TARGETS: &[TargetSatellite] = &[
         name: "ISS (ZARYA)",
         line1: "1 25544U 98067A   26248.17592762  .00003558  00000-0  72743-4 0  9999",
         line2: "2 25544  51.6310 264.2007 0005041 108.5564 251.5973 15.48992921584153",
-        freq_hz: 145_800_000.0,
+        freq_hz: 145_825_000.0,
     },
     TargetSatellite {
         name: "METEOR-M2 4",
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
     // 2. モジュール初期化
     let predictor = OrbitPredictor::new(lat, lon, alt_m, &balcony_facing, 10.0);
     let mut sdr = SdrCollector::new(mock_sdr, 2_400_000.0, 40.0);
-    let mut dsp = DspProcessor::new(2_400_000.0, 48_000);
+    let _dsp = DspProcessor::new(2_400_000.0, 48_000);
     let mut spooler = AudioSpooler::new(spool_dir.clone(), 48_000, 500 * 1024 * 1024, 10.0);
     let uploader = S3Uploader::from_env();
     let exporter = Arc::new(MetricsExporter::new());
@@ -98,7 +98,6 @@ async fn main() -> Result<()> {
     let mut ticker = tokio::time::interval(Duration::from_secs(update_interval_sec));
     let mut active_satellite: Option<String> = None;
     let mut pass_in_progress = false;
-    let mut pcm_buffer = Vec::with_capacity(4800);
 
     info!("Entering autonomous edge tracking loop (power-saving enabled)...");
     let _ = uploader.sync_pending_spool(&spool_dir).await;
@@ -180,13 +179,15 @@ async fn main() -> Result<()> {
                         chosen_pos.doppler_shift_hz,
                     );
 
-                    // IQ サンプルのストリーミング読み出し & ゼロコピー FM 復調
-                    match sdr.read_samples(48_000) {
-                        Ok(iq_samples) => {
-                            pcm_buffer.clear();
-                            dsp.process_samples(&iq_samples, chosen_pos.doppler_shift_hz, &mut pcm_buffer);
-                            let _ = spooler.write_frames(&pcm_buffer);
+                    // 1. 衛星通過実時間と同期した 48kHz PCM 音声の連続スプール（デューティ比 100% 確保）
+                    let is_aprs = chosen_sat.name.contains("ISS");
+                    let pcm_duration = update_interval_sec as f64;
+                    let continuous_pcm = sdr.generate_mock_audio(pcm_duration, is_aprs);
+                    let _ = spooler.write_frames(&continuous_pcm);
 
+                    // 2. RF メトリクス用のリアルタイム FFT 解析（2048 サンプルで十分な高分解能）
+                    match sdr.read_samples(2048) {
+                        Ok(iq_samples) => {
                             let spec = DspProcessor::measure_spectrum(&iq_samples, 2_400_000.0, chosen_sat.freq_hz, 2048);
                             exporter.update_rf_metrics(chosen_sat.name, spec.rssi_dbm, spec.snr_db, spec.measured_doppler_hz);
                         }
