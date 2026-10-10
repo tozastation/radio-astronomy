@@ -32,8 +32,8 @@ echo "garage-0 Pod の Ready を待機中..."
 kubectl rollout status statefulset/garage -n "${NAMESPACE}" --timeout=120s
 
 echo "=== 3. Garage クラスタレイアウトの初期化 ==="
-# ノードIDの取得
-NODE_ID=$(kubectl exec -n "${NAMESPACE}" garage-0 -- /garage node id | head -n 1 | awk '{print $1}')
+# ノードIDの取得 (最終行の node_id@host:port から抽出)
+NODE_ID=$(kubectl exec -n "${NAMESPACE}" garage-0 -- /garage node id | tail -n 1 | awk -F'@' '{print $1}')
 echo "Detected Garage Node ID: ${NODE_ID}"
 
 # レイアウトの割り当てと適用 (single-node: 10GB 容量指定)
@@ -59,6 +59,18 @@ if ! kubectl exec -n "${NAMESPACE}" garage-0 -- /garage key list | grep -q "${KE
     echo "${KEY_INFO}"
     kubectl exec -n "${NAMESPACE}" garage-0 -- /garage bucket allow "${BUCKET_NAME}" --key "${KEY_NAME}" --read --write
     echo "キー ${KEY_NAME} にバケット ${BUCKET_NAME} への Read/Write 権限を付与しました。"
+
+    # Secret 作成
+    ACCESS_KEY=$(echo "${KEY_INFO}" | grep "Key ID:" | awk '{print $3}')
+    SECRET_KEY=$(echo "${KEY_INFO}" | grep "Secret key:" | awk '{print $3}')
+    if [[ -n "${ACCESS_KEY}" && -n "${SECRET_KEY}" ]]; then
+        kubectl create secret generic garage-satellite-credentials \
+            --namespace=default \
+            --from-literal=access_key="${ACCESS_KEY}" \
+            --from-literal=secret_key="${SECRET_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        echo "default/garage-satellite-credentials Secret を作成しました。"
+    fi
 else
     echo "キー ${KEY_NAME} は既に存在します。"
 fi

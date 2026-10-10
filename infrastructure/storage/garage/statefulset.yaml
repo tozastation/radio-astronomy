@@ -21,6 +21,9 @@ spec:
           image: dxflrs/garage:v1.0.1
           imagePullPolicy: IfNotPresent
           command: ["/garage", "server"]
+          env:
+            - name: GARAGE_ALLOW_WORLD_READABLE_SECRETS
+              value: "true"
           ports:
             - name: s3-api
               containerPort: 3900
@@ -37,7 +40,7 @@ spec:
               memory: 256Mi
           volumeMounts:
             - name: config
-              mountPath: /etc/garage/garage.toml
+              mountPath: /etc/garage.toml
               subPath: garage.toml
               readOnly: true
             - name: secrets

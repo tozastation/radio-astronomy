@@ -16,7 +16,7 @@ data:
     rpc_secret_file = "/etc/garage/secrets/rpc_secret"
 
     [s3_api]
-    s3_api_bind_addr = "0.0.0.0:3900"
+    api_bind_addr = "0.0.0.0:3900"
     s3_region = "garage"
     root_domain = ".s3.garage"
 
