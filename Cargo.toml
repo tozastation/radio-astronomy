@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "apps/ground-station",
+    "apps/satellite-tracker-rs",
 ]
 resolver = "2"
