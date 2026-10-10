@@ -43,6 +43,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       --text-muted: #94a3b8;
       --success: #34d399;
       --warning: #fbbf24;
+      --code-bg: #0b1120;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -50,7 +51,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       padding: 16px;
-      padding-bottom: 40px;
+      padding-bottom: 60px;
     }
     header {
       display: flex;
@@ -86,13 +87,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       cursor: pointer;
     }
     .btn-refresh:active { background: var(--border); }
-    .pass-list { display: flex; flex-direction: column; gap: 16px; }
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+      margin-bottom: 16px;
     }
     .card-header {
       padding: 12px 16px;
@@ -112,7 +113,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--success);
       border: 1px solid rgba(52, 211, 153, 0.3);
     }
-    .card-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .card-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
     .spectrogram-container {
       position: relative;
       border-radius: 8px;
@@ -133,11 +134,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       position: absolute;
       bottom: 6px;
       right: 8px;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0,0,0,0.7);
       color: #fff;
       font-size: 0.7rem;
-      padding: 2px 6px;
+      padding: 3px 8px;
       border-radius: 4px;
+      pointer-events: none;
     }
     .meta-grid {
       display: grid;
@@ -151,69 +153,181 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .meta-item { display: flex; flex-direction: column; }
     .meta-label { color: var(--text-muted); font-size: 0.7rem; }
     .meta-val { font-weight: 600; margin-top: 2px; }
-    .packets-box {
-      background: rgba(0, 0, 0, 0.3);
-      padding: 10px;
+
+    /* JSON Details & Code View */
+    details.data-accordion {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
       border-radius: 8px;
-      font-size: 0.8rem;
-      border: 1px solid rgba(255,255,255,0.05);
+      overflow: hidden;
     }
-    .packets-title {
+    details.data-accordion summary {
+      padding: 10px 12px;
+      font-size: 0.85rem;
       font-weight: 600;
-      color: var(--text-muted);
-      margin-bottom: 6px;
+      cursor: pointer;
+      color: var(--text);
       display: flex;
       justify-content: space-between;
+      align-items: center;
+      user-select: none;
     }
-    .packets-list {
-      max-height: 120px;
-      overflow-y: auto;
-      font-family: monospace;
+    details.data-accordion summary:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .accordion-content {
+      padding: 12px;
+      background: var(--code-bg);
+      border-top: 1px solid var(--border);
+    }
+    pre.code-block {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      color: #38bdf8;
+      overflow-x: auto;
       white-space: pre-wrap;
       word-break: break-all;
+      max-height: 250px;
+      padding: 4px 0;
     }
-    .packet-item {
-      padding: 4px 6px;
-      background: rgba(255,255,255,0.03);
-      margin-bottom: 4px;
-      border-radius: 4px;
-      border-left: 2px solid var(--accent);
-    }
-    .files-list {
+
+    /* File Actions */
+    .files-section {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
       gap: 8px;
-      margin-top: 4px;
     }
-    .file-btn {
-      background: #334155;
+    .files-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .files-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    @media (min-width: 640px) {
+      .files-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    }
+    .file-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    .file-name {
+      font-family: monospace;
+      font-weight: 600;
       color: #e2e8f0;
-      padding: 4px 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .action-btn {
+      padding: 5px 10px;
       border-radius: 6px;
       font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      border: none;
     }
-    .file-btn:active { background: #475569; }
-    /* Modal */
+    .btn-view {
+      background: #0284c7;
+      color: white;
+    }
+    .btn-view:active { background: #0369a1; }
+    .btn-download {
+      background: #334155;
+      color: #e2e8f0;
+    }
+    .btn-download:active { background: #475569; }
+
+    /* Modals */
     .modal {
       display: none;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.9);
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(4px);
       z-index: 9999;
       justify-content: center;
       align-items: center;
-      padding: 10px;
+      padding: 16px;
     }
     .modal.active { display: flex; }
-    .modal img { max-width: 100%; max-height: 95vh; object-fit: contain; }
+    .modal-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 650px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+      font-family: monospace;
+    }
     .modal-close {
-      position: absolute;
-      top: 15px; right: 20px;
-      color: white; font-size: 32px; font-weight: bold; cursor: pointer;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 24px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .modal-body {
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-img {
+      max-width: 100%;
+      max-height: 75vh;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+    }
+    .modal-footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .copy-btn {
+      background: #334155;
+      color: white;
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
     }
     .empty-state {
       text-align: center;
@@ -235,18 +349,75 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     __CONTENT__
   </main>
 
-  <div id="imageModal" class="modal" onclick="closeModal()">
-    <span class="modal-close">&times;</span>
-    <img id="modalImg" src="" alt="Spectrogram Full">
+  <!-- Image Modal -->
+  <div id="imageModal" class="modal" onclick="closeImageModal(event)">
+    <div class="modal-box" style="background:transparent; border:none; box-shadow:none; max-width:95vw;">
+      <div style="text-align:right; margin-bottom:8px;">
+        <button class="modal-close" style="color:white; font-size:32px;" onclick="document.getElementById('imageModal').classList.remove('active')">&times;</button>
+      </div>
+      <img id="modalImg" class="modal-img" src="" alt="Spectrogram Full">
+    </div>
+  </div>
+
+  <!-- Text / JSON Modal -->
+  <div id="textModal" class="modal" onclick="closeTextModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span id="textModalTitle" class="modal-title">File Content</span>
+        <button class="modal-close" onclick="closeTextModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre class="code-block"><code id="textModalContent">Loading...</code></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="copy-btn" onclick="copyModalContent()">📋 コピー</button>
+        <button class="copy-btn" onclick="closeTextModal()">閉じる</button>
+      </div>
+    </div>
   </div>
 
   <script>
-    function openModal(src) {
+    function openImageModal(src) {
       document.getElementById('modalImg').src = src;
       document.getElementById('imageModal').classList.add('active');
     }
-    function closeModal() {
-      document.getElementById('imageModal').classList.remove('active');
+    function closeImageModal(e) {
+      if (e.target.id === 'imageModal' || e.target.classList.contains('modal-close')) {
+        document.getElementById('imageModal').classList.remove('active');
+      }
+    }
+
+    async function openTextModal(filename, key) {
+      const modal = document.getElementById('textModal');
+      const title = document.getElementById('textModalTitle');
+      const content = document.getElementById('textModalContent');
+      title.textContent = filename;
+      content.textContent = '読み込み中...';
+      modal.classList.add('active');
+
+      try {
+        const res = await fetch('/content?key=' + encodeURIComponent(key));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        try {
+          // JSON なら綺麗にインデント
+          const parsed = JSON.parse(text);
+          content.textContent = JSON.stringify(parsed, null, 2);
+        } catch {
+          content.textContent = text;
+        }
+      } catch (err) {
+        content.textContent = 'エラー: ファイルを読み込めませんでした (' + err.message + ')';
+      }
+    }
+    function closeTextModal() {
+      document.getElementById('textModal').classList.remove('active');
+    }
+    function copyModalContent() {
+      const text = document.getElementById('textModalContent').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('クリップボードにコピーしました！');
+      });
     }
   </script>
 </body>
@@ -255,6 +426,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -291,6 +467,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
             except Exception as e:
                 self.send_error(404, f"Object not found: {e}")
+            return
+
+        if path == "/content":
+            key = query.get("key", [None])[0]
+            if not key:
+                self.send_error(400, "Missing key parameter")
+                return
+            try:
+                obj = s3_client.get_object(Bucket=S3_BUCKET, Key=key)
+                data = obj["Body"].read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(data)
+            except Exception as e:
+                self.send_error(404, f"Object read error: {e}")
             return
 
         if path == "/download":
@@ -373,7 +567,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     img_url = f"/view?key={urllib.parse.quote(p['files']['spectrogram.png'])}"
                     spectrogram_html = f"""
                     <div class="spectrogram-container">
-                      <img class="spectrogram-img" src="{img_url}" alt="Spectrogram" onclick="openModal('{img_url}')">
+                      <img class="spectrogram-img" src="{img_url}" alt="Spectrogram" onclick="openImageModal('{img_url}')">
                       <span class="spectrogram-hint">🔍 タップで拡大</span>
                     </div>
                     """
@@ -382,31 +576,67 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 status = summary.get("status", "completed")
                 packets_count = summary.get("packets_count", 0)
 
-                # パケット一覧
-                packets_data = p.get("packets") or {}
-                packet_items = packets_data.get("packets", [])
-                packets_html = ""
-                if packet_items:
-                    p_list = "".join([f'<div class="packet-item">{p_txt}</div>' for p_txt in packet_items])
-                    packets_html = f"""
-                    <div class="packets-box">
-                      <div class="packets-title"><span>APRS 受信パケット ({len(packet_items)} 件)</span></div>
-                      <div class="packets-list">{p_list}</div>
-                    </div>
-                    """
-                else:
-                    packets_html = f"""
-                    <div class="packets-box">
-                      <div class="packets-title"><span>APRS パケット</span><span style="color:var(--text-muted)">0 件</span></div>
-                    </div>
+                # summary.json インラインアコーディオン
+                summary_accordion = ""
+                if summary:
+                    pretty_summary = json.dumps(summary, indent=2, ensure_ascii=False)
+                    summary_accordion = f"""
+                    <details class="data-accordion">
+                      <summary>📊 解析サマリ (summary.json) の中身を見る</summary>
+                      <div class="accordion-content">
+                        <pre class="code-block"><code>{pretty_summary}</code></pre>
+                      </div>
+                    </details>
                     """
 
-                # ダウンロードリンク
-                file_links = []
+                # packets.json インラインアコーディオン
+                packets_accordion = ""
+                packets_data = p.get("packets") or {}
+                packet_items = packets_data.get("packets", [])
+                if packet_items:
+                    pretty_packets = "\n".join(packet_items)
+                    packets_accordion = f"""
+                    <details class="data-accordion">
+                      <summary>📡 APRS 受信パケット ({len(packet_items)} 件) の中身を見る</summary>
+                      <div class="accordion-content">
+                        <pre class="code-block"><code>{pretty_packets}</code></pre>
+                      </div>
+                    </details>
+                    """
+                else:
+                    packets_accordion = f"""
+                    <details class="data-accordion">
+                      <summary>📡 APRS 受信パケット (0 件)</summary>
+                      <div class="accordion-content">
+                        <pre class="code-block"><code>パケットは検出されませんでした (0 packets)</code></pre>
+                      </div>
+                    </details>
+                    """
+
+                # 各ファイルの「👁️ 表示」＆「📥 保存」ボタン一覧
+                file_rows = []
                 for fname, fkey in p["files"].items():
                     dl_url = f"/download?key={urllib.parse.quote(fkey)}"
-                    file_links.append(f'<a class="file-btn" href="{dl_url}">📥 {fname}</a>')
-                files_html = "".join(file_links)
+                    
+                    if fname.endswith(".png"):
+                        view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">👁️ 表示</button>"""
+                    elif fname.endswith(".json") or fname.endswith(".txt"):
+                        view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">👁️ 中身を見る</button>"""
+                    else:
+                        view_btn = ""
+
+                    file_row = f"""
+                    <div class="file-row">
+                      <span class="file-name">📄 {fname}</span>
+                      <div class="file-actions">
+                        {view_btn}
+                        <a class="action-btn btn-download" href="{dl_url}">📥 保存</a>
+                      </div>
+                    </div>
+                    """
+                    file_rows.append(file_row)
+
+                files_grid_html = "".join(file_rows)
 
                 card = f"""
                 <div class="card">
@@ -429,9 +659,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         <span class="meta-val">{packets_count} 件</span>
                       </div>
                     </div>
-                    {packets_html}
-                    <div class="files-list">
-                      {files_html}
+                    {summary_accordion}
+                    {packets_accordion}
+                    <div class="files-section">
+                      <div class="files-title">ファイル一覧 (中身プレビュー ＆ ダウンロード)</div>
+                      <div class="files-grid">
+                        {files_grid_html}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -450,7 +684,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_error(500, f"Dashboard render error: {e}")
 
     def log_message(self, format, *args):
-        # アクセスログを簡潔に出力
         print(f"[{self.log_date_time_string()}] {format % args}")
 
 
