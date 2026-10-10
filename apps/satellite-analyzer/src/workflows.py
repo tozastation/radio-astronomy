@@ -48,10 +48,10 @@ class AnalyzeSatellitePassWorkflow:
             retry_policy=retry_policy,
         )
 
-        # 2. APRS パケットデコード
+        # 2. 衛星種別に応じた信号解析 & パケットデコード
         packets_data = await workflow.execute_activity(
             decode_packets_activity,
-            local_wav_path,
+            args=[local_wav_path, params.satellite],
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=retry_policy,
         )

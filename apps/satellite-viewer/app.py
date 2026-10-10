@@ -112,7 +112,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-bottom: 1px solid var(--border);
     }
     .sat-name { font-weight: 700; font-size: 1.1rem; color: #38bdf8; }
-    .pass-id { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
+    .sat-header-left { display: flex; flex-direction: column; gap: 4px; }
+    .sat-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .badge-tag {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .badge-spacestation { background: #0369a1; color: #e0f2fe; }
+    .badge-weathersatellite { background: #047857; color: #d1fae5; }
+    .badge-cubesat { background: #6d28d9; color: #ede9fe; }
+    .badge-genericsatellite { background: #334155; color: #f1f5f9; }
+    .badge-freq { background: #1e1b4b; color: #c7d2fe; border: 1px solid #3730a3; }
+    .badge-signal { background: #312e81; color: #e0e7ff; }
+    .summary-box {
+      background: rgba(56, 189, 248, 0.08);
+      border-left: 3px solid var(--accent);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      color: #bae6fd;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
     .badge-status {
       font-size: 0.75rem;
       padding: 2px 8px;
@@ -625,6 +649,46 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 summary = p.get("summary") or {}
                 status = summary.get("status", "completed")
                 packets_count = summary.get("packets_count", 0)
+                sat = p['satellite']
+                sat_upper = sat.upper()
+
+                # メタデータのフォールバック解決
+                sat_type = summary.get("satellite_type")
+                signal_type = summary.get("signal_type")
+                freq_label = summary.get("frequency_label")
+                icon = summary.get("display_icon")
+                summary_text = summary.get("summary_text", "")
+
+                if not sat_type:
+                    if "ISS" in sat_upper:
+                        sat_type = "SpaceStation"
+                        signal_type = "APRS / AX.25 (1200bps AFSK)"
+                        freq_label = "145.825 MHz"
+                        icon = "🚀"
+                    elif "METEOR" in sat_upper:
+                        sat_type = "WeatherSatellite"
+                        signal_type = "LRPT (QPSK 72kbps)"
+                        freq_label = "137.900 MHz"
+                        icon = "🛰️"
+                    elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+                        sat_type = "CubeSat"
+                        signal_type = "BPSK (1200bps Telemetry)"
+                        freq_label = "145.935 MHz"
+                        icon = "📻"
+                    else:
+                        sat_type = "GenericSatellite"
+                        signal_type = "Audio / RF Spectrum"
+                        freq_label = "-"
+                        icon = "📡"
+
+                summary_box_html = ""
+                if summary_text:
+                    summary_box_html = f"""
+                    <div class="summary-box">
+                      <span>{icon}</span>
+                      <span>{summary_text}</span>
+                    </div>
+                    """
 
                 # summary.json インラインアコーディオン
                 summary_accordion = ""
@@ -644,16 +708,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 packets_data = p.get("packets") or {}
                 packet_items = packets_data.get("packets", [])
                 if packet_items:
-                    pretty_packets = "\n".join(packet_items)
+                    pretty_packets = "\n".join([str(item) for item in packet_items])
                     packets_accordion = f"""
                     <details class="data-accordion">
-                      <summary>📡 APRS 受信パケット ({len(packet_items)} 件) の中身を見る</summary>
+                      <summary>📡 受信パケット ({len(packet_items)} 件) の中身を見る</summary>
                       <div class="accordion-content">
                         <pre class="code-block"><code>{pretty_packets}</code></pre>
                       </div>
                     </details>
                     """
-                else:
+                elif "ISS" in sat_upper:
                     packets_accordion = f"""
                     <details class="data-accordion">
                       <summary>📡 APRS 受信パケット (0 件)</summary>
@@ -688,25 +752,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
                 files_grid_html = "".join(file_rows)
 
+                badge_class = f"badge-{sat_type.lower()}"
+
                 card = f"""
                 <div class="card">
                   <div class="card-header">
-                    <div>
-                      <div class="sat-name">{p['satellite']}</div>
+                    <div class="sat-header-left">
+                      <div class="sat-name">{icon} {p['satellite']}</div>
+                      <div class="sat-badges">
+                        <span class="badge-tag {badge_class}">{sat_type}</span>
+                        <span class="badge-tag badge-freq">{freq_label}</span>
+                        <span class="badge-tag badge-signal">{signal_type}</span>
+                      </div>
                       <div class="pass-id">{p['pass_id']}</div>
                     </div>
                     <span class="badge-status">{status}</span>
                   </div>
                   <div class="card-body">
                     {spectrogram_html}
+                    {summary_box_html}
                     <div class="meta-grid">
                       <div class="meta-item">
                         <span class="meta-label">観測・処理時刻</span>
                         <span class="meta-val">{p['last_modified']}</span>
                       </div>
                       <div class="meta-item">
-                        <span class="meta-label">APRS パケット検出</span>
-                        <span class="meta-val">{packets_count} 件</span>
+                        <span class="meta-label">受信信号 / パケット</span>
+                        <span class="meta-val">{packets_count} 件検出</span>
                       </div>
                     </div>
                     {summary_accordion}

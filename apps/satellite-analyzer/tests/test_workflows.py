@@ -26,7 +26,7 @@ async def test_satellite_analysis_workflow_execution():
             return "/tmp/mock_pass.wav"
 
         @activity.defn(name="decode_packets_activity")
-        async def mock_decode(wav_path: str) -> dict:
+        async def mock_decode(wav_path: str, satellite: str = "") -> dict:
             return {
                 "packets_count": 1,
                 "packets": [{"source": "JA1XXX", "message": "Hello via ISS"}],
@@ -73,3 +73,41 @@ async def test_satellite_analysis_workflow_execution():
             assert result["status"] == "completed"
             assert result["satellite"] == "ISS"
             assert result["packets_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_decode_packets_activity_multisatellite(tmp_path):
+    """decode_packets_activity が衛星種別 (ISS, METEOR, FUNCUBE) に応じたメタデータを返すことの検証"""
+    from activities import decode_packets_activity, classify_satellite
+
+    # 1. ISS (APRS)
+    iss_info = classify_satellite("ISS (ZARYA)")
+    assert iss_info["category"] == "amateur_packet"
+    assert "145.825" in iss_info["frequency_label"]
+    assert iss_info["display_icon"] == "🚀"
+
+    # 2. METEOR-M2 4 (Weather)
+    meteor_info = classify_satellite("METEOR-M2 4")
+    assert meteor_info["category"] == "weather_lrpt"
+    assert "137.900" in meteor_info["frequency_label"]
+    assert meteor_info["display_icon"] == "🛰️"
+
+    # 3. FUNCUBE-1 (CubeSat)
+    fc_info = classify_satellite("FUNCUBE-1 (AO-73)")
+    assert fc_info["category"] == "cubesat_telemetry"
+    assert "145.935" in fc_info["frequency_label"]
+    assert fc_info["display_icon"] == "📻"
+
+    # 4. Activity 実行 (METEOR と FUNCUBE は専用サマリを返す)
+    dummy_wav = tmp_path / "dummy.wav"
+    dummy_wav.write_bytes(b"RIFF....WAVEfmt ....data....")
+
+    res_meteor = await decode_packets_activity(str(dummy_wav), "METEOR-M2 4")
+    assert res_meteor["satellite_type"] == "WeatherSatellite"
+    assert "LRPT" in res_meteor["signal_type"]
+    assert res_meteor["packets_count"] == 0
+
+    res_fc = await decode_packets_activity(str(dummy_wav), "FUNCUBE-1 (AO-73)")
+    assert res_fc["satellite_type"] == "CubeSat"
+    assert "BPSK" in res_fc["signal_type"]
+    assert res_fc["packets_count"] == 0

@@ -48,14 +48,76 @@ async def download_recording_activity(s3_key: str) -> str:
     return local_path
 
 
+def classify_satellite(satellite: str) -> Dict[str, str]:
+    sat_upper = satellite.upper()
+    if "ISS" in sat_upper:
+        return {
+            "satellite_type": "SpaceStation",
+            "signal_type": "APRS / AX.25 (1200bps AFSK)",
+            "frequency_label": "145.825 MHz",
+            "category": "amateur_packet",
+            "display_icon": "🚀",
+        }
+    elif "METEOR" in sat_upper:
+        return {
+            "satellite_type": "WeatherSatellite",
+            "signal_type": "LRPT (QPSK 72kbps)",
+            "frequency_label": "137.900 MHz",
+            "category": "weather_lrpt",
+            "display_icon": "🛰️",
+        }
+    elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+        return {
+            "satellite_type": "CubeSat",
+            "signal_type": "BPSK (1200bps Telemetry)",
+            "frequency_label": "145.935 MHz",
+            "category": "cubesat_telemetry",
+            "display_icon": "📻",
+        }
+    else:
+        return {
+            "satellite_type": "GenericSatellite",
+            "signal_type": "Audio / RF Spectrum",
+            "frequency_label": "Unknown",
+            "category": "generic",
+            "display_icon": "📡",
+        }
+
+
 @activity.defn(name="decode_packets_activity")
-async def decode_packets_activity(wav_path: str) -> Dict[str, Any]:
-    """WAV ファイルから APRS パケットをデコードする"""
-    decoder = APRSDecoder()
-    frames = decoder.decode_wav(wav_path)
+async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[str, Any]:
+    """WAV ファイルから衛星種別に応じて信号解析またはパケットデコードを実施する"""
+    info = classify_satellite(satellite)
+    category = info["category"]
+
+    if category == "amateur_packet" or not satellite:
+        decoder = APRSDecoder()
+        frames = decoder.decode_wav(wav_path)
+        packets_count = len(frames)
+        packets = [f.to_dict() for f in frames]
+        summary_text = f"APRS パケット {packets_count} 件検出"
+    elif category == "weather_lrpt":
+        packets_count = 0
+        packets = []
+        summary_text = "METEOR-M2 4 気象衛星 LRPT (QPSK 72kbps) 信号受信完了 (SatDump 連携準備中)"
+    elif category == "cubesat_telemetry":
+        packets_count = 0
+        packets = []
+        summary_text = "FUNcube-1 (AO-73) CubeSat BPSK (1200bps) テレメトリ信号受信完了"
+    else:
+        packets_count = 0
+        packets = []
+        summary_text = "信号受信完了 (スペクトログラム生成)"
+
     return {
-        "packets_count": len(frames),
-        "packets": [f.to_dict() for f in frames],
+        "satellite": satellite,
+        "satellite_type": info["satellite_type"],
+        "signal_type": info["signal_type"],
+        "frequency_label": info["frequency_label"],
+        "display_icon": info["display_icon"],
+        "packets_count": packets_count,
+        "packets": packets,
+        "summary_text": summary_text,
     }
 
 
@@ -96,7 +158,12 @@ async def save_results_activity(params: Dict[str, Any]) -> bool:
     summary_data = {
         "satellite": satellite,
         "pass_id": pass_id,
+        "satellite_type": packets_data.get("satellite_type", "Unknown"),
+        "signal_type": packets_data.get("signal_type", "Audio / RF"),
+        "frequency_label": packets_data.get("frequency_label", "-"),
+        "display_icon": packets_data.get("display_icon", "📡"),
         "packets_count": packets_data.get("packets_count", 0),
+        "summary_text": packets_data.get("summary_text", ""),
         "status": "completed",
     }
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
