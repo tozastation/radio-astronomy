@@ -27,7 +27,7 @@ services:
       TZ: Asia/Tokyo
       READSB_DEVICE_TYPE: rtlsdr
       READSB_GAIN: auto
-      # 観測地: 東京都東京都 (config.toml [observer] と整合)
+      # 観測地: 東京都 (広域代表値、プライバシー保護)
       READSB_LAT: "35.6895"
       READSB_LON: "139.6917"
-      READSB_ALT: 200m
+      READSB_ALT: 30m

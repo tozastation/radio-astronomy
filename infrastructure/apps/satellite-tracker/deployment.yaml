@@ -23,7 +23,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tracker
-          image: localhost:5000/radio-astronomy-tracker:dev
+          image: localhost:5000/satellite-tracker-rs:dev
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9100
@@ -31,6 +31,7 @@ spec:
           securityContext:
             privileged: true
           env:
+            # 観測地点: プライバシー保護のため広域公称値（東京都庁）を採用（受信感度への影響なし）
             - name: OBSERVER_LATITUDE
               value: "35.6895"
             - name: OBSERVER_LONGITUDE
@@ -45,13 +46,32 @@ spec:
               value: "9100"
             - name: UPDATE_INTERVAL_SEC
               value: "2.0"
+            - name: SPOOL_DIR
+              value: "/tmp/spool"
+            # Garage S3 連携設定
+            - name: GARAGE_S3_ENDPOINT
+              value: "http://garage-s3.storage.svc.cluster.local:3900"
+            - name: GARAGE_BUCKET
+              value: "satellite-recordings"
+            - name: GARAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-satellite-credentials
+                  key: access_key
+                  optional: true
+            - name: GARAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-satellite-credentials
+                  key: secret_key
+                  optional: true
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 30m
+              memory: 32Mi
             limits:
-              cpu: 1000m
-              memory: 512Mi
+              cpu: 500m
+              memory: 64Mi
           volumeMounts:
             - name: dev-bus-usb
               mountPath: /dev/bus/usb

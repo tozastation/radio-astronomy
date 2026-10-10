@@ -68,7 +68,7 @@ fn test_cubesat_and_iss_config_parsing() {
         [observer]
         latitude = 35.6895
         longitude = 139.6917
-        altitude_m = 200.0
+        altitude_m = 30.0
 
         [scheduler]
         min_elevation_deg = 20.0
@@ -164,7 +164,7 @@ fn test_adsb_config_parsing() {
         [observer]
         latitude = 35.6895
         longitude = 139.6917
-        altitude_m = 200.0
+        altitude_m = 30.0
 
         [scheduler]
         min_elevation_deg = 20.0

@@ -1,7 +1,7 @@
 [observer]
-latitude = 35.6895    # 東京都東京都
+latitude = 35.6895    # 東京都 (広域代表値)
 longitude = 139.6917  # 東経 139.6917
-altitude_m = 200.0    # 標高 (m)
+altitude_m = 30.0     # 標高 (m)
 
 
 [scheduler]
@@ -62,7 +62,7 @@ enabled = true                 # 案A 本命: Ultrafeeder / tar1090 経由の航
 data_url = "http://localhost:18090/data/aircraft.json"  # ホスト 18090 → コンテナ 80 (8080/8081/8090 は他アプリ)
 tar1090_url = "http://localhost:18090"
 poll_interval_secs = 2
-max_distance_km = 15.0         # 自宅から半径 15km 以内に接近したら通知 (東京都上空の主要航空路をカバー)
+max_distance_km = 15.0         # 観測地点から半径 15km 以内に接近したら通知 (主要航空路をカバー)
 min_altitude_m = 500.0         # 地上駐機ノイズ除外
 max_altitude_m = 13000.0       # 巡航高度上限
 cooldown_minutes = 30          # 同一機体の再通知クールダウン

@@ -74,7 +74,7 @@
 - **SGP4 伝搬モデルと座標系変換**:
   - TLE から SGP4 で地心慣性座標（ECI / TEME）を推算。
   - グリニッジ恒星時（GMST）により地球中心固定直交座標系（ECEF）へ回転。
-  - 観測地点（東京都: 35.6895°N, 139.6917°E, 200m）を原点とするローカル水平座標系（Topocentric ENU: East, North, Up）へ変換し、仰角（Elevation）と方位角（Azimuth）を算出。
+  - 観測地点（東京都: 35.6895°N, 139.6917°E, 30m）を原点とするローカル水平座標系（Topocentric ENU: East, North, Up）へ変換し、仰角（Elevation）と方位角（Azimuth）を算出。
 - **重複調停アルゴリズム (Conflict Resolution)**:
   - 複数衛星の通過時刻が被った場合、**「最大仰角（Max Elevation）が高い方」**を優先採用し、SDR デバイスの競合を回避。
 
@@ -129,7 +129,7 @@
 
 ```toml
 [observer]
-latitude = 35.6895    # 東京都東京都
+latitude = 35.6895    # 東京都 (広域代表値)
 longitude = 139.6917  # 東経 139.6917
 altitude_m = 200.0    # 標高 (m)
 

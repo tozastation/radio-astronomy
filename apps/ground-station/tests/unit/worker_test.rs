@@ -395,7 +395,7 @@ fn test_resolve_pass_from_session_dir_xw2a() {
 [observer]
 latitude = 35.6895
 longitude = 139.6917
-altitude_m = 200.0
+altitude_m = 30.0
 
 [scheduler]
 min_elevation_deg = 20.0

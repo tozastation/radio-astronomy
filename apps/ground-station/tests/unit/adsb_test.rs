@@ -4,24 +4,24 @@ use ground_station::adsb::{
 
 #[test]
 fn test_haversine_distance_calculation() {
-    // 観測地: 東京都東京都 (北緯 35.6895, 東経 139.6917)
-    let ome_lat = 35.6895;
-    let ome_lon = 139.6917;
+    // 観測地: 東京都 (北緯 35.6895, 東経 139.6917)
+    let tokyo_lat = 35.6895;
+    let tokyo_lon = 139.6917;
 
     // 羽田空港 (北緯 35.5494, 東経 139.7798)
     let hnd_lat = 35.5494;
     let hnd_lon = 139.7798;
 
-    let dist = haversine_distance_km(ome_lat, ome_lon, hnd_lat, hnd_lon);
-    // 直線距離は約 54.2 km (誤差 ±1.0 km 範囲内を検証)
+    let dist = haversine_distance_km(tokyo_lat, tokyo_lon, hnd_lat, hnd_lon);
+    // 直線距離は約 17.5 km (誤差 ±1.0 km 範囲内を検証)
     assert!(
-        (53.0..55.5).contains(&dist),
+        (16.5..18.5).contains(&dist),
         "東京-羽田間の計算距離が不正確です: {:.2} km",
         dist
     );
 
     // 同一地点の距離は 0.0 km
-    let self_dist = haversine_distance_km(ome_lat, ome_lon, ome_lat, ome_lon);
+    let self_dist = haversine_distance_km(tokyo_lat, tokyo_lon, tokyo_lat, tokyo_lon);
     assert!(self_dist < 0.001);
 }
 

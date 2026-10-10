@@ -18,7 +18,7 @@ fn test_tle_parsing_and_pass_prediction() {
     let observer = ObserverConfig {
         latitude: 35.6895,
         longitude: 139.6917,
-        altitude_m: 200.0,
+        altitude_m: 30.0,
     };
 
     // 2026-09-04 00:00:00 JST (2026-09-03 15:00:00 UTC) から 24時間をスキャン
@@ -188,7 +188,7 @@ fn test_predict_all_passes_fault_tolerance() {
     let observer = ObserverConfig {
         latitude: 35.6895,
         longitude: 139.6917,
-        altitude_m: 200.0,
+        altitude_m: 30.0,
     };
 
     let valid_sat = SatelliteInfo {

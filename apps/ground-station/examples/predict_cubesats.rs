@@ -107,7 +107,7 @@ async fn main() -> Result<()> {
     let duration_hours = 24;
     let min_el = 15.0; // 15度以上
 
-    println!("🔭 観測地点: 東京都東京都 (北緯 {:.4}°, 東経 {:.4}°, 標高 {:.0}m)", observer.latitude, observer.longitude, observer.altitude_m);
+    println!("🔭 観測地点: 東京都 (北緯 {:.4}°, 東経 {:.4}°, 標高 {:.0}m)", observer.latitude, observer.longitude, observer.altitude_m);
     println!("📅 予測期間: 今後 {} 時間 (最小仰角: {:.0}° 以上)", duration_hours, min_el);
     println!();
 

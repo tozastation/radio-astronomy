@@ -34,7 +34,7 @@
 ## コード・ドキュメント慣習
 
 - 地上局デーモンは `apps/ground-station/`（Rust）。観測成功の定義は「中身が見える」（画像・テレメトリJSON・復号テキスト）。判定困難な対象は `unknown`（あきらめる作戦）。詳細は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md)。
-- 観測地は東京都東京都。アンテナは **北向きベランダ**（2026-09-15 移設、見通しおおよそ方位 $270^\circ \sim 90^\circ$）。南〜南西側は建物 RC 遮蔽を想定。極軌道は北寄りパス（北西・北・東北東など）を優先する。
+- 観測地は東京都（代表値: 北緯 35.6895, 東経 139.6917、プライバシー保護のため広域公称値を採用）。アンテナは **北向きベランダ**（2026-09-15 移設、見通しおおよそ方位 $270^\circ \sim 90^\circ$）。南〜南西側は建物 RC 遮蔽を想定。極軌道は北寄りパス（北西・北・東北東など）を優先する。
 - NOAA APT は退役済み。気象画像系は Meteor-M LRPT 等を優先。
 - **現行フェーズ（案A）**: 衛星受信（Meteor / CubeSat / ISS）とデイリー衛星スケジュールは `config.toml` で一時オフ。RTL-SDR は ADS-B（Ultrafeeder 1090 MHz）に明け渡し、「機影が見える」成功を先に取る。
 - ADS-B / tar1090 のホスト公開ポートは **18090**（8080/8081 は他アプリ、8090 は PocketBase）。`data_url` / `tar1090_url` も 18090 に合わせる。
