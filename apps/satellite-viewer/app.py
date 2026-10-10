@@ -366,6 +366,84 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       padding: 40px 20px;
       color: var(--text-muted);
     }
+    .no-match-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    /* Toolbar & Filter Styles */
+    .toolbar-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .filter-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .chip:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+    .chip.active {
+      background: #0284c7;
+      color: #fff;
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+    .filter-options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: var(--text);
+      user-select: none;
+      font-weight: 500;
+    }
+    .toggle-label input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .matched-count {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
@@ -377,7 +455,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="btn-refresh" onclick="location.reload()">🔄 更新</button>
   </header>
 
-  <main>
+  <!-- Filter & Search Toolbar -->
+  <div class="toolbar-section">
+    <div class="filter-chips">
+      <button class="chip active" onclick="setCategoryFilter('all', this)">すべて (<span id="count-all">0</span>)</button>
+      <button class="chip" onclick="setCategoryFilter('SpaceStation', this)">🚀 ISS (<span id="count-spacestation">0</span>)</button>
+      <button class="chip" onclick="setCategoryFilter('WeatherSatellite', this)">🛰️ METEOR (<span id="count-weathersatellite">0</span>)</button>
+      <button class="chip" onclick="setCategoryFilter('CubeSat', this)">📻 FUNcube (<span id="count-cubesat">0</span>)</button>
+    </div>
+    <div class="filter-options">
+      <label class="toggle-label">
+        <input type="checkbox" id="hasPacketsToggle" onchange="applyFilters()">
+        <span>📡 パケット/データ検出ありのみ絞り込み</span>
+      </label>
+      <span class="matched-count" id="matchedCount">表示中: 0 件</span>
+    </div>
+  </div>
+
+  <div id="noMatchState" class="no-match-state">条件に一致する観測データがありません。</div>
+
+  <main id="cardsContainer">
     __CONTENT__
   </main>
 
@@ -451,6 +548,80 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         alert('クリップボードにコピーしました！');
       });
     }
+
+    // --- フィルタ & 集計ロジック ---
+    let currentCategory = 'all';
+
+    function setCategoryFilter(category, btnElement) {
+      currentCategory = category;
+      document.querySelectorAll('.filter-chips .chip').forEach(el => el.classList.remove('active'));
+      if (btnElement) btnElement.classList.add('active');
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const toggle = document.getElementById('hasPacketsToggle');
+      const hasPacketsOnly = toggle ? toggle.checked : false;
+      const cards = document.querySelectorAll('.card');
+      let matchedCount = 0;
+
+      cards.forEach(card => {
+        const satType = (card.getAttribute('data-satellite-type') || '').toLowerCase();
+        const packetsCount = parseInt(card.getAttribute('data-packets-count') || '0', 10);
+        const hasData = card.getAttribute('data-has-data') === 'true';
+
+        // 1. カテゴリフィルタ
+        const categoryMatch = (currentCategory === 'all') || (satType === currentCategory.toLowerCase());
+
+        // 3. パケット/データ検出ありフィルタ
+        let packetMatch = true;
+        if (hasPacketsOnly) {
+          packetMatch = (packetsCount > 0) || hasData;
+        }
+
+        if (categoryMatch && packetMatch) {
+          card.style.display = 'block';
+          matchedCount++;
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      const matchedCountEl = document.getElementById('matchedCount');
+      if (matchedCountEl) {
+        matchedCountEl.textContent = '表示中: ' + matchedCount + ' / ' + cards.length + ' 件';
+      }
+
+      const noMatchEl = document.getElementById('noMatchState');
+      if (noMatchEl) {
+        noMatchEl.style.display = (matchedCount === 0 && cards.length > 0) ? 'block' : 'none';
+      }
+    }
+
+    function initFilterCounts() {
+      const cards = document.querySelectorAll('.card');
+      const counts = { all: cards.length, spacestation: 0, weathersatellite: 0, cubesat: 0 };
+
+      cards.forEach(card => {
+        const satType = (card.getAttribute('data-satellite-type') || '').toLowerCase();
+        if (counts[satType] !== undefined) {
+          counts[satType]++;
+        }
+      });
+
+      const elAll = document.getElementById('count-all');
+      if (elAll) elAll.textContent = counts.all;
+      const elSpace = document.getElementById('count-spacestation');
+      if (elSpace) elSpace.textContent = counts.spacestation;
+      const elWeather = document.getElementById('count-weathersatellite');
+      if (elWeather) elWeather.textContent = counts.weathersatellite;
+      const elCube = document.getElementById('count-cubesat');
+      if (elCube) elCube.textContent = counts.cubesat;
+
+      applyFilters();
+    }
+
+    window.addEventListener('DOMContentLoaded', initFilterCounts);
   </script>
 </body>
 </html>
@@ -753,9 +924,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 files_grid_html = "".join(file_rows)
 
                 badge_class = f"badge-{sat_type.lower()}"
+                has_data_val = "true" if (packets_count > 0 or sat_type in ["WeatherSatellite", "CubeSat"]) else "false"
 
                 card = f"""
-                <div class="card">
+                <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}">
                   <div class="card-header">
                     <div class="sat-header-left">
                       <div class="sat-name">{icon} {p['satellite']}</div>
