@@ -6,13 +6,14 @@ metadata:
   labels:
     app: garage
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: garage
   ports:
     - name: s3-api
       port: 3900
       targetPort: 3900
+      nodePort: 30900
     - name: admin-api
       port: 3903
       targetPort: 3903
