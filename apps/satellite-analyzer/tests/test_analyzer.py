@@ -58,6 +58,28 @@ def test_aprs_decoder_parse_output():
     assert frames[1].destination == "BEACON"
 
 
+def test_aprs_decoder_parse_atest_output():
+    """atest の実機デコード出力 (DECODED行や <0x0a> 制御文字を含む形式) が正常にパースされることの検証"""
+    decoder = APRSDecoder()
+    raw_output = """
+    44100 samples per second.  16 bits per sample.  1 audio channels.
+    42398 audio bytes in file.  Duration = 0.5 seconds.
+    Fix Bits level = 0
+    Channel 0: 1200 baud, AFSK 1200 & 2200 Hz, A, 44100 sample rate.
+
+    DECODED[1] 0:00.472 WB2OSZ audio level = 99(28/28)     
+    [0] WB2OSZ>WORLD:Hello, world!<0x0a>
+
+    1 from /tmp/gen_hello.wav
+    1 packets decoded in 0.007 seconds.  70.0 x realtime
+    """
+    frames = decoder.parse_atest_output(raw_output)
+    assert len(frames) == 1
+    assert frames[0].source == "WB2OSZ"
+    assert frames[0].destination == "WORLD"
+    assert frames[0].message == "Hello, world!"
+
+
 def test_pass_analyzer_e2e(sample_wav, tmp_path):
     """PassAnalyzer が packets.json, spectrogram.png, summary.json を正しく生成することの検証"""
     analyzer = PassAnalyzer()
