@@ -33,14 +33,14 @@ spec:
             - name: GARAGE_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: garage-tracker-creds
-                  key: access-key
+                  name: garage-satellite-credentials
+                  key: access_key
                   optional: true
             - name: GARAGE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: garage-tracker-creds
-                  key: secret-key
+                  name: garage-satellite-credentials
+                  key: secret_key
                   optional: true
           resources:
             requests:
