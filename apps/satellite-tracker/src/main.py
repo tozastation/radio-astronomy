@@ -10,6 +10,8 @@ from orbit_predictor import OrbitPredictor
 from sdr_collector import SDRCollector
 from metrics_exporter import MetricsExporter
 from tle_fetcher import fetch_satellite_tles
+from audio_spooler import AudioSpooler
+from s3_uploader import S3Uploader
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +58,8 @@ def run_tracker():
     )
     collector = SDRCollector(mock_sdr=mock_sdr)
     exporter = MetricsExporter()
+    spooler = AudioSpooler(spool_dir=os.getenv("SPOOL_DIR", "/tmp/spool"))
+    uploader = S3Uploader()
 
     # Prometheus HTTP サーバー起動
     exporter.start_server(port=metrics_port)
@@ -76,6 +80,7 @@ def run_tracker():
 
     active_satellite: Optional[str] = None
     pass_in_progress = False
+    current_pass_id: Optional[str] = None
     last_tle_update = time.time()
     tle_refresh_interval = 86400.0  # 24時間ごとにTLEを再取得
 
@@ -90,6 +95,7 @@ def run_tracker():
 
         # 全衛星の現在位置と視界判定
         visible_candidates = []
+        earliest_next_aos_sec = float("inf")
 
         for sat_name, sat_data in active_satellites.items():
             pos = predictor.calculate_position(
@@ -116,7 +122,11 @@ def run_tracker():
                     search_hours=12.0,
                 )
                 if next_pass:
-                    exporter.set_next_pass(sat_name, next_pass.aos_time.timestamp())
+                    aos_ts = next_pass.aos_time.timestamp()
+                    exporter.set_next_pass(sat_name, aos_ts)
+                    time_to_aos = aos_ts - now_utc.timestamp()
+                    if 0 < time_to_aos < earliest_next_aos_sec:
+                        earliest_next_aos_sec = time_to_aos
 
         # 視界内の衛星がある場合、最も仰角の高い衛星を優先追尾
         if visible_candidates:
@@ -127,6 +137,10 @@ def run_tracker():
             # 追尾衛星が切り替わった場合（重複パス時）
             if active_satellite and active_satellite != chosen_sat_name:
                 logger.info(f"Switching tracking target from {active_satellite} to {chosen_sat_name}")
+                wav_file = spooler.finish_pass()
+                if wav_file and os.path.exists(wav_file):
+                    s3_key = f"raw/{active_satellite}/{os.path.basename(wav_file)}"
+                    uploader.upload_and_cleanup(wav_file, s3_key)
                 exporter.record_pass_completed(active_satellite, status="completed")
                 exporter.set_tracking_status(active_satellite, active=False)
 
@@ -136,6 +150,9 @@ def run_tracker():
                 )
                 pass_in_progress = True
                 active_satellite = chosen_sat_name
+                current_pass_id = f"{chosen_sat_name}_{now_utc.strftime('%Y%m%d_%H%M%S')}"
+                collector.warmup(center_freq_hz=chosen_sat_data["freq_hz"])
+                spooler.start_pass(chosen_sat_name, current_pass_id)
 
             exporter.set_tracking_status(chosen_sat_name, active=True)
             exporter.update_orbit_metrics(
@@ -159,10 +176,23 @@ def run_tracker():
         else:
             if pass_in_progress and active_satellite:
                 logger.info(f"Satellite LOS completed: {active_satellite}")
+                wav_file = spooler.finish_pass()
+                if wav_file and os.path.exists(wav_file):
+                    s3_key = f"raw/{active_satellite}/{os.path.basename(wav_file)}"
+                    uploader.upload_and_cleanup(wav_file, s3_key)
+
                 exporter.record_pass_completed(active_satellite, status="completed")
                 exporter.set_tracking_status(active_satellite, active=False)
                 pass_in_progress = False
                 active_satellite = None
+                current_pass_id = None
+
+            # 省電力制御: 次回 AOS まで 30 秒以上空いていれば SDR をスタンバイ (給電停止)
+            if earliest_next_aos_sec > 30.0:
+                if not collector.is_standby:
+                    collector.standby()
+            elif earliest_next_aos_sec <= 30.0 and collector.is_standby:
+                collector.warmup()
 
         time.sleep(update_interval)
 
