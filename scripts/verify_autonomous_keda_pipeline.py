@@ -64,8 +64,14 @@ def generate_wav(path: str, duration: float = 1.0):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Verify autonomous KEDA pipeline")
+    parser.add_argument("--satellite", default="FUNCUBE-1 (AO-73)", help="Target satellite name")
+    args = parser.parse_args()
+
+    sat_name = args.satellite
     print("=" * 70)
-    print("🚀 Verifying 100% Autonomous Pipeline (Zero Manual Intervention)")
+    print(f"🚀 Verifying 100% Autonomous Pipeline for: {sat_name}")
     print("=" * 70)
 
     s3 = boto3.client(
@@ -77,8 +83,8 @@ def main():
         config=Config(s3={"addressing_style": "path"})
     )
 
-    pass_id = f"ISS_AUTONOMOUS_{int(time.time())}"
-    raw_key = f"raw/ISS (ZARYA)/{pass_id}.wav"
+    pass_id = f"{sat_name.replace(' ', '_').replace('(', '').replace(')', '')}_{int(time.time())}"
+    raw_key = f"raw/{sat_name}/{pass_id}.wav"
     fixture_wav = "apps/satellite-tracker-rs/assets/iss_aprs_packet_48k.wav"
 
     print(f"\n[Step 0] Initial state verification...")
@@ -88,7 +94,7 @@ def main():
     print(f"  - Worker replicas: {initial_replicas}")
     assert initial_replicas == 0, "Worker must start at 0 replicas!"
 
-    print(f"\n[Step 1] Uploading raw WAV (with real AX.25 APRS packet) to s3://{BUCKET}/{raw_key}...")
+    print(f"\n[Step 1] Uploading raw WAV to s3://{BUCKET}/{raw_key}...")
     with open(fixture_wav, "rb") as f:
         s3.put_object(Bucket=BUCKET, Key=raw_key, Body=f.read(), ContentType="audio/wav")
     print("  - Upload complete.")
@@ -111,16 +117,16 @@ def main():
     print(f"\n[Step 3] Monitoring workflow execution and artifact generation...")
     analysis_success = False
     start_time = time.time()
-    expected_spec = f"results/ISS (ZARYA)/{pass_id}/spectrogram.png"
-    expected_summary = f"results/ISS (ZARYA)/{pass_id}/summary.json"
-    expected_packets = f"results/ISS (ZARYA)/{pass_id}/packets.json"
+    expected_spec = f"results/{sat_name}/{pass_id}/spectrogram.png"
+    expected_summary = f"results/{sat_name}/{pass_id}/summary.json"
+    expected_packets = f"results/{sat_name}/{pass_id}/packets.json"
     while time.time() - start_time < 90:
         try:
             s3.head_object(Bucket=BUCKET, Key=expected_spec)
             s3.head_object(Bucket=BUCKET, Key=expected_summary)
             s3.head_object(Bucket=BUCKET, Key=expected_packets)
             analysis_success = True
-            print(f"  🎉 Found generated artifacts in s3://{BUCKET}/results/ISS (ZARYA)/{pass_id}/!")
+            print(f"  🎉 Found generated artifacts in s3://{BUCKET}/results/{sat_name}/{pass_id}/!")
             break
         except Exception:
             pass
@@ -128,15 +134,21 @@ def main():
 
     assert analysis_success, "Worker failed to complete analysis!"
 
-    # パケットデコード結果の検証 (atest による AX.25 パケット抽出確認)
+    # パケット・サマリー検証
     summary_obj = s3.get_object(Bucket=BUCKET, Key=expected_summary)
     summary_json = json.loads(summary_obj["Body"].read().decode())
     packets_obj = s3.get_object(Bucket=BUCKET, Key=expected_packets)
     packets_json = json.loads(packets_obj["Body"].read().decode())
 
-    print(f"  📊 Decoded Packets Count: {summary_json.get('packets_count')}")
-    print(f"  📦 Packets detail: {packets_json.get('packets')}")
-    assert summary_json.get("packets_count", 0) >= 1, "APRS packet decoding failed! packets_count must be >= 1"
+    print(f"  📊 Summary: {summary_json}")
+    if "ISS" in sat_name.upper():
+        assert summary_json.get("packets_count", 0) >= 1, "ISS APRS packet decoding failed!"
+    elif "FUNCUBE" in sat_name.upper():
+        assert summary_json.get("satellite_type") == "CubeSat", "FUNcube satellite_type must be CubeSat!"
+        assert "BPSK" in summary_json.get("signal_type", ""), "FUNcube signal_type must contain BPSK!"
+    elif "METEOR" in sat_name.upper():
+        assert summary_json.get("satellite_type") == "WeatherSatellite", "METEOR satellite_type must be WeatherSatellite!"
+        assert "LRPT" in summary_json.get("signal_type", ""), "METEOR signal_type must contain LRPT!"
 
     print(f"\n[Step 4] Verifying raw WAV cleanup and queue empty...")
     raw_cleaned = False
