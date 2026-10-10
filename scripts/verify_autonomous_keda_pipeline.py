@@ -77,9 +77,9 @@ def main():
         config=Config(s3={"addressing_style": "path"})
     )
 
-    pass_id = f"NOAA19_AUTONOMOUS_{int(time.time())}"
-    raw_key = f"raw/NOAA 19/{pass_id}.wav"
-    local_wav = f"/tmp/{pass_id}.wav"
+    pass_id = f"ISS_AUTONOMOUS_{int(time.time())}"
+    raw_key = f"raw/ISS (ZARYA)/{pass_id}.wav"
+    fixture_wav = "apps/satellite-tracker-rs/assets/iss_aprs_packet_48k.wav"
 
     print(f"\n[Step 0] Initial state verification...")
     initial_count = get_pending_count()
@@ -88,11 +88,9 @@ def main():
     print(f"  - Worker replicas: {initial_replicas}")
     assert initial_replicas == 0, "Worker must start at 0 replicas!"
 
-    print(f"\n[Step 1] Uploading raw WAV to s3://{BUCKET}/{raw_key}...")
-    generate_wav(local_wav, duration=1.2)
-    with open(local_wav, "rb") as f:
+    print(f"\n[Step 1] Uploading raw WAV (with real AX.25 APRS packet) to s3://{BUCKET}/{raw_key}...")
+    with open(fixture_wav, "rb") as f:
         s3.put_object(Bucket=BUCKET, Key=raw_key, Body=f.read(), ContentType="audio/wav")
-    os.remove(local_wav)
     print("  - Upload complete.")
 
     print(f"\n[Step 2] Monitoring viewer API & KEDA auto scale-out (0 -> 1)...")
@@ -113,18 +111,32 @@ def main():
     print(f"\n[Step 3] Monitoring workflow execution and artifact generation...")
     analysis_success = False
     start_time = time.time()
-    expected_spec = f"results/NOAA 19/{pass_id}/spectrogram.png"
+    expected_spec = f"results/ISS (ZARYA)/{pass_id}/spectrogram.png"
+    expected_summary = f"results/ISS (ZARYA)/{pass_id}/summary.json"
+    expected_packets = f"results/ISS (ZARYA)/{pass_id}/packets.json"
     while time.time() - start_time < 90:
         try:
             s3.head_object(Bucket=BUCKET, Key=expected_spec)
+            s3.head_object(Bucket=BUCKET, Key=expected_summary)
+            s3.head_object(Bucket=BUCKET, Key=expected_packets)
             analysis_success = True
-            print(f"  🎉 Found generated artifact: s3://{BUCKET}/{expected_spec}!")
+            print(f"  🎉 Found generated artifacts in s3://{BUCKET}/results/ISS (ZARYA)/{pass_id}/!")
             break
         except Exception:
             pass
         time.sleep(3)
 
     assert analysis_success, "Worker failed to complete analysis!"
+
+    # パケットデコード結果の検証 (atest による AX.25 パケット抽出確認)
+    summary_obj = s3.get_object(Bucket=BUCKET, Key=expected_summary)
+    summary_json = json.loads(summary_obj["Body"].read().decode())
+    packets_obj = s3.get_object(Bucket=BUCKET, Key=expected_packets)
+    packets_json = json.loads(packets_obj["Body"].read().decode())
+
+    print(f"  📊 Decoded Packets Count: {summary_json.get('packets_count')}")
+    print(f"  📦 Packets detail: {packets_json.get('packets')}")
+    assert summary_json.get("packets_count", 0) >= 1, "APRS packet decoding failed! packets_count must be >= 1"
 
     print(f"\n[Step 4] Verifying raw WAV cleanup and queue empty...")
     raw_cleaned = False
