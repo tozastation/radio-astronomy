@@ -144,7 +144,7 @@ flowchart TB
 #### 📦 Garage S3：超軽量な分散オブジェクトストレージ
 - **単体での役割**:
   - フランスの研究機関発祥のオープンソース分散オブジェクトストレージ（[公式サイト](https://garagehq.opera.software/) / [GitHub (dxflrs/garage)](https://github.com/dxflrs/garage)）。
-  - 大規模データセンターを前提とする MinIO 等と異なり、**エッジ環境や地理的分散、省リソース端末での運用を前提に Rust で開発** されています。
+  - 大規模データセンターを前提とする MinIO 等と異なり、**エッジ環境や地理的分散、リソースの限られた端末での運用を前提に Rust で開発** されています。
   - メタデータ管理に SQLite を内包しており、外部データベースを一切必要としません。
 - **本システムでの選定理由**:
   - Kubernetes で S3 といえば MinIO が定番ですが、MinIO は初期化時でも 150〜250MiB 以上のメモリを消費し、小型端末には重すぎます。
@@ -202,7 +202,51 @@ $ python3 scripts/trigger_cluster_e2e.py
 ---
 
 ### 2. 本物の人工衛星（ISS）通過時の自律観測ログ
-実際にベランダ上空を通過した **ISS (ZARYA)**（145.825 MHz APRS、最大仰角 43.4°）の電波を捉えた際の実機ログです。人間が一切コマンドを叩くことなく、全自動で完走しました。
+実際にベランダ上空を通過した **ISS (ZARYA)**（145.825 MHz APRS、最大仰角 43.4°）の電波を捉えた際の実機ログです。
+
+衛星の飛来から、観測、クラウドへのデータ転送、ワーカーの起動、解析、ストレージの片付け、そしてリソースゼロへの縮退まで、**人間が一切コマンドを叩くことなく全自動で連鎖実行** されます。
+
+#### 🔄 自律パイプラインの実行シーケンス
+各コンポーネントがイベント駆動でどのようにバトンを渡していくのかを図解しました：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Satellite as 🛰️ 人工衛星 (ISS)
+    participant Tracker as ⚡ エッジ観測<br/>(satellite-tracker-rs)
+    participant Garage as 📦 Garage S3<br/>(音声 & 成果物)
+    participant Viewer as 📱 Web ビューア<br/>(satellite-viewer)
+    participant Temporal as ⏳ Temporal<br/>(ワークフロー)
+    participant KEDA as ⚖️ KEDA<br/>(オートスケーラー)
+    participant Worker as 🔬 解析ワーカー<br/>(0-scale Pod)
+
+    Note over Satellite,Tracker: 【1. 飛来・観測フェーズ】
+    Satellite->>Tracker: AOS (仰角 10°到達) 電波を受信開始
+    Note over Tracker: スリープ復帰 & 48kHz WAV 保存
+    Satellite-->>Tracker: LOS (地平線へ沈む) 録音完了
+
+    Note over Tracker,Garage: 【2. クラウド側へのデータ退避】
+    Tracker->>Garage: ① 音声 WAV を PUT アップロード
+
+    Note over Garage,Worker: 【3. イベント検知 & 0-scale 起動】
+    Viewer->>Garage: 新規 WAV ファイルを検知
+    Viewer->>Temporal: ② 解析ワークフローを開始
+    Temporal->>KEDA: 未処理タスクを検知
+    KEDA->>Worker: ③ 0 → 1 へオンデマンド起動！
+
+    Note over Garage,Worker: 【4. 信号解析 & ストレージ容量維持】
+    Worker->>Garage: ④ 音声 WAV をダウンロード
+    Note over Worker: パケットデコード &<br/>スペクトログラム画像を生成
+    Worker->>Garage: ⑤ 解析結果 (PNG / JSON) を保存
+    Worker->>Garage: ⑥ 元の音声 WAV を自動削除
+
+    Note over KEDA,Worker: 【5. リソースゼロ復帰】
+    Worker-->>Temporal: ワークフロー完了を通知
+    KEDA->>Worker: ⑦ 1 → 0 へ自動スケールダウン (リソース消費ゼロ)
+```
+
+#### 📜 実際の動作ログ（シーケンスと完全一致）
+上記シーケンスの通りにパイプラインが自律完走したときのログです：
 
 ```text
 # 1. AOS 突入（14:26:10 JST）: SGP4予測に基づきSDRが動的スタンバイから自動起動
@@ -258,12 +302,12 @@ satellite-analyzer-worker-7f7c765f7f-fbcvt   1/1     Terminating   0   42s
 
 ### 1. KubeEdge cAdvisor（:10350）と CloudCore のポート競合
 - **事象**: Prometheus からエッジノードの cAdvisor メトリクスを取得しようとすると `Connection Refused` や TLS エラーが発生する。
-- **原因**: KubeEdge の `edged` はループバック（`127.0.0.1:10350`）のみでリッスンしており、ホスト外から遮断されていた。さらに隣接ポート `10351` は CloudCore が HTTPS で握っていた。
+- **原因**: KubeEdge の `edged` はループバック（`127.0.0.1:10350`）のみでリッスンしており、ホスト外からアクセスできませんでした。さらに隣接ポート `10351` は CloudCore が HTTPS で握っていました。
 - **解決策**: `hostNetwork: true` を持つ極小 Python プロキシ DaemonSet（`kubeedge-metrics-proxy`）を空きポート（`19095`）で動かし、cAdvisor のメトリクスをクラスタ内から HTTP で取得できるように中継して解決。
 
 ### 2. Temporal SDK Core（Rust）のメモリ特性と OOMKilled（Exit Code 137）の壁
 - **事象**: Web ビューア内にディスパッチャーを組み込んだ直後、`Exit Code: 137`（OOMKilled）で不定期にクラッシュする。
-- **原因**: 当初 `limits.memory: 64Mi` を割り当てていたが、Python 版 Temporal SDK は内部で Rust 製コア（`temporal-sdk-core`）を内包しており、通信接続やスレッドの初期化時に一時的にメモリを急激に消費してリミットを超過していた。
+- **原因**: 当初 `limits.memory: 64Mi` を割り当てていたが、Python 版 Temporal SDK は内部で Rust 製コア（`temporal-sdk-core`）を内包しており、通信接続や内部スレッドの初期化時に一時的にメモリ消費が跳ね上がり、メモリ上限を超過していました。
 - **解決策**: メモリプロファイリングに基づき、リミットを `64Mi` $\to$ **`160Mi`**（Requests: `48Mi`）へ緩和。平常時は約 59MiB で安定稼働。
 
 ### 3. Temporal Dev モードのメトリクス欠落と KEDA `metrics-api` scaler
