@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
     let predictor = OrbitPredictor::new(lat, lon, alt_m, &balcony_facing, 10.0);
     let mut sdr = SdrCollector::new(mock_sdr, 2_400_000.0, 40.0);
     let mut dsp = DspProcessor::new(2_400_000.0, 48_000);
-    let mut spooler = AudioSpooler::new(spool_dir, 48_000, 500 * 1024 * 1024, 10.0);
+    let mut spooler = AudioSpooler::new(spool_dir.clone(), 48_000, 500 * 1024 * 1024, 10.0);
     let uploader = S3Uploader::from_env();
     let exporter = Arc::new(MetricsExporter::new());
 
@@ -101,6 +101,7 @@ async fn main() -> Result<()> {
     let mut pcm_buffer = Vec::with_capacity(4800);
 
     info!("Entering autonomous edge tracking loop (power-saving enabled)...");
+    let _ = uploader.sync_pending_spool(&spool_dir).await;
 
     loop {
         tokio::select! {

@@ -23,8 +23,8 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tracker
-          image: localhost:5000/satellite-tracker-rs:dev
-          imagePullPolicy: IfNotPresent
+          image: localhost:5000/satellite-tracker-rs:v1.1.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 9100
               name: metrics
@@ -48,9 +48,9 @@ spec:
               value: "2.0"
             - name: SPOOL_DIR
               value: "/tmp/spool"
-            # Garage S3 連携設定
+            # Garage S3 連携設定 (エッジノードからの名前解決制約に対応しホストNodePortを指定)
             - name: GARAGE_S3_ENDPOINT
-              value: "http://garage-s3.storage.svc.cluster.local:3900"
+              value: "http://192.168.68.66:30900"
             - name: GARAGE_BUCKET
               value: "satellite-recordings"
             - name: GARAGE_ACCESS_KEY
@@ -75,7 +75,12 @@ spec:
           volumeMounts:
             - name: dev-bus-usb
               mountPath: /dev/bus/usb
+            - name: spool-dir
+              mountPath: /tmp/spool
       volumes:
         - name: dev-bus-usb
           hostPath:
             path: /dev/bus/usb
+        - name: spool-dir
+          hostPath:
+            path: /tmp/satellite-recordings
