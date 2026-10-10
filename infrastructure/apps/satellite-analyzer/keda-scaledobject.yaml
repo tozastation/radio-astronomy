@@ -10,13 +10,14 @@ spec:
     name: satellite-analyzer-worker
   minReplicaCount: 0
   maxReplicaCount: 2
-  cooldownPeriod: 120
-  pollingInterval: 15
+  cooldownPeriod: 60
+  pollingInterval: 10
   triggers:
-    # Prometheus 経由で Temporal の Task Queue バックログを監視
-    - type: prometheus
+    # satellite-viewer の /api/pending-tasks を直接ポーリングして未処理録音があれば 0 -> 1 起動
+    - type: metrics-api
       metadata:
-        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
-        metricName: temporal_activity_pending_tasks
-        query: sum(temporal_activity_schedule_to_start_latency_seconds_count{task_queue="satellite-analysis"}) or vector(0)
-        threshold: "1"
+        url: "http://satellite-viewer.default.svc.cluster.local:8080/api/pending-tasks"
+        valueLocation: "pending_count"
+        targetValue: "1"
+        activationTargetValue: "0"
+        format: "json"

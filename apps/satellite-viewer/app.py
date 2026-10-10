@@ -451,6 +451,48 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"status":"ok"}')
             return
 
+        if path == "/api/pending-tasks":
+            pending_count = 0
+            try:
+                resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
+                for item in resp.get("Contents", []):
+                    if item["Key"].endswith(".wav"):
+                        pending_count += 1
+            except Exception as e:
+                print(f"Error checking pending tasks: {e}", flush=True)
+
+            body = json.dumps({"pending_count": pending_count}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/metrics":
+            pending_count = 0
+            try:
+                resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
+                for item in resp.get("Contents", []):
+                    if item["Key"].endswith(".wav"):
+                        pending_count += 1
+            except Exception:
+                pass
+
+            metrics_text = (
+                f"# HELP satellite_pending_analysis_tasks Number of raw satellite recordings waiting for analysis\n"
+                f"# TYPE satellite_pending_analysis_tasks gauge\n"
+                f"satellite_pending_analysis_tasks {pending_count}\n"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(metrics_text)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(metrics_text)
+            return
+
         if path == "/view":
             key = query.get("key", [None])[0]
             if not key:

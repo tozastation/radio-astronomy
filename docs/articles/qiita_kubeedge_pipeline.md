@@ -177,7 +177,7 @@ Kubernetes 環境のオブジェクトストレージといえば MinIO が有�
 人工衛星が地上局の上空を通過する時間は、**1回あたりわずか 5〜10分、1日に数回** だけです。つまり、**1日のうち 95% 以上の時間は待機時間** です。
 - 解析ワーカー（Python + direwolf + SciPy + Matplotlib）を 24時間常駐させるのは、UMPC の貴重なリソースの完全な無駄遣いです。
 - [KEDA (Kubernetes Event-driven Autoscaling)](https://keda.sh/)（[GitHub](https://github.com/kedacore/keda)）を導入し、普段は **`replicas: 0`（メモリ 0 MiB）** で待機させます。
-- 観測完了後に S3 へ音声がアップロードされると、Prometheus / Temporal のキューを検知して **`0 → 1` に自動スケールアウト**。解析（パケットデコード ＆ 画像生成）が終わり、生 WAV を自動削除したら、再び **`1 → 0` に自動縮退** します。
+- 観測完了後に S3 へ音声がアップロードされると、KEDA の **`metrics-api` scaler** が常駐ビューア（`satellite-viewer`）の `/api/pending-tasks` を直接ポーリング監視し、未処理の生録音（`pending_count > 0`）を検知して **`0 → 1` に完全自動スケールアウト**。解析（パケットデコード ＆ 画像生成）が終わり、生 WAV を自動削除したら、再び **`1 → 0` に自動縮退** します。
 
 ### 4. なぜ単なるスクリプト実行ではなく「Temporal」なのか？
 「S3 アップロードを検知してコンテナを動かすだけなら、シェルスクリプトや Cron、Webhook で十分では？」と思うかもしれません。しかし SRE 的には以下の問題があります：
@@ -351,6 +351,16 @@ KubeEdge 環境におけるメトリクス監視の落とし穴を解消し、Gr
 - **解決策**:
   - ホスト物理ディレクトリ `/tmp/satellite-recordings` を `hostPath` バインドマウントし、コンテナの生死に関わらずデータが 100% ホストに残る完全分離構造を確立。
   - さらに起動時・LOS 時に未送信ファイルを自動スキャンして再送する「自己治癒スプール同期（`sync_pending_spool`）」を実装。今回の DNS 障害時にも録音データが削除されず無傷で守られました。
+
+### 7. Temporal Dev モードのメトリクス欠落と KEDA `metrics-api` scaler による真のゼロ介入自動化
+- **事象**: S3 へ生録音が届き Temporal ワークフローが発火しても、KEDA の解析ワーカー（`satellite-analyzer-worker`）が自動で立ち上がらず `0` レプリカのままスタックする。
+- **原因**: 
+  - KEDA ScaledObject が Prometheus 経由で Temporal のタスクキュー長メトリクス（`temporal_activity_schedule_to_start_latency_seconds_count`）を監視していました。
+  - しかし軽量化のために導入した Temporal 開発用サーバー（Dev モード）が Prometheus エンドポイントを出力しておらず、Prometheus 側のクエリ結果が常に `0` に固定化されていました。
+- **解決策**:
+  - 常時稼働している軽量 Web ビューア（`satellite-viewer`）に、未処理の生録音ファイル数を返す極小エンドポイント `/api/pending-tasks`（JSON: `{"pending_count": N}`）を追加。
+  - KEDA の公式機能である **`metrics-api` scaler** を採用し、KEDA がこの API を直接監視して未処理ファイルが存在するときに `0 → 1` 起動、処理完了で `1 → 0` 縮退するように更新。
+  - Prometheus や Temporal の内部仕様に一切依存せず、S3 へのファイル到着をトリガーとする 100% 確実な自律スケーリングを確立しました。
 
 ---
 
