@@ -1,6 +1,8 @@
-# 🛰️ Radio Astronomy with RTL-SDR v4 - AI Context & Guidelines
+# ベランダ電波観測所 - AI Context & Guidelines
 
-本リポジトリは、SDR V4（RTL-SDR Blog V4）を活用した電波天文学（21cm中性水素線観測、銀河回転曲線、太陽・流星電波観測）および分散自律観測基盤の開発プロジェクトです。
+本リポジトリは、東京都の北向きベランダから RTL-SDR Blog V4 と GPD Pocket3 で電波を受信し、機影・画像・テレメトリ・復号テキストとして中身を確認するベランダ天文学のプロジェクトである。
+
+21cm 中性水素線と銀河回転曲線の解説は `docs/02_radio_astronomy_guide.md` に背景資料として残している。現行の観測プログラムには入れていない。太陽は南天を通るため、北向きベランダからの太陽電波直視も現行対象外である。`solar-station` のコードは残置している。
 
 ## 👤 ユーザープロファイル & コミュニケーション方針
 - **バックグラウンド**: ソフトウェアエンジニア（SRE）。インフラ、分散システム、Linux、Python、コンテナ/Kubernetesに精通。
@@ -18,19 +20,20 @@
     3. **展開ステップ・直感イメージ**: 高校数学〜大学初年級の数学（三角関数、複素数、ベクトル、微積分等）や基礎物理で追える途中式の展開や幾何学的・物理的直感イメージの補足。
   - **作業ペース**: 一方的に進めず、必ずユーザーの承認や確認を挟みながら1ステップずつ進める。
 
-## 🏗️ システムアーキテクチャ (GPD Pocket3 1台完結PoC ＆ 将来分散構想)
-- **エッジ観測・管理ホスト (GPD Pocket3: Ubuntu 26.04 LTS)**:
-  - アンテナ直下に設置。RTL-SDR v4 から2.4MSPSのIQ信号を受信。
-  - エッジDSP（高速FFT & 1秒積算）によりデータを 8 KB/s に圧縮。
-  - **初期PoCフェーズ**: GPD Pocket3 単一端末上で k3s (`cloudcore`) と `edgecore` を同居させ、超軽量 `kube-prometheus-stack` を含めて完全自律稼働と監視を検証。
-  - ローカルストレージ（DuckDB / SQLite / Parquet）に常時蓄積。
-  - **将来分散フェーズ**: 分析専用PC（Ubuntu）追加時に、CloudCore を切り離してシームレスに2台体制（エッジ常時稼働 + オンデマンド分析）へ拡張可能。
+## システムアーキテクチャ（現行: GPD Pocket3 1台同居）
+- **観測地**: 東京都（広域代表値: 北緯 35.6895、東経 139.6917、標高 30 m）。アンテナは北向きベランダ（2026-09-15 移設）。見通しは方位およそ \(270^\circ \sim 90^\circ\)。南〜南西は RC 遮蔽。
+- **ホスト**: GPD Pocket3（Ubuntu 26.04 LTS、ネイティブ Linux）。k3s（CloudCore）と EdgeCore を同一端末に同居させる。Windows + WSL2 は初日の受信確認手順（`docs/05_getting_started.md`）であり、現行ホストではない。
+- **エッジ**: RTL-SDR v4。案Aでは Ultrafeeder が 1090 MHz を占有する。衛星側は `satellite-tracker-rs` が通過時だけ SDR を開き、48 kHz WAV を Garage へ置く。
+- **クラスタ側**: Garage S3、Temporal、KEDA、`satellite-analyzer`（普段は 0 レプリカ）、`satellite-viewer`、kube-prometheus-stack。
+- **物理分離**: 分析用 PC へ CloudCore を切り離す構成は拡張先である。現行の稼働形態は 1 台同居。
+- **現行フェーズ（案A）**: Meteor / CubeSat / ISS とデイリー衛星スケジュールは `apps/ground-station/config.toml` でオフ。RTL-SDR は ADS-B（Ultrafeeder、ホストポート 18090）に明け渡し、機影が見える成功を先に取る。
+- **成功の定義**: 中身が見える（画像・テレメトリ JSON・復号テキスト、ADS-B では機影）。判定困難な対象は `unknown`。詳細は `docs/qa/10_observation_metrics_and_heuristic_evaluation.md`。
 
-## 🛠️ 技術スタック
-- **データ分析 & 天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
-- **エッジDSP / コレクター**: Rust / C / Python (`librtlsdr`, `sdr`, `rustfft`)
-- **ストレージ & DB**: DuckDB, Parquet, SQLite, TimescaleDB, MinIO
-- **可視化 & 運用**: Grafana, Prometheus, JupyterLab, KubeEdge, k3s, kubectl, k9s
+## 技術スタック
+- **エッジ受信**: Rust（`ground-station`, `satellite-tracker-rs`）。`librtlsdr`, `rustfft`, `sgp4`
+- **解析**: Python 3.10+（`satellite-analyzer`, `satellite-viewer`）。NumPy, SciPy, Matplotlib, Temporal, boto3
+- **ストレージ**: Garage S3（録音と解析結果）。Temporal の状態は SQLite。地上局メトリクスは JSON Lines
+- **運用**: KubeEdge, k3s, Prometheus, Grafana, KEDA, Docker Compose（Ultrafeeder / VOICEVOX）
 
 ## 📝 コミットルール
 - 日本語で記述する
