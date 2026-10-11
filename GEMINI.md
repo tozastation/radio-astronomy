@@ -1,6 +1,8 @@
-# 🛰️ Radio Astronomy with RTL-SDR v4 - AI Context & Guidelines
+# ベランダ電波観測所 - AI Context & Guidelines
 
-本リポジトリは、SDR V4（RTL-SDR Blog V4）を活用した電波天文学（21cm中性水素線観測、銀河回転曲線、太陽・流星電波観測）および分散自律観測基盤の開発プロジェクトです。
+本リポジトリは、東京都の北向きベランダから RTL-SDR Blog V4 と GPD Pocket3 で電波を受信し、衛星画像、テレメトリ（計測値）、復号した文字列まで確認するベランダ天文学のプロジェクトである。
+
+21cm 中性水素線と銀河の回転曲線の解説は `docs/02_radio_astronomy_guide.md` に、式と用語の参照として残している。いま動いている観測は、KubeEdge 上の衛星ダウンリンクである。太陽は東から南を通って西へ沈む。ベランダは北向きで南側を建物が遮るため、太陽の電波を直接受ける観測には向かない。`solar-station` のコードは残している。
 
 ## 👤 ユーザープロファイル & コミュニケーション方針
 - **バックグラウンド**: ソフトウェアエンジニア（SRE）。インフラ、分散システム、Linux、Python、コンテナ/Kubernetesに精通。
@@ -18,20 +20,20 @@
     3. **展開ステップ・直感イメージ**: 高校数学〜大学初年級の数学（三角関数、複素数、ベクトル、微積分等）や基礎物理で追える途中式の展開や幾何学的・物理的直感イメージの補足。
   - **作業ペース**: 一方的に進めず、必ずユーザーの承認や確認を挟みながら1ステップずつ進める。
 
-## 🏗️ システムアーキテクチャ（現行は KubeEdge 上の衛星観測パイプラインのみ）
-- **ホスト**: GPD Pocket3（Ubuntu 26.04 LTS）1台。k3s（CloudCore）と EdgeCore が論理ノードとして同居する。Kubernetes クラスタは1つ。
-- **エッジ (`gpd-pocket3-edge`)**: `satellite-tracker-rs`。RTL-SDR v4 を衛星の可視時間だけ開き、48 kHz WAV を Garage S3 の `raw/` へアップロードしてローカルファイルを削除する。MetaManager の SQLite により、k3s 停止中も Pod は継続する。
-- **クラウド側ワークロード**: Garage S3、Temporal、KEDA、`satellite-analyzer-worker`（普段 0 レプリカ）、`satellite-viewer`（NodePort 30088）、kube-prometheus-stack / Grafana（NodePort 30080）。
-- **データフロー**: viewer が未解析 WAV を検知して Temporal ワークフローを開始し、KEDA が解析ワーカーを 0 から起動する。成果物は `results/` の JSON とスペクトログラム PNG。
-- **現行構成に含めないもの**: ADS-B / tar1090（Ultrafeeder）、旧来の 8 KB/s DuckDB コレクタ、Jupyter を常駐させた分析ノード。
-- **将来**: 分析用 PC へ CloudCore を移し、EdgeCore の接続先変更だけで物理分離できる。
+## システムアーキテクチャ（いまは GPD Pocket3 の 1 台にまとめた KubeEdge）
+- **観測地**: 東京都（広域の代表値: 北緯 35.6895、東経 139.6917、標高 30 m）。アンテナは北向きベランダ（2026-09-15 に移設）。見通せる方位はおよそ \(270^\circ \sim 90^\circ\)（西から北を経て東）。南から南西は鉄筋コンクリートで遮られる。
+- **ホスト**: GPD Pocket3。Ubuntu 26.04 LTS を直接インストールしている。k3s（制御側の CloudCore）と EdgeCore（アンテナ側でコンテナを動かす部分）を同じ PC で動かす。論理ノードは 2 つ、Kubernetes クラスタは 1 つ。Windows + WSL2 の手順は初日の受信確認（`docs/05_getting_started.md`）である。
+- **アンテナ側 (`gpd-pocket3-edge`)**: `satellite-tracker-rs`。RTL-SDR v4 を上空通過のあいだだけ開き、48 kHz の WAV を Garage の `raw/` へ置いてローカルファイルを消す。MetaManager の SQLite により、k3s が止まっても Pod は継続する。
+- **同じ PC 上の Kubernetes**: Garage S3、Temporal、KEDA、`satellite-analyzer`（待ち時間は 0 台、上限 2）、`satellite-viewer`（NodePort 30088）、kube-prometheus-stack（Grafana は NodePort 30080）。viewer が未解析の WAV を見つけてワークフローを開始する。
+- **別 PC への分離**: 制御側（CloudCore）を分析用 PC へ移す構成は、あとから移せるようにしてある。いまは 1 台にまとめている。
+- **成功の定義**: 中身が見えること。画像、テレメトリの JSON、復号した文字列。中身を判定しにくい対象は `unknown`。詳細は `docs/qa/10_observation_metrics_and_heuristic_evaluation.md`。
 - **詳細**: [docs/03_system_architecture.md](docs/03_system_architecture.md)。
 
-## 🛠️ 技術スタック
-- **データ分析 & 天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
-- **エッジDSP / コレクター**: Rust / C / Python (`librtlsdr`, `sdr`, `rustfft`)
-- **ストレージ & DB**: Garage S3, SQLite（MetaManager / Temporal）, Parquet
-- **可視化 & 運用**: Grafana, Prometheus, satellite-viewer, Temporal, KEDA, KubeEdge, k3s, kubectl, k9s
+## 技術スタック
+- **エッジ受信**: Rust（`satellite-tracker-rs`）。`librtlsdr`, `rustfft`, `sgp4`
+- **解析**: Python 3.10+（`satellite-analyzer`, `satellite-viewer`）。NumPy, SciPy, Matplotlib, Temporal, boto3
+- **ストレージ**: Garage S3（録音と解析結果）。Temporal と MetaManager の状態は SQLite
+- **運用**: KubeEdge, k3s, Prometheus, Grafana, KEDA
 
 ## 📝 コミットルール
 - 日本語で記述する

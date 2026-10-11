@@ -1,6 +1,8 @@
-# Radio Astronomy with RTL-SDR v4 — Cursor Rules
+# ベランダ電波観測所 — Cursor Rules
 
-本リポジトリは、RTL-SDR Blog V4 を活用した電波天文学（21cm HI線、銀河回転曲線、太陽・流星電波観測）および分散自律観測基盤の開発プロジェクトである。
+本リポジトリは、東京都の北向きベランダから RTL-SDR Blog V4 と GPD Pocket3 で電波を受信し、衛星画像、テレメトリ（計測値）、復号した文字列まで確認するベランダ天文学のプロジェクトである。
+
+21cm 中性水素線と銀河の回転曲線の解説は、式と用語の参照（`docs/02_radio_astronomy_guide.md`）として残している。いま動いている観測は、KubeEdge 上の衛星ダウンリンクである。
 
 出典: プロジェクト方針は [GEMINI.md](GEMINI.md) と同期すること。方針変更時は両方を更新する。
 
@@ -17,29 +19,29 @@
   - 数式は次の3要素をセットで書く: (1) 記号一覧（意味・単位） (2) 日本語での読み解き (3) 展開ステップ・直感イメージ。
   - 一方的に進めず、ユーザー承認を挟みながら1ステップずつ進める。
 
-## システムアーキテクチャ（現行は KubeEdge のみ）
+## システムアーキテクチャ（いまは GPD Pocket3 の 1 台にまとめた KubeEdge）
 
-- **ホスト**: GPD Pocket3（Ubuntu 26.04 LTS）1台。k3s（CloudCore）と EdgeCore（`gpd-pocket3-edge`）が同居する。クラスタは1つ。
-- **エッジ**: `satellite-tracker-rs`。RTL-SDR v4 を通過時のみ開き、48 kHz WAV を Garage S3 の `raw/` へ上げてローカルを削除する。MetaManager により k3s 停止中も Pod は継続。
-- **クラウド側**: Garage S3、Temporal、KEDA、`satellite-analyzer-worker`（0 スケール）、`satellite-viewer`（NodePort 30088）、Grafana（NodePort 30080）。viewer が未解析 WAV を検知してワークフローを開始する。
-- **現行構成に含めない**: ADS-B / tar1090（Ultrafeeder）、旧 8 KB/s DuckDB コレクタ、Windows + WSL2 をクラウドにする2台体制。
-- **将来**: 分析用 PC へ CloudCore を移し、EdgeCore の接続先変更で物理分離できる。
+- **ホスト**: GPD Pocket3。Ubuntu 26.04 LTS を直接インストールしている。k3s（制御側の CloudCore）と EdgeCore（`gpd-pocket3-edge`）を同じ PC で動かす。論理ノードは 2 つ、クラスタは 1 つ。Windows + WSL2 の手順は初日の受信確認である。
+- **アンテナ側**: `satellite-tracker-rs`。RTL-SDR v4 を上空通過のあいだだけ開き、48 kHz の WAV を Garage の `raw/` へ置いてローカルファイルを消す。MetaManager により k3s が止まっても Pod は継続する。
+- **同じ PC 上の Kubernetes**: Garage S3、Temporal、KEDA、`satellite-analyzer`（待ち時間は 0 台、上限 2）、`satellite-viewer`（NodePort 30088）、kube-prometheus-stack（Grafana は NodePort 30080）。viewer が未解析の WAV を見つけてワークフローを開始する。
+- **別 PC への分離**: 制御側（CloudCore）を分析用 PC へ移す構成は、あとから移せるようにしてある。いまは 1 台にまとめている。
+- **構成図に含めない**: ADS-B / tar1090（Ultrafeeder）、旧来の 8 KB/s DuckDB コレクタ。現行の実行系は KubeEdge 上の衛星観測パイプラインだけである。
 
 詳細は [docs/03_system_architecture.md](docs/03_system_architecture.md)。
 
 ## 技術スタック
 
-- **分析・天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
-- **エッジ DSP / コレクター**: Rust / C / Python (`librtlsdr`, `sdr`, `rustfft`)
-- **ストレージ**: Garage S3, SQLite（MetaManager / Temporal）, Parquet
-- **可視化・運用**: Grafana, Prometheus, satellite-viewer, Temporal, KEDA, KubeEdge, k3s, kubectl, k9s
+- **エッジ受信**: Rust（`satellite-tracker-rs`）。`librtlsdr`, `rustfft`, `sgp4`
+- **解析**: Python 3.10+（`satellite-analyzer`, `satellite-viewer`）。NumPy, SciPy, Matplotlib, Temporal, boto3
+- **ストレージ**: Garage S3（録音と解析結果）。Temporal と MetaManager の状態は SQLite
+- **運用**: KubeEdge, k3s, Prometheus, Grafana, KEDA
 
 ## コード・ドキュメント慣習
 
-- 地上局デーモンは `apps/ground-station/`（Rust）。観測成功の定義は「中身が見える」（画像・テレメトリJSON・復号テキスト）。判定困難な対象は `unknown`（あきらめる作戦）。詳細は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md)。
-- 観測地は東京都（代表値: 北緯 35.6895, 東経 139.6917、プライバシー保護のため広域公称値を採用）。アンテナは **北向きベランダ**（2026-09-15 移設、見通しおおよそ方位 $270^\circ \sim 90^\circ$）。南〜南西側は建物 RC 遮蔽を想定。極軌道は北寄りパス（北西・北・東北東など）を優先する。
-- NOAA APT は退役済み。気象画像系は Meteor-M LRPT 等を優先。
-- **現行の実行系**: `infrastructure/` の KubeEdge 衛星観測パイプライン（`satellite-tracker-rs` → Garage → viewer / Temporal / KEDA → `satellite-analyzer-worker`）。ADS-B レーダー（Ultrafeeder / tar1090）は構成に含めない。
+- 地上局クレートは `apps/ground-station/`（Rust）。観測の成功は「中身が見える」こと（画像、テレメトリの JSON、復号した文字列）。中身を判定しにくい対象は `unknown` とする。詳細は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md)。
+- 観測地は東京都（代表値: 北緯 35.6895、東経 139.6917。プライバシー保護のため広域の代表値）。アンテナは **北向きベランダ**（2026-09-15 に移設。見通せる方位はおよそ $270^\circ \sim 90^\circ$）。南から南西は建物の鉄筋コンクリートで遮られる。極軌道の衛星は、北寄りの通過（北西、北、東北東）を優先する。
+- NOAA の APT（画像のアナログ放送）は停波済み。気象画像は Meteor-M の LRPT（デジタル画像放送）を優先する。
+- **現行の実行系**: `infrastructure/` の KubeEdge 衛星観測パイプライン（`satellite-tracker-rs` → Garage → `satellite-viewer` / Temporal / KEDA → `satellite-analyzer`）。ADS-B レーダー（Ultrafeeder / tar1090）は構成図に含めない。
 
 ## コミットルール
 

@@ -1,276 +1,138 @@
-# 🌌 Radio Astronomy with RTL-SDR v4
+# ベランダ電波観測所
 
-> **ソフトウェアエンジニアのための電波天文学 & デジタル信号処理（DSP）実践リポジトリ**  
-> RTL-SDR Blog V4 を活用し、数学・信号処理の基礎補完から、21cm中性水素線（HI Line）観測、銀河系回転曲線の導出、自動観測データパイプライン構築までを段階的に探求します。  
->  
-> *(※ 本リポジトリは、AI アシスタント「Antigravity」とペアプログラミング・対話を行いながら、電波天文学およびデジタル信号処理を実践的に学んでいく学習・実験プロジェクトです)*
+> 東京都の北向きベランダから、RTL-SDR Blog V4 と小型PC（GPD Pocket3）で電波を受信し、**衛星画像、テレメトリ（計測値）、復号した文字列**まで確認するためのリポジトリです。
 
----
+マンションのベランダから、個人の地上局を動かすプロジェクトです。通称はベランダ天文学です。受信できたかどうかは、結果の中身が見えることで判断します。判断基準は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md) に書いてあります。
 
-## 📑 目次
-
-- [🌌 Radio Astronomy with RTL-SDR v4](#-radio-astronomy-with-rtl-sdr-v4)
-  - [📑 目次](#-目次)
-  - [🎯 本プロジェクトの目的・アプローチ](#-本プロジェクトの目的アプローチ)
-  - [🗺️ 5段階 学習ロードマップ](#️-5段階-学習ロードマップ)
-    - [Phase 0: SDR環境構築 \& ハローワールド](#phase-0-sdr環境構築--ハローワールド)
-    - [Phase 1: 数学 \& デジタル信号処理 (DSP) 基礎](#phase-1-数学--デジタル信号処理-dsp-基礎)
-    - [Phase 2: 基礎天体・宇宙観測（付属アンテナで実践）](#phase-2-基礎天体宇宙観測付属アンテナで実践)
-    - [Phase 3: 電波天文学の金字塔 — 21cm 中性水素線（HI Line）観測](#phase-3-電波天文学の金字塔--21cm-中性水素線hi-line観測)
-    - [Phase 4: SE力全開の応用 \& データエンジニアリング](#phase-4-se力全開の応用--データエンジニアリング)
-  - [📚 厳選教材・リファレンスマトリクス](#-厳選教材リファレンスマトリクス)
-  - [📖 電波天文学 & SDR 用語集 (Glossary)](#-電波天文学--sdr-用語集-glossary)
-  - [📐 ソフトウェアエンジニアのための数学・DSP 要点チートシート](#-ソフトウェアエンジニアのための数学dsp-要点チートシート)
-    - [1. 複素数とIQ信号（直交検波）](#1-複素数とiq信号直交検波)
-    - [2. 離散フーリエ変換 (DFT / FFT) とパワースペクトル密度 (PSD)](#2-離散フーリエ変換-dft--fft-とパワースペクトル密度-psd)
-    - [3. 放射計方程式（Radiometer Equation）](#3-放射計方程式radiometer-equation)
-    - [4. ドップラー効果と視線速度](#4-ドップラー効果と視線速度)
-  - [🛠️ ハードウェア仕様 \& 構成](#️-ハードウェア仕様--構成)
-    - [RTL-SDR Blog V4 仕様概要](#rtl-sdr-blog-v4-仕様概要)
-    - [観測フェーズ別ハードウェア構成](#観測フェーズ別ハードウェア構成)
-  - [🛰️ 自宅KubeEdgeシステム構成](#️-自宅kubeedgeシステム構成)
-  - [🚀 クイックスタート](#-クイックスタート)
-    - [1. RTL-SDR Blog V4 ドライバのインストール (Linux)](#1-rtl-sdr-blog-v4-ドライバのインストール-linux)
-    - [2. Python 開発環境のセットアップ](#2-python-開発環境のセットアップ)
-    - [3. 動作確認 (SDR ハローワールド)](#3-動作確認-sdr-ハローワールド)
-    - [4. KubeEdge 観測パイプラインの確認](#4-kubeedge-観測パイプラインの確認)
-  - [📁 ディレクトリ構成](#-ディレクトリ構成)
-  - [📄 ライセンス](#-ライセンス)
+いま動いているのは、GPD Pocket3 の 1 台にまとめた KubeEdge です。アンテナ側の `satellite-tracker-rs` が衛星の通過を録音し、同じ PC 上の Kubernetes が解析します。
 
 ---
 
-## 🎯 本プロジェクトの目的・アプローチ
+## 観測地と見通し
 
-- **背景**: 電波天文学は、光学望遠鏡では見えない宇宙のガス構造や高エネルギー現象を電波で捉える学問です。現代のアマチュア電波天文学は、安価なSDR（ソフトウェア無線）とオープンソースの進化により、個人の手で銀河系の腕やダークマターの証拠を観測できる時代になりました。
-- **強みを活かす**: ソフトウェアエンジニアとしての **プログラミング力・Linux・データパイプライン・自動化・時系列解析** のスキルをフル活用します。
-- **数学・理論の補完**: 数式を単に暗記するのではなく、**「Pythonコードでシミュレーション・可視化しながら、直感と数式を一致させる」** エンジニア的アプローチで着実にステップアップします。
+| 項目 | 値 |
+| :--- | :--- |
+| 観測地 | 東京都（広域代表値: 北緯 35.6895、東経 139.6917、標高 30 m） |
+| アンテナ | 北向きベランダ（2026-09-15 移設）。マグネットホイップを室外機などの金属面に吸着 |
+| 見通せる範囲 | 方位およそ \(270^\circ\)（西）から北を経て \(90^\circ\)（東） |
+| 遮られる範囲 | 南から南西。建物の鉄筋コンクリートがあり、地平線近くの衛星は大きく減衰する |
 
----
+北極上空から日本へ近づく極軌道の衛星は、このベランダの正面に入ります。太陽は東から南を通って西へ沈みます。ベランダは北向きで南側を建物が遮るため、太陽の電波を直接受ける観測には向きません。太陽観測用の `solar-station` はコードとして残しています。
 
-## 🗺️ 5段階 学習ロードマップ
-
-```mermaid
-flowchart TD
-    classDef phase fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef current fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#ffffff;
-
-    P0["<b>Phase 0: SDR環境構築 & ハローワールド</b><br/>ドライバ導入 / Gqrx / 広帯域FM受信"]:::phase
-    P1["<b>Phase 1: 数学 & DSP 基礎 (Python実践)</b><br/>複素数/IQ信号 / FFT / 窓関数 / 放射計方程式"]:::phase
-    P2["<b>Phase 2: 基礎天体・宇宙観測</b><br/>流星電波反射エコー / 太陽電波バースト / 木星電波"]:::phase
-    P3["<b>Phase 3: 21cm 中性水素線 (HI Line) 観測</b><br/>LNA+BPF導入 / 銀河系回転曲線 / ダークマター検証"]:::phase
-    P4["<b>Phase 4: SE力全開の応用 & データ基盤</b><br/>24h常時観測基盤 / パルサー解析 / 電波干渉計理論"]:::phase
-
-    P0 --> P1
-    P1 --> P2
-    P2 --> P3
-    P3 --> P4
-```
-
-### Phase 0: SDR環境構築 & ハローワールド
-- **到達目標**: RTL-SDR v4のハードウェア・ドライバを正しくセットアップし、電波を受信・可視化・復調する体験を得る。
-- **主なトピック**:
-  - RTL-SDR Blog V4 特有のドライバ（HFアップコンバータ対応版）のビルド・導入
-  - GUIツール（Gqrx, SDR++）によるスペクトラムとウォーターフォールの可視化
-  - 広帯域FM（FM放送）の受信と復調
-
-### Phase 1: 数学 & デジタル信号処理 (DSP) 基礎
-- **到達目標**: 複素IQ信号、FFT、窓関数、フィルタリング、ノイズ理論の数学的背景を理解し、Python（NumPy/SciPy/sdr）で自作処理が書ける。
-- **主なトピック**:
-  - **オイラーの公式と直交検波**: $e^{j\theta} = \cos\theta + j\sin\theta$、なぜ複素数が必要なのか（正負の周波数分離）
-  - **サンプリング定理**: ナイキスト周波数、エイリアシング、帯域幅とサンプリングレートの関係
-  - **フーリエ変換**: DFT / FFT、窓関数（Hann, Blackman）によるスペクトル漏れ（Leakage）低減、パワースペクトル密度（PSD）
-  - **熱雑音と放射計方程式**: 白色雑音、Johnson-Nyquistノイズ、長時間の積算（Integration）による微弱信号の抽出
-
-### Phase 2: 基礎天体・宇宙観測（付属アンテナで実践）
-- **到達目標**: 追加の高価な専用アンテナを購入する前に、付属アンテナや簡易自作アンテナで実際の天体・宇宙現象を捉える。
-- **主なトピック**:
-  - **流星電波観測（Meteor Scatter）**: 遠方のFM放送波やビーコン波が流星痕（電離プラズマ）で反射されるエコーの自動検出
-  - **太陽電波バースト（Solar Radio Burst）**: 太陽フレアに伴う広帯域電波（VHF帯 30〜80MHz）の検出と宇宙天気情報との照合
-  - **木星デカメートル電波（Radio JOVE）**: 木星と衛星イオの相互作用による 20.1 MHz 付近の電波バースト観測
-
-### Phase 3: 電波天文学の金字塔 — 21cm 中性水素線（HI Line）観測
-- **到達目標**: 天の川銀河の水素原子スピン反転輝線（1420.405 MHz）を受信し、ドップラー偏移から銀河回転曲線をプロットして暗黒物質（ダークマター）の証拠を確認する。
-- **主なトピック**:
-  - **物理**: 水素原子の超微細構造遷移（21cm線）の放射機構
-  - **ハードウェア**: 1420MHz専用LNA + BPF（SAWbird+ H1等）、ホーンアンテナ（Cantenna）やグリッドパラボラ
-  - **較正（Calibration）**: Cold Sky / Hot Load 較正、Yファクター法
-  - **天文学的解析**: 天球座標変換（赤道座標 $\leftrightarrow$ 銀河座標 $\leftrightarrow$ 地平座標）、局所静止座標系（LSR）へのドップラー速度補正、銀河回転曲線の導出
-
-### Phase 4: SE力全開の応用 & データエンジニアリング
-- **到達目標**: ソフトウェアエンジニアのスキルを最大限に活かした24時間自律観測システムと高度な天体信号処理パイプラインの構築。
-- **主なトピック**:
-  - **エッジ観測基盤**: Raspberry Pi / ミニPC + Docker + RTL-SDR による24時間自動観測デーモン
-  - **データエンジニアリング**: 時系列DB（TimescaleDB / InfluxDB / SQLite）への保存、Grafana / Webダッシュボードによる可視化
-  - **パルサー信号処理**: 星間物質による周波数分散遅延補正（De-dispersion）と周期折りたたみ（Epoch Folding）
-  - **電波干渉計（Interferometry）理論**: 二素子干渉計、開口合成、ファン・シッタート＝ツェルニケの定理とuv空間解析
+米国の気象衛星 NOAA が送っていた APT（画像のアナログ放送）は停波しています。気象画像を受けるときは、ロシアの気象衛星 Meteor-M の LRPT（デジタル画像放送）を使います。
 
 ---
 
-## 📚 厳選教材・リファレンスマトリクス
+## 動いている場所
 
-| 教材・リソース名 | 分野 / 形態 | 主な講義内容・特徴 | 推奨到達目標 / 活用フェーズ |
-| :--- | :--- | :--- | :--- |
-| **[Essential Radio Astronomy (ERA)](https://www.cv.nrao.edu/~scondon/era/)**<br>*(Condon & Ransom / NRAO)* | 基礎理論（英）<br>*(Web / 書籍)* | 放射輸送、ラジオメータ方程式、輝度温度、各種天文放射機構（制動放射、シンクロトロン、HI輝線）の数学的導出 | 電波天文学の天体物理学的背景と定量的理論の完全修得<br>**(Phase 1, 3)** |
-| **シリーズ現代の天文学 第16巻<br>『宇宙の観測II ―電波天文学』**<br>*(日本評論社)* | 基礎・専門（日）<br>*(書籍)* | 日本語による電波天文学の最高峰テキスト。電波望遠鏡、受信機・分光計の構造、HI線・分子線観測、干渉計理論 | 専門用語・物理概念の日本語での網羅的かつ厳密な理解<br>**(Phase 1, 3, 4)** |
-| **『電波天文学』**<br>*(森北出版)* | 基礎入門（日）<br>*(書籍)* | 初学者向けに電波観測の基礎知識からデータ解析までを図版や数式導出を交えて丁寧に解説した実用書 | 電波観測の基本理論と数値計算に必要なパラメータの把握<br>**(Phase 0, 2)** |
-| **シリーズ現代の天文学 第5巻<br>『銀河系』**<br>*(日本評論社)* | 応用・構造（日）<br>*(書籍)* | 銀河系の構造、HI 21cm線の観測解析、星間ガス運動、銀河回転曲線と暗黒物質ハローの物理 | HIスキャンデータの天体物理学的解釈と回転曲線解析の補強<br>**(Phase 3)** |
-| **[PySDR: A Guide to SDR and DSP using Python](https://pysdr.org/)**<br>*(Marc Lichtman)* | DSP / SDR<br>*(Web教科書)* | IQサンプリング、FFT、窓関数、FIR/IIRフィルタ設計、ノイズ特性、Pythonコード例と幾何学的可視化 | SDR固有の離散信号処理アルゴリズムのコード実装力の確立<br>**(Phase 1)** |
-| **[sdr Library](https://github.com/mhostetter/sdr)**<br>*(Matt Hostetter)* | DSPライブラリ<br>*(Python / GitHub)* | Numba高速化によるポリフェーズ・チャネライザ、フィルタ設計、自動利得制御、各種変復調・検出関数 | カスタム分光器・信号処理パイプラインの高速実装<br>**(Phase 1, 4)** |
-| **[DSPIRA / gr-radio_astro](https://github.com/WVU-DSPIRA/gr-radio_astro)**<br>*(WVU / GBO)* | 実践・観測<br>*(GNU Radio / GitHub)* | HI 21cm分光観測用フローグラフ（`spectrometer_w_cal.grc`）、Yファクター絶対校正、宇宙線検出 | 校正済みスペクトルデータの自動取得と感度評価の実現<br>**(Phase 3)** |
-| **[MIT Haystack srt-py](https://github.com/MITHaystack/srt-py)** | 実践・制御<br>*(Python / GitHub)* | 小型電波望遠鏡の制御ソフト、Astropyを用いた天体追尾、スカイマップ描画、ビームパターン測定 | 望遠鏡駆動制御および座標変換・解析パイプラインの自動化<br>**(Phase 3, 4)** |
-| **[CCERA spectro_radiometer](https://github.com/marcusleech/spectro_radiometer)**<br>*(Marcus Leech)* | 実践・分光器<br>*(GNU Radio / C++)* | トータルパワー、相関、差動モードをサポートする軽量分光プログラム。SBC（Raspberry Pi等）対応 | 低消費電力環境におけるリアルタイム電波観測基盤の構築<br>**(Phase 4)** |
+受信機を挿している PC は **GPD Pocket3** で、OS は **Ubuntu 26.04 LTS を直接インストール**したものです。この 1 台の上で、軽量な Kubernetes（[k3s](https://docs.k3s.io/)。制御側の名前は CloudCore）と、[KubeEdge](https://kubeedge.io/docs/architecture/) の EdgeCore（アンテナ側でコンテナを動かす部分）をまとめて動かしています。論理ノードは 2 つで、Kubernetes クラスタは 1 つです。
 
----
+- **アンテナ側（エッジ、`gpd-pocket3-edge`）**: `satellite-tracker-rs` が、衛星が上空を通る時間だけ受信機を開き、音声帯域（48 kHz）の WAV を書きます。通過が終わると [Garage](https://garagehq.deuxfleurs.fr/) へ置き、PC 上のファイルは消します。通過していないときは受信機を閉じます。
+- **同じ PC 上の Kubernetes**: Garage、[Temporal](https://temporal.io/)、[KEDA](https://keda.sh/)、`satellite-analyzer`（待ち時間はコンテナを止めておく）、`satellite-viewer`、監視の Prometheus と Grafana。
 
-## 📖 電波天文学 & SDR 用語集 (Glossary)
+`satellite-viewer` が未解析の録音を見つけると Temporal のワークフローを開始し、KEDA が解析ワーカーを 0 台から起動します。復号した文字列とスペクトログラム（周波数、時間、強さの図）は Garage の `results/` に残ります。
 
-電波天文学・SDR・デジタル信号処理（DSP）の専門用語を、ソフトウェアエンジニアやSRE向けにIT・ネットワークの概念に例えながらわかりやすく解説した用語集を用意しています。
-各用語の詳細な解説は **[docs/00_glossary.md](docs/00_glossary.md)** をご覧ください。
+制御側（CloudCore）を別の PC へ移す構成は、同じ定義ファイルのまま移せるようにしてあります。いまはすべてこの 1 台です。
 
-- **[Bias-T](docs/00_glossary.md#bias-t)**: 同軸ケーブルに「電波」と「DC電源」を重畳してLNAに給電する仕組み（アンテナ線の **PoE**）。
-- **[LNA](docs/00_glossary.md#lna)**: アンテナ直下でノイズを増やさずに微弱電波を増幅する低雑音アンプ。
-- **[21cm線 (HI線)](docs/00_glossary.md#21cm)**: 中性水素原子のスピン反転遷移（1420.405 MHz）。天の川の渦巻き構造を可視化する電波。
-- **[ドップラー効果](docs/00_glossary.md#doppler) & [LSR補正](docs/00_glossary.md#lsr)**: 天体の運動による周波数シフトから速度を逆算し、地球・太陽系の動きを引いて真の速度を求める計算。
-- **[放射計方程式](docs/00_glossary.md#radiometer)**: $\Delta T = \frac{T_{\text{sys}}}{\sqrt{B \tau}}$。長時間の[積算](docs/00_glossary.md#integration)（平均化）によってノイズを圧縮し、微弱シグナルを抽出する原理。
-- **[ウォーターフォール](docs/00_glossary.md#waterfall)**: 横軸=周波数、縦軸=時間、色=強度 で表したリアルタイムヒートマップ。
+Windows の WSL2 で FM ラジオを鳴らした手順は、初日の記録として [docs/05_getting_started.md](docs/05_getting_started.md) に残しています。
 
----
-
-## 📐 ソフトウェアエンジニアのための数学・DSP 要点チートシート
-*(※ 専門用語の詳細は [docs/00_glossary.md](docs/00_glossary.md) を参照)*
-
-### 1. 複素数と[IQ信号（直交検波）](docs/00_glossary.md#iq)
-[SDR](docs/00_glossary.md#sdr)は高周波（RF）信号を中心周波数 $f_c$ でダウンコンバートし、互いに90度位相がずれた2つのベースバンド信号 **I (In-phase: 同相成分)** と **Q (Quadrature: 直交成分)** として複素数形式でサンプリングします。
-
-$$x[n] = I[n] + j Q[n]$$
-
-- **なぜ複素数なのか？**: 実数信号だけをサンプリングすると正の周波数 $+f$ と負の周波数 $-f$ を区別できず（エイリアシング）、帯域幅の半分が無駄になります。複素IQ信号を用いることで、搬送波周波数を中心とした $\pm B/2$ の全帯域を一意に表現できます。
-
-### 2. 離散フーリエ変換 (DFT / [FFT](docs/00_glossary.md#fft)) とパワースペクトル密度 (PSD)
-時間領域の複素サンプリングデータ $x[n]$（$N$ 点）を周波数領域 $X[k]$ に変換します。
-
-$$X[k] = \sum_{n=0}^{N-1} x[n] e^{-j \frac{2\pi}{N} k n}, \quad k = 0, 1, \dots, N-1$$
-
-パワースペクトル密度（PSD: Power Spectral Density）は各周波数ビンにおける電力の強さを表します：
-
-$$P[k] = \frac{1}{N \cdot f_s} |X[k]|^2$$
-
-> 💡 **[窓関数 (Windowing)](docs/00_glossary.md#window)**: 有限長切り出しによる「スペクトル漏れ（Spectral Leakage）」を防ぐため、FFTの前に Hann 窓や Blackman 窓を乗算します。
-
-### 3. [放射計方程式（Radiometer Equation）](docs/00_glossary.md#radiometer)
-宇宙から届く電波は極めて微弱で、受信機内部の熱雑音（Noise）に埋もれています。電波天文学において最も重要な感度限界の式が**放射計方程式**です。
-
-$$\Delta T = \frac{T_{\text{sys}}}{\sqrt{B \cdot \tau}}$$
-
-- $T_{\text{sys}}$: システム雑音温度（受信機、アンテナ、大気の総合ノイズ） $[K]$
-- $B$: 観測帯域幅 $[Hz]$
-- $\tau$: 積分・[積算時間（Integration Time）](docs/00_glossary.md#integration) $[s]$
-- $\Delta T$: 最小検出可能温度（ノイズの標準偏差） $[K]$
-
-> 💡 **ポイント**: 積算時間 $\tau$ を長くすればするほど、ノイズのばらつきは $\frac{1}{\sqrt{\tau}}$ で減少します。これにより、目視では見えない微弱な水素輝線が[積算](docs/00_glossary.md#integration)によって浮かび上がってきます。
-
-### 4. [ドップラー効果](docs/00_glossary.md#doppler)と視線速度
-天体が観測者に対して視線速度 $v$ で移動している場合、観測される周波数 $\nu$ は静止周波数 $\nu_0$（水素線の場合は $1420.40575 \text{ MHz}$）からシフトします。
-
-$$\frac{\Delta \nu}{\nu_0} = \frac{\nu - \nu_0}{\nu_0} \approx -\frac{v}{c} \quad (v \ll c)$$
-
-観測された周波数を速度に変換し、地球の自転・公転運動成分を差し引いて **[局所静止座標系（LSR: Local Standard of Rest）](docs/00_glossary.md#lsr)** に補正することで、銀河系内の中性水素ガスの真の運動速度が得られます。
-
----
-
-## 🛠️ ハードウェア仕様 & 構成
-
-### RTL-SDR Blog V4 仕様概要
-- **ADCチップ**: Realtek RTL2832U（8-bit ADC）
-- **チューナー**: Rafael Micro R828D
-- **受信周波数範囲**: 500 kHz 〜 1.76 GHz
-  - **HF帯 (500kHz〜24MHz)**: 内蔵アップコンバータによるダイレクト受信（V3のようなダイレクトサンプリングモードへの手動切り替え不要）
-- **最大帯域幅**: 2.4 MSPS（安定動作時）〜 3.2 MSPS（ドロップの可能性あり）
-- **TCXO**: 1 PPM 温度補償型水晶発振器（周波数ドリフト極小）
-- **Bias-T**: 4.5V 内蔵（ソフトウェアからON/OFF可能。外付けLNAへの同軸給電が可能）
-- **アンテナ端子**: SMA メス (50 $\Omega$)
-
-### 観測フェーズ別ハードウェア構成
-
-```text
-[Phase 0〜2: 基礎観測]
-RTL-SDR V4 ─── 付属アンテナ / 自作ダイポールアンテナ ─── PC (USB)
-
-[Phase 3: 21cm 水素線観測]
-ホーン/ディッシュアンテナ ─── LNA+BPF (SAWbird+ H1等) ─── RTL-SDR V4 (Bias-T ON) ─── PC
-```
-
----
-
-## 🛰️ 自宅KubeEdgeシステム構成
-
-現行で動いているのは、**GPD Pocket3（Ubuntu 26.04 LTS）1台**の上に [k3s](https://docs.k3s.io/)（コントロールプレーン）と [KubeEdge](https://kubeedge.io/docs/architecture/) の CloudCore / EdgeCore を同居させたクラスタです。論理ノードは2つ（k3s のマスターと `gpd-pocket3-edge`）ですが、Kubernetes クラスタは1つです。
-
-エッジの `satellite-tracker-rs` が RTL-SDR Blog V4 を衛星の可視時間だけ開き、48 kHz の狭帯域 WAV を [Garage](https://garagehq.deuxfleurs.fr/) へ渡します。クラウド側の `satellite-viewer` が未解析の録音を見つけて [Temporal](https://temporal.io/) のワークフローを開始し、[KEDA](https://keda.sh/) が解析ワーカーを 0 から起動します。処理が終わるとワーカーは再び 0 に戻ります。
-
-構成の詳細は [docs/03_system_architecture.md](docs/03_system_architecture.md)、Edge と Cloud の WebSocket / リバーストンネルは [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください。
+全体の図の詳細は [docs/03_system_architecture.md](docs/03_system_architecture.md)、アンテナ側と制御側の通信は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) にあります。
 
 ```mermaid
 flowchart TB
-    subgraph Host["GPD Pocket3 / Ubuntu 26.04 LTS / 1台完結"]
-        direction TB
-
-        subgraph Edge["エッジノード gpd-pocket3-edge（EdgeCore）"]
-            direction TB
-            SDR["RTL-SDR Blog V4"]
-            Tracker["satellite-tracker-rs<br/>通過時のみ受信 / 48 kHz WAV"]
-            EdgeCtl["EdgeHub / MetaManager / Edged"]
-            Proxy["kubeedge-metrics-proxy"]
-            SDR -->|USB| Tracker
-            EdgeCtl -->|"Pod 起動"| Tracker
-        end
-
-        subgraph Cloud["コントロールプレーン（k3s + CloudCore）"]
-            direction TB
-            CC["CloudHub / EdgeController<br/>WebSocket :10000/:10002<br/>CloudStream :10003"]
-            Garage["Garage S3<br/>raw/ 録音 と results/ 成果物"]
-            Viewer["satellite-viewer<br/>NodePort 30088"]
-            Temporal["Temporal Server<br/>gRPC :7233"]
-            KEDA["KEDA"]
-            Worker["satellite-analyzer-worker<br/>普段 0 / 解析時のみ起動"]
-            Graf["Prometheus / Grafana<br/>NodePort 30080"]
-        end
-
-        EdgeCtl -->|"制御メッセージ（アウトバウンド）"| CC
-        Tracker -->|"LOS 後に WAV をアップロード"| Garage
-        Viewer -->|"raw/ の未解析 WAV を検知"| Garage
-        Viewer -->|"AnalyzeSatellitePassWorkflow 開始"| Temporal
-        Temporal -->|"タスクキュー"| KEDA
-        KEDA -->|"0 から 1 へスケール"| Worker
-        Worker -->|"WAV 取得・復号・スペクトログラム保存"| Garage
-        Tracker -.->|"メトリクス :9100"| Graf
-        Proxy -.->|"cAdvisor 中継"| Graf
+    subgraph Balcony["北向きベランダ"]
+        Ant["マグネットホイップ + 金属面"]
     end
 
-    Browser["ブラウザ"] -->|"観測結果"| Viewer
-    Browser -->|"ダッシュボード"| Graf
+    subgraph Pocket["GPD Pocket3 / Ubuntu 26.04 LTS"]
+        SDR["RTL-SDR Blog V4"]
+
+        subgraph Edge["アンテナ側 gpd-pocket3-edge（EdgeCore）"]
+            Tracker["satellite-tracker-rs<br/>通過のあいだだけ 48 kHz WAV"]
+            EdgeCtl["EdgeHub / MetaManager / Edged"]
+        end
+
+        subgraph Cluster["同じPC上の k3s（CloudCore）"]
+            Garage["Garage S3"]
+            Viewer["satellite-viewer<br/>NodePort 30088"]
+            Temporal["Temporal"]
+            KEDA["KEDA"]
+            Worker["satellite-analyzer<br/>待ち時間は 0 台"]
+            Graf["Prometheus / Grafana<br/>NodePort 30080"]
+        end
+    end
+
+    Ant --> SDR
+    SDR -->|USB| Tracker
+    EdgeCtl -->|"Pod の定義"| Tracker
+    Tracker -->|"通過のあと WAV を置く"| Garage
+    Viewer -->|"未解析の WAV を見つける"| Garage
+    Viewer -->|"ワークフロー開始"| Temporal
+    Temporal --> KEDA
+    KEDA -->|"0 台から起動（上限 2）"| Worker
+    Worker -->|"復号とスペクトログラムを残す"| Garage
+    Tracker -.->|"メトリクス"| Graf
 ```
 
-| レイヤー | 実行場所 | 主なワークロード |
+| 処理 | 状態 | 置き場所 |
 | :--- | :--- | :--- |
-| **エッジ観測** | `gpd-pocket3-edge`（EdgeCore） | `satellite-tracker-rs` が RTL-SDR v4 を USB 直結で追尾。非通過時はドングルを閉じ、通過中だけ 48 kHz WAV を書き、LOS 後に Garage の `raw/` へ上げてローカルファイルを消す。`MetaManager` の SQLite キャッシュにより、k3s 停止中も Pod の稼働を続ける。 |
-| **オブジェクトストレージ** | k3s（CloudCore 側） | Garage S3（S3 API `:3900` / NodePort `30900`）。バケット `satellite-recordings` の `raw/` に一時録音、`results/` に `summary.json`・パケット JSON・スペクトログラム PNG。 |
-| **解析オーケストレーション** | k3s（CloudCore 側） | `satellite-viewer` が `raw/` を走査して Temporal へワークフローを投入。KEDA は viewer の `/api/pending-tasks` を見て `satellite-analyzer-worker` を 0 から起動する（上限 2）。 |
-| **監視** | k3s（CloudCore 側） | kube-prometheus-stack。Grafana は NodePort `30080`。エッジの cAdvisor は `kubeedge-metrics-proxy` 経由でスクレイプする。 |
+| `satellite-tracker-rs` | 通過のあいだだけ受信機を開く | アンテナ側の Pod |
+| Garage / Temporal / KEDA / `satellite-analyzer` / `satellite-viewer` | 録音の保存、解析、表示 | 同じ PC 上の Kubernetes |
+| `kubeedge-metrics-proxy` | アンテナ側の CPU とメモリを Prometheus へ中継 | アンテナ側 |
+| Prometheus / Grafana | 監視。Grafana は NodePort 30080 | 同じ PC 上の Kubernetes |
+| `solar-station` | コードは残している。北向きベランダから太陽は直接見えない | `apps/ground-station` |
+
+21cm 水素線を常時分光して貯める処理（生の IQ を 1 秒積算し、約 8 KB/s で保存する構成）は、このリポジトリでは動いていません。水素線の式は [docs/02_radio_astronomy_guide.md](docs/02_radio_astronomy_guide.md) に参照として残しています。
 
 ---
 
-## 🚀 クイックスタート
+## リポジトリにあるもの
 
-### 1. RTL-SDR Blog V4 ドライバのインストール (Linux)
-RTL-SDR Blog V4 は R828D チューナーとHFアップコンバータを搭載しているため、**RTL-SDR Blog公式の修正ドライバ**が必要です（標準のOSパッケージの旧ドライバではV4が認識されない場合があります）。
+| パス | 役割 |
+| :--- | :--- |
+| `apps/satellite-tracker-rs` | アンテナ側の追尾。北向きから見える方位かを判定し、通過中だけ受信機を開いて 48 kHz の WAV を Garage へ置く |
+| `apps/satellite-analyzer` | Temporal のワーカー。パケットの復号とスペクトログラムを作る |
+| `apps/satellite-viewer` | 録音と解析結果をブラウザで見る。未解析の WAV を見つけるとワークフローを開始する。NodePort 30088 |
+| `apps/kubeedge-metrics-proxy` | アンテナ側コンテナの CPU とメモリを Prometheus へ中継する |
+| `apps/satellite-tracker` | 同じ追尾の、先に書いた Python 版 |
+| `apps/ground-station` | Rust の地上局クレート。通過予測、復調、成否の記録、`solar-station` を含む |
+| `infrastructure/kubeedge` | k3s と CloudCore / EdgeCore |
+| `infrastructure/monitoring` | kube-prometheus-stack |
+| `infrastructure/storage/garage` | Garage S3 |
+| `infrastructure/apps` | Temporal、tracker、analyzer のマニフェスト |
+| `docs/qa/` | 見通し、復調、KubeEdge の個別解説 |
+| `docs/articles/` | 「ベランダ電波観測所」連載の原稿 |
+
+`satellite-tracker-rs` が最初から知っている衛星は、ISS（145.825 MHz の APRS パケット）、METEOR-M2 4、FUNcube-1 です。`ground-station` のリストには、これに加えて XW-2A、CAS-4A、UmKA-1、SONATE-2、SO-50 があります。
+
+---
+
+## ハードウェア
+
+RTL-SDR Blog V4 を使います。仕様の一次情報は [RTL-SDR Blog V4 Users Guide](https://www.rtl-sdr.com/rtl-sdr-blog-v4-users-guide/) と [rtlsdrblog/rtl-sdr-blog](https://github.com/rtlsdrblog/rtl-sdr-blog) です。
+
+- ADC: Realtek RTL2832U（8-bit）
+- チューナー: Rafael Micro R828D
+- 受信範囲: 500 kHz 〜 1.76 GHz（HF は内蔵アップコンバータ）
+- 安定して使うサンプリング: 2.4 MSPS まで
+- TCXO: 1 ppm
+- Bias-T: 4.5 V（ソフトウェアで ON/OFF）
+- アンテナ端子: SMA メス（50 Ω）
+
+Ubuntu のパッケージ `rtl-sdr` は、1 世代前の V3（チューナー R820T）向けです。いま使っている V4（チューナー R828D）では、公式ドライバを自分でビルドします。入れていないと `[R82XX] PLL not locked!` が出て、指定した周波数に同調できません。
+
+ベランダのアンテナは、付属のマグネット式ホイップ（棒状のアンテナ）を、室外機の天板などの金属面に付けたものです。アンテナとしてはモノポールで、金属面が地面側の導体（グラウンドプレーン）になります。金属面に付けないと、給電点のインピーダンスが合わず、感度が落ちます。
+
+---
+
+## クイックスタート
+
+### 1. V4 対応ドライバ（Ubuntu）
 
 ```bash
-# 依存パッケージのインストール
 sudo apt update
 sudo apt install -y build-essential cmake libusb-1.0-0-dev git pkg-config
 
-# RTL-SDR Blog V4 対応ドライバのクローンとビルド
 git clone https://github.com/rtlsdrblog/rtl-sdr-blog.git
 cd rtl-sdr-blog
 mkdir build && cd build
@@ -279,86 +141,82 @@ make
 sudo make install
 sudo ldconfig
 
-# デフォルトのDVB-Tカーネルモジュールをブラックリスト化
 echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf
-
-# 再起動またはudevリロード
 sudo udevadm control --reload-rules
 sudo udevadm trigger
-```
 
-### 2. Python 開発環境のセットアップ
-本リポジトリでは Python 3.10+ を推奨します。
-
-```bash
-# 仮想環境の作成と有効化
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 依存ライブラリの一括インストール
-pip install -U pip setuptools wheel
-pip install -r requirements.txt
-```
-
-### 3. 動作確認 (SDR ハローワールド)
-
-```bash
-# 接続確認
 rtl_test -t
-
-# Jupyter Lab の起動 (ノートブックで学習開始)
-jupyter lab
 ```
 
-### 4. KubeEdge 観測パイプラインの確認
-クラスタのマニフェストは `infrastructure/` にあります。手順の入口は [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) と [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) です。
+`Found Rafael Micro R828D tuner` が出れば認識できています。末尾の `No E4000 tuner found, aborting.` は、このコマンドが E4000 用の試験で終わっているだけで、故障ではありません。
+
+KubeEdge のコンテナから受信機を開くときの udev ルールと、カーネル標準ドライバの無効化は [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) にまとめてあります。
+
+### 2. KubeEdge の観測パイプライン
+
+クラスタの定義は `infrastructure/` にあります。手順の入口は [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) です。
 
 ```bash
-# 論理ノード（k3s マスターと gpd-pocket3-edge）と Pod の確認
 kubectl get nodes
 kubectl get pods -A
 ```
 
 ブラウザからは次の NodePort に接続します。
 
-- 観測ビューア（`satellite-viewer`）: `30088`（定義は [infrastructure/viewer/viewer.yaml](infrastructure/viewer/viewer.yaml)）
-- Grafana: `30080`（定義は [infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml](infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml)）
+- 観測ビューア（`satellite-viewer`）: `30088`（[infrastructure/viewer/viewer.yaml](infrastructure/viewer/viewer.yaml)）
+- Grafana: `30080`（[infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml](infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml)）
+
+アンテナ側の追尾は `apps/satellite-tracker-rs`、解析の設計は [docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md](docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md) にあります。北向きベランダで UHF 帯の CubeSat（超小型衛星）を優先する理由は [docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md) にあります。
 
 ---
 
-## 📁 ディレクトリ構成
+## 資料の読み分け
+
+いまの運用と実装を知るときは、ここから読みます。
+
+- [docs/03_system_architecture.md](docs/03_system_architecture.md) — 1 台にまとめた KubeEdge と、いま動かしている処理
+- [docs/04_qa.md](docs/04_qa.md) — 質疑の索引。長い解説は `docs/qa/`
+- [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) — k3s と EdgeCore の導入
+- [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) — 制御側とアンテナ側の手順への目次
+
+式と用語の参照用です。21cm 中性水素線と銀河の回転曲線は、いまのベランダ観測（KubeEdge 上の衛星受信）の手順とは別に残している資料です。
+
+- [docs/00_glossary.md](docs/00_glossary.md) — SDR と電波天文学の用語
+- [docs/01_math_and_dsp_cheatsheet.md](docs/01_math_and_dsp_cheatsheet.md) — IQ、FFT、窓関数、雑音
+- [docs/02_radio_astronomy_guide.md](docs/02_radio_astronomy_guide.md) — 21cm 線、座標系、ドップラー、銀河回転
+
+連載原稿と初日の手順は、その時点の記録です。
+
+- [docs/articles/qiita_rtl_sdr_v4_getting_started.md](docs/articles/qiita_rtl_sdr_v4_getting_started.md) — #1 WSL2 で受信するまで
+- [docs/articles/qiita_kubeedge_satellite_tracker.md](docs/articles/qiita_kubeedge_satellite_tracker.md) — #2 Ubuntu を直接インストールして衛星を追う
+- [docs/articles/qiita_kubeedge_pipeline.md](docs/articles/qiita_kubeedge_pipeline.md) — #3 Rust 版の受信と、必要なときだけ起動する解析
+
+---
+
+## ディレクトリ構成
 
 ```text
-radio-astronomy/
-├── README.md                          # 本ドキュメント
-├── Cargo.toml                         # Rust ワークスペース設定
-├── mise.toml                          # ツールバージョン管理 (mise)
-├── apps/                              # 観測ワークロード
-│   ├── satellite-tracker-rs/          # エッジ現行: 衛星追尾・48 kHz WAV・Garage アップロード
-│   ├── satellite-analyzer/            # クラウド: パケット復号とスペクトログラム（0 スケール）
-│   ├── satellite-viewer/              # クラウド: 観測ビューアと Temporal 投入
-│   ├── kubeedge-metrics-proxy/        # エッジ: cAdvisor メトリクスの中継
-│   ├── satellite-tracker/             # 旧 Python 版トラッカー
-│   └── ground-station/                # ローカル実験用の地上局クレート
-├── infrastructure/                    # KubeEdge / k3s マニフェスト
-│   ├── kubeedge/                      # CloudCore・EdgeCore の導入手順
-│   ├── apps/                          # satellite-tracker / analyzer / Temporal
-│   ├── storage/garage/                # Garage S3
-│   ├── keda/                          # KEDA
-│   ├── viewer/                        # satellite-viewer（NodePort 30088）
-│   ├── monitoring/                    # kube-prometheus-stack（Grafana NodePort 30080）
-│   └── registry/                      # ローカルコンテナイメージレジストリ
-├── docs/                              # 数学・DSP・電波天文学の解説と構成図
-│   ├── 00_glossary.md                 # 用語集
-│   ├── 03_system_architecture.md      # 現行 KubeEdge 構成図
-│   ├── 04_qa.md                       # 質疑応答
-│   └── qa/13_kubeedge_architecture_and_edge_cloud_communication.md
-└── scripts/                           # パイプライン検証スクリプト
+.
+├── README.md
+├── GEMINI.md
+├── Cargo.toml                         # workspace: ground-station, satellite-tracker-rs
+├── apps/
+│   ├── satellite-tracker-rs/          # アンテナ側の追尾（Rust）
+│   ├── satellite-analyzer/            # Temporal 解析ワーカー
+│   ├── satellite-viewer/              # 観測結果ビューア
+│   ├── kubeedge-metrics-proxy/
+│   ├── satellite-tracker/             # アンテナ側の追尾（Python、先に書いた版）
+│   └── ground-station/                # Rust 地上局と solar-station
+├── infrastructure/                    # kubeedge, monitoring, garage, temporal, keda
+├── docs/
+│   ├── 00_glossary.md
+│   ├── 01_math_and_dsp_cheatsheet.md
+│   ├── 02_radio_astronomy_guide.md    # 21cm 線の背景資料
+│   ├── 03_system_architecture.md
+│   ├── 04_qa.md
+│   ├── 05_getting_started.md          # 初日の WSL2 手順（記録）
+│   ├── qa/
+│   ├── articles/
+│   └── setup/
+└── scripts/
 ```
-
-
----
-
-## 📄 ライセンス
-
-本リポジトリのコードおよびドキュメントは [MIT License](LICENSE) のもとで公開されています。
