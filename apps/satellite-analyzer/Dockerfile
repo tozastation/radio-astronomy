@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     satdump \
     satdump-data \
+    gnuradio \
     gr-satellites \
     direwolf \
     python3 \
