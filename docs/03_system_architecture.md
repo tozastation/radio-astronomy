@@ -1,118 +1,145 @@
-# 🛰️ 自宅KubeEdge電波天文学システム構成図
+# ベランダ電波観測所のシステム構成
 
-本ドキュメントでは、**GPD Pocket3（Ubuntu 26.04 LTS）** を活用し、CNCF **KubeEdge** を中核に据えた「**エッジ完結・自律稼働型 電波観測基盤**」のシステム構成を定義します。  
-初期PoCフェーズでは、**GPD Pocket3 単一ホスト上に CloudCore（k3s）と EdgeCore を同居** させ、超軽量な **kube-prometheus-stack** による監視基盤を含めて1台で動作検証を行い、将来的に物理2台（別PCへのコントロールプレーン分離）へシームレスにスケールアウトできる設計を採用します。  
-*(※ 不明な用語やハードウェア構成要素は [00_glossary.md](00_glossary.md) を、KubeEdge の内部通信コンポーネントの詳細は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください)*
+この文書は、北向きベランダのすぐ内側に置いた **GPD Pocket3（Ubuntu 26.04 LTS）** で、KubeEdge を使って電波を受信するいまの構成です。
+
+受信と、保存・解析・監視は、同じ PC の中で役割を分けています。制御側（CloudCore）を別の PC へ移すときも、アンテナ側（EdgeCore）の参加手順はそのまま使えます。いまは 1 台にまとめています。
+
+用語は [00_glossary.md](00_glossary.md)、アンテナ側と制御側の通信は [qa/13_kubeedge_architecture_and_edge_cloud_communication.md](qa/13_kubeedge_architecture_and_edge_cloud_communication.md) にあります。
 
 ---
 
-## 1. 全体アーキテクチャ図（GPD Pocket3 単一ホスト PoC 構成）
+## 1. いま動かしている処理
+
+USB の受信機は 1 台です。`apps/ground-station/config.toml` の案A（いまの運用）では、受信機を ADS-B が専有します。ADS-B は、航空機が 1090 MHz で送る位置情報です。
+
+| 処理 | 状態 | 置き場所 |
+| :--- | :--- | :--- |
+| Ultrafeeder（受信エンジン readsb と地図画面 tar1090） | いま動かす。1090 MHz を専有。ポート 18090 | `docker-compose.yaml` |
+| `ground-station` の航空機通知 | いま動かす。Ultrafeeder の JSON を HTTP で読む | `apps/ground-station` |
+| `satellite-tracker-rs` | 実装済み。案Aのあいだは受信機を使わない | アンテナ側の Pod |
+| Garage / Temporal / KEDA / `satellite-analyzer` / `satellite-viewer` | 実装済み。衛星の通過録音を解析し、中身を見る経路 | 同じ PC 上の Kubernetes |
+| `solar-station` | コードは残している。北向きベランダから太陽は直接見えないので、いまの観測には入れていない | `apps/ground-station` |
+
+21cm 水素線を常時分光して貯める処理（生の IQ を 1 秒積算し、約 8 KB/s で保存する構成）は、このリポジトリでは動いていません。水素線の式は [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md) に参照として残しています。
+
+---
+
+## 2. 全体図（GPD Pocket3 の 1 台）
 
 ```mermaid
 flowchart TB
-    subgraph HostBox["🖥️ GPD Pocket3 (Ubuntu 26.04 LTS: 1台完結PoC環境)"]
+    subgraph HostBox["GPD Pocket3 (Ubuntu 26.04 LTS)"]
         direction TB
 
-        subgraph EdgeArea["エッジ観測レイヤー (EdgeCore)"]
+        subgraph EdgeArea["アンテナ側 (EdgeCore)"]
             direction TB
-            Antenna["📡 アンテナ (付属 / 21cmホーン / ダイポール)"]
-            LNA["⚡ LNA + BPF (1420MHz / 偏波器)"]
-            RTLSDR["📻 RTL-SDR Blog V4 (Bias-T ON)"]
+            Antenna["北向きベランダのホイップ<br/>金属面が地面側の導体"]
+            RTLSDR["RTL-SDR Blog V4"]
 
-            subgraph EdgeCoreBox["KubeEdge: EdgeCore (エッジデーモン)"]
-                EdgeHub["🔌 EdgeHub<br/>(WebSocket クライアント)"]
-                EdgeStream["🚇 EdgeStream<br/>(リバーストンネル クライアント)"]
-                MetaManager["🗄️ MetaManager<br/>(ローカル SQLite キャッシュ)"]
-                Edged["⚙️ Edged<br/>(軽量 Kubelet / CRI containerd)"]
+            subgraph EdgeCoreBox["KubeEdge EdgeCore"]
+                EdgeHub["EdgeHub"]
+                EdgeStream["EdgeStream"]
+                MetaManager["MetaManager (SQLite)"]
+                Edged["Edged (containerd)"]
             end
 
-            SDR_Pod["⚡ sdr-collector Pod (Rust / C / Python)<br/>2.4MSPS IQ受信 / リアルタイムFFT<br/>1秒積算スペクトル生成 (8KB/s圧縮)"]
-            EdgeDB["💾 Edge Storage (DuckDB / Parquet)<br/>ローカルNVMe SSD常時蓄積 / SQL対応"]
+            ADSB["Ultrafeeder<br/>1090 MHz / tar1090 :18090<br/>案Aでは受信機を使用"]
+            Tracker["satellite-tracker-rs<br/>上空通過のあいだだけ 48 kHz WAV"]
 
-            Antenna --> LNA --> RTLSDR -->|USB| SDR_Pod
-            SDR_Pod -->|"8KB/s 保存"| EdgeDB
-            Edged -->|"Pod管理・死活監視"| SDR_Pod
-            MetaManager -->|"オフライン時ローカル起動情報"| Edged
+            Antenna --> RTLSDR
+            RTLSDR --> ADSB
+            RTLSDR -.-> Tracker
+            Edged --> Tracker
+            MetaManager --> Edged
         end
 
-        subgraph CloudArea["クラウド・管理レイヤー (k3s / CloudCore)"]
+        subgraph CloudArea["同じPC上の Kubernetes (k3s / CloudCore)"]
             direction TB
-            
-            subgraph K8sControl["Kubernetes (k3s) コントロールプレーン"]
-                APIServer["☸️ K8s API Server / etcd"]
+
+            subgraph K8sControl["k3s"]
+                APIServer["API Server / etcd"]
             end
 
-            subgraph CloudCoreBox["KubeEdge: CloudCore"]
-                EdgeController["🔄 EdgeController<br/>(API Server イベント監視 & 反映)"]
-                CloudHub["🌐 CloudHub<br/>(WebSocket サーバ: :10000/:10002)"]
-                CloudStream["🚪 CloudStream<br/>(トンネル受付: :10003 / logs・exec中継)"]
+            subgraph CloudCoreBox["KubeEdge CloudCore"]
+                EdgeController["EdgeController"]
+                CloudHub["CloudHub :10000/:10002"]
+                CloudStream["CloudStream :10003"]
             end
 
             APIServer <--> EdgeController
             EdgeController <--> CloudHub
             APIServer <--> CloudStream
 
-            subgraph MonitoringStack["超軽量 監視スタック (kube-prometheus-stack)"]
-                Prometheus["📈 Prometheus (Memory 256Mi-512Mi / 30s間隔)"]
-                Grafana["📊 Grafana (Memory 100Mi-200Mi / WebUI :3000)"]
+            Garage["Garage S3"]
+            Temporal["Temporal + KEDA"]
+            Worker["satellite-analyzer<br/>待ち時間は停止"]
+            Viewer["satellite-viewer"]
+
+            subgraph MonitoringStack["kube-prometheus-stack"]
+                Prometheus["Prometheus"]
+                Grafana["Grafana"]
             end
 
-            Prometheus -->|"メトリクス可視化"| Grafana
-            Prometheus -->|"内部スクレイプ"| APIServer
-            Prometheus -->|"ホストメトリクス収集"| Edged
+            Tracker -->|"上空通過のあとアップロード"| Garage
+            Viewer --> Garage
+            Temporal --> Worker
+            Prometheus --> Grafana
         end
 
-        %% ホスト内相互通信
-        EdgeHub -->|"① WebSocket 接続 (:10000/:10002)"| CloudHub
-        EdgeStream -->|"② リバーストンネル確立 (:10003)"| CloudStream
+        EdgeHub --> CloudHub
+        EdgeStream --> CloudStream
     end
-
-    DevCLI["🖥️ 開発・運用 CLI / UI (同一ホスト)<br/>kubectl / k9s / VS Code / ブラウザ"]
-    DevCLI --> APIServer
-    DevCLI --> Grafana
-    DevCLI --> EdgeDB
 ```
 
----
-
-## 2. なぜ電波天文学に「KubeEdge」なのか？（SRE的メリット）
-
-1. **GPD Pocket3（1台完結）での安全な検証と自律性**:
-   - GPD Pocket3 上の `edgecore` は、クラウドコンポーネント（k3s / CloudCore）がメンテナンスやリソース逼迫で停止しても、ローカルキャッシュ（`MetaManager` / SQLite）を使って **Podの稼働を自律的に継続** します。
-   - 観測デーモン（SDR受信・積算）はコントロールプレーンの状態に引きずられず、**1秒も欠損することなくGPD Pocket3のSSDにデータを記録** し続けます。
-2. **クラウド復帰時の自動ステータス同期**:
-   - `cloudcore` が再起動すると、エッジ側の `EdgeHub` が自動再接続し、ノードのヘルスチェックや設定（ConfigMap/Secret）が即座に再同期されます。
-3. **エッジでの極小データフットプリント**:
-   - 生[IQデータ](00_glossary.md#iq)（4.8 MB/s = 415 GB/日）をエッジ内で即座に[FFT](00_glossary.md#fft) & 1秒[積算](00_glossary.md#integration)し、**8 KB/s（約 20 MB/日）のスペクトルデータに圧縮**。
-   - GPD Pocket3 の内蔵SSDだけで **数年分の観測データをローカル完結で蓄積** できます。
-4. **NAT超え・リバースアクセス（CloudStream / EdgeStream）**:
-   - 将来別のPCへCloudCoreを切り離した場合でも、エッジ側ルーターのポートフォワーディングなしに `kubectl logs` や `kubectl exec` が透過的に利用可能です。
+衛星が通り終わったあとの解析（Garage へのアップロード、Temporal、KEDA がワーカーを 0 台から 1 台にする流れ）は [qa/16_edge_computing_power_consumption_and_footprint.md](qa/16_edge_computing_power_consumption_and_footprint.md) と [superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md](superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md) にあります。
 
 ---
 
-## 3. レイヤー別 役割分担マトリクス
+## 3. この観測に KubeEdge を使う理由
 
-| レイヤー | 実行場所 | 担当コンポーネント | 役割とリソースポリシー |
+1. **制御側が止まっても受信を続ける**
+   - EdgeCore は、コンテナの定義を MetaManager の SQLite（`/var/lib/kubeedge/edgecore.db`）に持っています。k3s や CloudCore が止まっても、アンテナ側は前回のコンテナを動かしたままにします。
+2. **制御側が戻ったら状態を合わせる**
+   - CloudCore が戻ると EdgeHub が再接続し、ノードの状態と ConfigMap、Secret を同期します。
+3. **生の IQ をディスクに貯めない**
+   - 2.4 MSPS の複素 IQ（8 bit）は、およそ 4.8 MB/s です。常時保存すると、アンテナ側の SSD が先にいっぱいになります。
+   - 衛星側は、上空通過のあいだだけ音声帯域（48 kHz）の WAV を書き、Garage へ置いたあと PC 上のファイルを消します。通過していないときは受信機を閉じます。
+   - 案Aの ADS-B は、Ultrafeeder が復調した結果を JSON で配ります。IQ のファイルは残りません。
+4. **アンテナ側から外向きの接続だけで操作する**
+   - CloudStream と EdgeStream を使うと、アンテナ側で待ち受けポートを開けなくても `kubectl logs` と `kubectl exec` が通ります。CloudCore を別 PC へ移しても、接続の向きは同じです。
+
+一次情報は [KubeEdge](https://kubeedge.io/)、[keadm の導入手順](https://kubeedge.io/docs/setup/install-with-keadm/)、[k3s](https://docs.k3s.io/) です。
+
+---
+
+## 4. レイヤー別の役割
+
+| 層 | 実行場所 | コンポーネント | 役割 |
 | :--- | :--- | :--- | :--- |
-| **エッジ観測レイヤー** | GPD Pocket3 (Ubuntu 26.04) | **KubeEdge: EdgeCore**<br>・`EdgeHub`, `EdgeStream`<br>・`MetaManager` (SQLite)<br>・`Edged` (containerd)<br>・`sdr-collector` Pod<br>・DuckDB / Parquet | **【常時自律観測】**<br>・RTL-SDR v4 直結（Bias-TでLNA給電）。<br>・リアルタイムFFT・1秒積算を実行。<br>・k3sやPrometheusの負荷に関わらず優先度高く稼働。 |
-| **クラウド管理レイヤー** | GPD Pocket3 (Ubuntu 26.04) | **KubeEdge: CloudCore & k3s**<br>・k3s API Server / etcd<br>・`CloudHub`, `CloudStream`, `EdgeController` | **【コントロールプレーン】**<br>・エッジノードのライフサイクルと構成管理。<br>・将来のマルチノード化にもそのまま対応。 |
-| **監視・運用レイヤー** | GPD Pocket3 (Ubuntu 26.04) | **kube-prometheus-stack (超軽量)**<br>・Prometheus (Memory 256Mi〜512Mi)<br>・Grafana (Memory 100Mi〜200Mi)<br>・node-exporter | **【リソース・観測可視化】**<br>・スペック最低要件チューニングによりCPU/メモリ消費を極小化。<br>・観測SSD残量、SDR温度、DSP負荷をリアルタイムダッシュボード表示。 |
+| アンテナ側の受信 | GPD Pocket3 | EdgeCore、Ultrafeeder、`satellite-tracker-rs` | 案Aでは 1090 MHz を受信し続ける。衛星へ戻すときは、上空通過のあいだだけ受信機を開く |
+| 地上局 | GPD Pocket3 | `ground-station` | 航空機 JSON から近さを判定し、Discord と VOICEVOX へ通知する。朝の衛星スケジュールは案Aでは止めている |
+| 制御 | 同じ PC の k3s | CloudCore、API Server | ノードとコンテナの定義。別 PC へ分けたあとも、制御はここが担う |
+| 解析 | 同じ PC の k3s | Garage、Temporal、KEDA、`satellite-analyzer`、`satellite-viewer` | 通過が終わったあとだけワーカーを 1 台にし、復号した文字列とスペクトログラムを残す |
+| 監視 | 同じ PC の k3s | kube-prometheus-stack | 受信機を載せたノードの負荷と、追尾プログラムのメトリクス |
+
+導入手順は [setup/03_kubeedge_deployment_guide.md](setup/03_kubeedge_deployment_guide.md) と [../infrastructure/kubeedge/README.md](../infrastructure/kubeedge/README.md) です。
 
 ---
 
-## 4. 推奨インフラ ディレクトリ構成
+## 5. インフラのディレクトリ
 
 ```text
 infrastructure/
 ├── kubeedge/
-│   ├── cloud/                          # k3s および CloudCore セットアップ手順・設定
-│   │   ├── README.md
-│   │   └── k3s-config.yaml
-│   └── edge/                           # EdgeCore セットアップ手順・設定
-│       ├── README.md
-│       └── edgecore.yaml
-└── monitoring/
-    └── kube-prometheus-stack/          # 超軽量モニタリング設定
-        ├── README.md                   # Helm インストールガイド
-        └── values-minimal.yaml         # スペック最低要件用 values 定義
+│   ├── cloud/                          # k3s と CloudCore
+│   └── edge/                           # EdgeCore
+├── monitoring/
+│   └── kube-prometheus-stack/
+├── storage/garage/                     # 録音と解析結果の S3
+├── apps/
+│   ├── temporal/
+│   ├── satellite-tracker/
+│   └── satellite-analyzer/             # KEDA ScaledObject を含む
+├── keda/
+└── viewer/
 ```
