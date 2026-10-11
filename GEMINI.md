@@ -18,19 +18,20 @@
     3. **展開ステップ・直感イメージ**: 高校数学〜大学初年級の数学（三角関数、複素数、ベクトル、微積分等）や基礎物理で追える途中式の展開や幾何学的・物理的直感イメージの補足。
   - **作業ペース**: 一方的に進めず、必ずユーザーの承認や確認を挟みながら1ステップずつ進める。
 
-## 🏗️ システムアーキテクチャ (GPD Pocket3 1台完結PoC ＆ 将来分散構想)
-- **エッジ観測・管理ホスト (GPD Pocket3: Ubuntu 26.04 LTS)**:
-  - アンテナ直下に設置。RTL-SDR v4 から2.4MSPSのIQ信号を受信。
-  - エッジDSP（高速FFT & 1秒積算）によりデータを 8 KB/s に圧縮。
-  - **初期PoCフェーズ**: GPD Pocket3 単一端末上で k3s (`cloudcore`) と `edgecore` を同居させ、超軽量 `kube-prometheus-stack` を含めて完全自律稼働と監視を検証。
-  - ローカルストレージ（DuckDB / SQLite / Parquet）に常時蓄積。
-  - **将来分散フェーズ**: 分析専用PC（Ubuntu）追加時に、CloudCore を切り離してシームレスに2台体制（エッジ常時稼働 + オンデマンド分析）へ拡張可能。
+## 🏗️ システムアーキテクチャ（現行は KubeEdge 上の衛星観測パイプラインのみ）
+- **ホスト**: GPD Pocket3（Ubuntu 26.04 LTS）1台。k3s（CloudCore）と EdgeCore が論理ノードとして同居する。Kubernetes クラスタは1つ。
+- **エッジ (`gpd-pocket3-edge`)**: `satellite-tracker-rs`。RTL-SDR v4 を衛星の可視時間だけ開き、48 kHz WAV を Garage S3 の `raw/` へアップロードしてローカルファイルを削除する。MetaManager の SQLite により、k3s 停止中も Pod は継続する。
+- **クラウド側ワークロード**: Garage S3、Temporal、KEDA、`satellite-analyzer-worker`（普段 0 レプリカ）、`satellite-viewer`（NodePort 30088）、kube-prometheus-stack / Grafana（NodePort 30080）。
+- **データフロー**: viewer が未解析 WAV を検知して Temporal ワークフローを開始し、KEDA が解析ワーカーを 0 から起動する。成果物は `results/` の JSON とスペクトログラム PNG。
+- **現行構成に含めないもの**: ADS-B / tar1090（Ultrafeeder）、旧来の 8 KB/s DuckDB コレクタ、Jupyter を常駐させた分析ノード。
+- **将来**: 分析用 PC へ CloudCore を移し、EdgeCore の接続先変更だけで物理分離できる。
+- **詳細**: [docs/03_system_architecture.md](docs/03_system_architecture.md)。
 
 ## 🛠️ 技術スタック
 - **データ分析 & 天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
 - **エッジDSP / コレクター**: Rust / C / Python (`librtlsdr`, `sdr`, `rustfft`)
-- **ストレージ & DB**: DuckDB, Parquet, SQLite, TimescaleDB, MinIO
-- **可視化 & 運用**: Grafana, Prometheus, JupyterLab, KubeEdge, k3s, kubectl, k9s
+- **ストレージ & DB**: Garage S3, SQLite（MetaManager / Temporal）, Parquet
+- **可視化 & 運用**: Grafana, Prometheus, satellite-viewer, Temporal, KEDA, KubeEdge, k3s, kubectl, k9s
 
 ## 📝 コミットルール
 - 日本語で記述する

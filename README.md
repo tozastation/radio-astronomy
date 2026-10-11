@@ -28,12 +28,12 @@
   - [🛠️ ハードウェア仕様 \& 構成](#️-ハードウェア仕様--構成)
     - [RTL-SDR Blog V4 仕様概要](#rtl-sdr-blog-v4-仕様概要)
     - [観測フェーズ別ハードウェア構成](#観測フェーズ別ハードウェア構成)
-  - [🛰️ 自宅Kubernetesシステム構成](#️-自宅kubernetesシステム構成)
+  - [🛰️ 自宅KubeEdgeシステム構成](#️-自宅kubeedgeシステム構成)
   - [🚀 クイックスタート](#-クイックスタート)
     - [1. RTL-SDR Blog V4 ドライバのインストール (Linux)](#1-rtl-sdr-blog-v4-ドライバのインストール-linux)
     - [2. Python 開発環境のセットアップ](#2-python-開発環境のセットアップ)
     - [3. 動作確認 (SDR ハローワールド)](#3-動作確認-sdr-ハローワールド)
-    - [4. 太陽電波観測ステーション (solar-station) の起動](#4-太陽電波観測ステーション-solar-station-の起動)
+    - [4. KubeEdge 観測パイプラインの確認](#4-kubeedge-観測パイプラインの確認)
   - [📁 ディレクトリ構成](#-ディレクトリ構成)
   - [📄 ライセンス](#-ライセンス)
 
@@ -54,7 +54,7 @@ flowchart TD
     classDef phase fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
     classDef current fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#ffffff;
 
-    P0["<b>Phase 0: SDR環境構築 & ハローワールド</b><br/>ドライバ導入 / Gqrx / FM・航空無線ADS-B受信"]:::phase
+    P0["<b>Phase 0: SDR環境構築 & ハローワールド</b><br/>ドライバ導入 / Gqrx / 広帯域FM受信"]:::phase
     P1["<b>Phase 1: 数学 & DSP 基礎 (Python実践)</b><br/>複素数/IQ信号 / FFT / 窓関数 / 放射計方程式"]:::phase
     P2["<b>Phase 2: 基礎天体・宇宙観測</b><br/>流星電波反射エコー / 太陽電波バースト / 木星電波"]:::phase
     P3["<b>Phase 3: 21cm 中性水素線 (HI Line) 観測</b><br/>LNA+BPF導入 / 銀河系回転曲線 / ダークマター検証"]:::phase
@@ -72,7 +72,6 @@ flowchart TD
   - RTL-SDR Blog V4 特有のドライバ（HFアップコンバータ対応版）のビルド・導入
   - GUIツール（Gqrx, SDR++）によるスペクトラムとウォーターフォールの可視化
   - 広帯域FM（FM放送）の受信と復調
-  - 航空機位置情報（ADS-B 1090MHz, `readsb` / `dump1090`）の受信・パケット解析
 
 ### Phase 1: 数学 & デジタル信号処理 (DSP) 基礎
 - **到達目標**: 複素IQ信号、FFT、窓関数、フィルタリング、ノイズ理論の数学的背景を理解し、Python（NumPy/SciPy/sdr）で自作処理が書ける。
@@ -205,26 +204,59 @@ RTL-SDR V4 ─── 付属アンテナ / 自作ダイポールアンテナ ─�
 
 ## 🛰️ 自宅KubeEdgeシステム構成
 
-本プロジェクトでは、**GPD Pocket3（Ubuntu 26.04 LTS）** 単一端末上で CNCF **KubeEdge**（`cloudcore` + `edgecore`）と超軽量 **kube-prometheus-stack** を稼働させる「**1台完結型エッジ自律観測 PoC 基盤**」を構成しています。詳細な仕様とデータフローは [docs/03_system_architecture.md](docs/03_system_architecture.md)、Edge-Cloud 相互通信の詳細は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください。
+現行で動いているのは、**GPD Pocket3（Ubuntu 26.04 LTS）1台**の上に [k3s](https://docs.k3s.io/)（コントロールプレーン）と [KubeEdge](https://kubeedge.io/docs/architecture/) の CloudCore / EdgeCore を同居させたクラスタです。論理ノードは2つ（k3s のマスターと `gpd-pocket3-edge`）ですが、Kubernetes クラスタは1つです。
+
+エッジの `satellite-tracker-rs` が RTL-SDR Blog V4 を衛星の可視時間だけ開き、48 kHz の狭帯域 WAV を [Garage](https://garagehq.deuxfleurs.fr/) へ渡します。クラウド側の `satellite-viewer` が未解析の録音を見つけて [Temporal](https://temporal.io/) のワークフローを開始し、[KEDA](https://keda.sh/) が解析ワーカーを 0 から起動します。処理が終わるとワーカーは再び 0 に戻ります。
+
+構成の詳細は [docs/03_system_architecture.md](docs/03_system_architecture.md)、Edge と Cloud の WebSocket / リバーストンネルは [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) を参照してください。
 
 ```mermaid
-flowchart LR
-    subgraph Host["💻 GPD Pocket3 (Ubuntu 26.04 LTS: 1台完結PoC)"]
-        direction LR
-        Edge["⚡ EdgeCore (EdgeHub / Edged)<br/>・RTL-SDR v4 観測<br/>・FFT/積算 (8KB/s)<br/>・DuckDB/Parquet"]
-        Cloud["☁️ k3s + CloudCore (CloudHub)<br/>・Kubernetes API Server<br/>・kube-prometheus-stack<br/>・Grafana / Jupyter"]
+flowchart TB
+    subgraph Host["GPD Pocket3 / Ubuntu 26.04 LTS / 1台完結"]
+        direction TB
 
-        Edge -->|"① WebSocket (:10000/:10002)"| Cloud
-        Edge -->|"② リバーストンネル (:10003)"| Cloud
-        Cloud -->|"③ 高速SQLクエリ"| Edge
+        subgraph Edge["エッジノード gpd-pocket3-edge（EdgeCore）"]
+            direction TB
+            SDR["RTL-SDR Blog V4"]
+            Tracker["satellite-tracker-rs<br/>通過時のみ受信 / 48 kHz WAV"]
+            EdgeCtl["EdgeHub / MetaManager / Edged"]
+            Proxy["kubeedge-metrics-proxy"]
+            SDR -->|USB| Tracker
+            EdgeCtl -->|"Pod 起動"| Tracker
+        end
+
+        subgraph Cloud["コントロールプレーン（k3s + CloudCore）"]
+            direction TB
+            CC["CloudHub / EdgeController<br/>WebSocket :10000/:10002<br/>CloudStream :10003"]
+            Garage["Garage S3<br/>raw/ 録音 と results/ 成果物"]
+            Viewer["satellite-viewer<br/>NodePort 30088"]
+            Temporal["Temporal Server<br/>gRPC :7233"]
+            KEDA["KEDA"]
+            Worker["satellite-analyzer-worker<br/>普段 0 / 解析時のみ起動"]
+            Graf["Prometheus / Grafana<br/>NodePort 30080"]
+        end
+
+        EdgeCtl -->|"制御メッセージ（アウトバウンド）"| CC
+        Tracker -->|"LOS 後に WAV をアップロード"| Garage
+        Viewer -->|"raw/ の未解析 WAV を検知"| Garage
+        Viewer -->|"AnalyzeSatellitePassWorkflow 開始"| Temporal
+        Temporal -->|"タスクキュー"| KEDA
+        KEDA -->|"0 から 1 へスケール"| Worker
+        Worker -->|"WAV 取得・復号・スペクトログラム保存"| Garage
+        Tracker -.->|"メトリクス :9100"| Graf
+        Proxy -.->|"cAdvisor 中継"| Graf
     end
+
+    Browser["ブラウザ"] -->|"観測結果"| Viewer
+    Browser -->|"ダッシュボード"| Graf
 ```
 
-| レイヤー | 実行場所 | 主なワークロード / 動作ポリシー |
+| レイヤー | 実行場所 | 主なワークロード |
 | :--- | :--- | :--- |
-| **エッジ観測レイヤー** | GPD Pocket3 (`edgecore`) | RTL-SDR v4 直結、エッジDSP（リアルタイムFFT・1秒積算で8KB/s圧縮）、DuckDB/Parquetローカル蓄積。**k3s停止時もMetaManagerキャッシュにより24h自律継続**。 |
-| **クラウド管理レイヤー** | GPD Pocket3 (`cloudcore` / `k3s`) | Kubernetes (`k3s`) コントロールプレーン、KubeEdge `cloudcore`。ノード管理およびエッジ設定の同期。 |
-| **監視・運用レイヤー** | GPD Pocket3 (`kube-prometheus-stack`) | 超軽量チューニング（Prometheus 256Mi〜512Mi / 30s間隔 / Grafana WebUI）。リソース最低限でSDR温度やDSP負荷を可視化。 |
+| **エッジ観測** | `gpd-pocket3-edge`（EdgeCore） | `satellite-tracker-rs` が RTL-SDR v4 を USB 直結で追尾。非通過時はドングルを閉じ、通過中だけ 48 kHz WAV を書き、LOS 後に Garage の `raw/` へ上げてローカルファイルを消す。`MetaManager` の SQLite キャッシュにより、k3s 停止中も Pod の稼働を続ける。 |
+| **オブジェクトストレージ** | k3s（CloudCore 側） | Garage S3（S3 API `:3900` / NodePort `30900`）。バケット `satellite-recordings` の `raw/` に一時録音、`results/` に `summary.json`・パケット JSON・スペクトログラム PNG。 |
+| **解析オーケストレーション** | k3s（CloudCore 側） | `satellite-viewer` が `raw/` を走査して Temporal へワークフローを投入。KEDA は viewer の `/api/pending-tasks` を見て `satellite-analyzer-worker` を 0 から起動する（上限 2）。 |
+| **監視** | k3s（CloudCore 側） | kube-prometheus-stack。Grafana は NodePort `30080`。エッジの cAdvisor は `kubeedge-metrics-proxy` 経由でスクレイプする。 |
 
 ---
 
@@ -278,20 +310,19 @@ rtl_test -t
 jupyter lab
 ```
 
-### 4. 太陽電波観測ステーション (solar-station) の起動
-付属の伸縮アンテナ（最大1m伸長＋金属板吸着による70MHz共振）とRTL-SDR Blog V4を用いた太陽フレア電波バースト（Type II / Type III）自動観測デーモンです。  
-生IQデータをメモリ上でリアルタイムFFT後に破棄し、1秒集約レコードのみを保存することで、1日わずか約10MBの省リソース観測を実現します（詳細は [docs/qa/12_solar_station_architecture_and_burst_detection.md](docs/qa/12_solar_station_architecture_and_burst_detection.md) を参照）。
+### 4. KubeEdge 観測パイプラインの確認
+クラスタのマニフェストは `infrastructure/` にあります。手順の入口は [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) と [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) です。
 
 ```bash
-# 疑似IQ信号によるドライラン動作確認 (ハードウェア不要)
-cargo run --bin solar-station -- --dry-run
-
-# 本番観測 (日照時間帯 El >= 5° に自動受信・夜間自動待機)
-cargo run --bin solar-station -- -c apps/ground-station/config.toml
-
-# 24時間常時観測モード (銀河背景雑音・電離層擾乱の連続ロギング)
-cargo run --bin solar-station -- -c apps/ground-station/config.toml --continuous
+# 論理ノード（k3s マスターと gpd-pocket3-edge）と Pod の確認
+kubectl get nodes
+kubectl get pods -A
 ```
+
+ブラウザからは次の NodePort に接続します。
+
+- 観測ビューア（`satellite-viewer`）: `30088`（定義は [infrastructure/viewer/viewer.yaml](infrastructure/viewer/viewer.yaml)）
+- Grafana: `30080`（定義は [infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml](infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml)）
 
 ---
 
@@ -302,51 +333,27 @@ radio-astronomy/
 ├── README.md                          # 本ドキュメント
 ├── Cargo.toml                         # Rust ワークスペース設定
 ├── mise.toml                          # ツールバージョン管理 (mise)
-├── pyproject.toml / requirements.txt  # Python依存ライブラリ一覧 (Jupyter分析用)
-├── apps/                              # 🚀 独立したツール・デーモン群 (モノレポ構成)
-│   ├── ground-station/                # 🛰️ [Rust] 自律型地上局 & 太陽電波観測ステーション
-│   │   ├── Cargo.toml                 # クレート固有の依存関係
-│   │   ├── config.toml                # 観測地座標・衛星リスト・太陽観測設定等
-│   │   └── src/
-│   │       ├── main.rs                # 衛星追尾CLI (check / schedule / daemon)
-│   │       ├── bin/
-│   │       │   └── solar_station.rs   # ☀️ 太陽電波観測ステーション CLIバイナリ
-│   │       ├── solar/                 # ☀️ 太陽電波観測コアモジュール
-│   │       │   ├── dsp.rs             # FFT・1秒積算・MAD動的しきい値検知
-│   │       │   ├── manager.rs         # 3層スレッド分離パイプラインマネージャ
-│   │       │   ├── notification.rs    # Discord Webhook & クールダウン制御
-│   │       │   ├── storage.rs         # 追記型 JSON Lines ストレージ
-│   │       │   ├── sun_pos.rs         # NOAA簡易太陽高度・方位角計算
-│   │       │   └── waterfall.rs       # Infernoカラーマップ スペクトログラム生成
-│   │       ├── config.rs              # TOML設定読み込み (serde)
-│   │       ├── health.rs              # 起動前ヘルスチェック
-│   │       ├── orbit.rs               # CelesTrak 多衛星TLE取得 & sgp4軌道計算
-│   │       ├── scheduler.rs           # tokio非同期タイマーループ
-│   │       ├── receiver.rs            # rtl_fm / rtl_sdr プロセス制御
-│   │       ├── decoder.rs             # プラグイン型デコーダ
-│   │       ├── worker.rs              # 非同期デコードワーカ
-│   │       ├── discord.rs             # Discord Webhook 通知
-│   │       └── voicevox.rs            # VOICEVOX API 連携
-│   ├── sdr-collector/                 # ⚡ [Rust] (今後) 2.4MSPS 高速IQ受信・FFT・1秒積算エッジデーモン
-│   └── meteor-detector/               # 🌠 [Python/Rust] (今後) 流星電波反射エコー検知
-├── packages/                          # 📦 ツール間で共通利用するライブラリ群
-├── docs/                              # 📚 数学・DSP・電波天文学の詳細解説ノート・仕様書
-│   ├── 00_glossary.md                 # 電波天文学 & SDR 用語集 (Glossary)
-│   ├── 01_math_and_dsp_cheatsheet.md  # 複素数・IQ・FFT・窓関数・雑音理論
-│   ├── 02_radio_astronomy_guide.md    # 21cm線・銀河回転・座標系・ドップラー効果
-│   ├── 03_system_architecture.md      # 自宅KubeEdge分散観測システム構成図
-│   ├── 04_qa.md                       # 質疑応答・ナレッジ蓄積集 (Q&A)
-│   ├── 05_getting_started.md          # エッジ構築＆電波受信ファーストステップ
-│   ├── qa/                            # 📖 トピック別詳細解説集
-│   │   ├── 11_stellar_radio_reception_and_sensitivity_limits.md
-│   │   └── 12_solar_station_architecture_and_burst_detection.md
-│   └── superpowers/specs/             # ツール別詳細設計仕様書
-├── notebooks/                         # 📓 実践 Jupyter Notebook
-├── k8s/                               # ☸️ KubeEdge / Kubernetes マニフェスト
-└── data/                              # 💾 観測データ・生成物 (.gitignore 対象)
-    ├── noaa/                          # NOAA衛星画像 (PNG) & 録音 (WAV)
-    ├── solar/                         # ☀️ 太陽観測データ (JSON Lines / イベントPNG)
-    └── spectra/                       # 21cm積算スペクトル (Parquet / DuckDB)
+├── apps/                              # 観測ワークロード
+│   ├── satellite-tracker-rs/          # エッジ現行: 衛星追尾・48 kHz WAV・Garage アップロード
+│   ├── satellite-analyzer/            # クラウド: パケット復号とスペクトログラム（0 スケール）
+│   ├── satellite-viewer/              # クラウド: 観測ビューアと Temporal 投入
+│   ├── kubeedge-metrics-proxy/        # エッジ: cAdvisor メトリクスの中継
+│   ├── satellite-tracker/             # 旧 Python 版トラッカー
+│   └── ground-station/                # ローカル実験用の地上局クレート
+├── infrastructure/                    # KubeEdge / k3s マニフェスト
+│   ├── kubeedge/                      # CloudCore・EdgeCore の導入手順
+│   ├── apps/                          # satellite-tracker / analyzer / Temporal
+│   ├── storage/garage/                # Garage S3
+│   ├── keda/                          # KEDA
+│   ├── viewer/                        # satellite-viewer（NodePort 30088）
+│   ├── monitoring/                    # kube-prometheus-stack（Grafana NodePort 30080）
+│   └── registry/                      # ローカルコンテナイメージレジストリ
+├── docs/                              # 数学・DSP・電波天文学の解説と構成図
+│   ├── 00_glossary.md                 # 用語集
+│   ├── 03_system_architecture.md      # 現行 KubeEdge 構成図
+│   ├── 04_qa.md                       # 質疑応答
+│   └── qa/13_kubeedge_architecture_and_edge_cloud_communication.md
+└── scripts/                           # パイプライン検証スクリプト
 ```
 
 

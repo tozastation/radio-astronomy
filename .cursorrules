@@ -17,10 +17,13 @@
   - 数式は次の3要素をセットで書く: (1) 記号一覧（意味・単位） (2) 日本語での読み解き (3) 展開ステップ・直感イメージ。
   - 一方的に進めず、ユーザー承認を挟みながら1ステップずつ進める。
 
-## システムアーキテクチャ (2台体制)
+## システムアーキテクチャ（現行は KubeEdge のみ）
 
-- **エッジ観測ノード (GPD Pocket3)**: アンテナ直下。RTL-SDR v4 から 2.4MSPS IQ 受信。エッジ DSP（高速 FFT & 1秒積算）で ~8 KB/s に圧縮。KubeEdge EdgeCore で 24h 自律稼働。DuckDB / SQLite / Parquet にローカル蓄積。
-- **分析・開発 WS (Windows 11 + WSL2)**: k3s + KubeEdge cloudcore。オンデマンド起動。LAN 越しにエッジデータを SQL/Jupyter 分析。Grafana / JupyterLab / VS Code。
+- **ホスト**: GPD Pocket3（Ubuntu 26.04 LTS）1台。k3s（CloudCore）と EdgeCore（`gpd-pocket3-edge`）が同居する。クラスタは1つ。
+- **エッジ**: `satellite-tracker-rs`。RTL-SDR v4 を通過時のみ開き、48 kHz WAV を Garage S3 の `raw/` へ上げてローカルを削除する。MetaManager により k3s 停止中も Pod は継続。
+- **クラウド側**: Garage S3、Temporal、KEDA、`satellite-analyzer-worker`（0 スケール）、`satellite-viewer`（NodePort 30088）、Grafana（NodePort 30080）。viewer が未解析 WAV を検知してワークフローを開始する。
+- **現行構成に含めない**: ADS-B / tar1090（Ultrafeeder）、旧 8 KB/s DuckDB コレクタ、Windows + WSL2 をクラウドにする2台体制。
+- **将来**: 分析用 PC へ CloudCore を移し、EdgeCore の接続先変更で物理分離できる。
 
 詳細は [docs/03_system_architecture.md](docs/03_system_architecture.md)。
 
@@ -28,16 +31,15 @@
 
 - **分析・天文学**: Python 3.10+, Astropy, NumPy, SciPy, Polars, Matplotlib
 - **エッジ DSP / コレクター**: Rust / C / Python (`librtlsdr`, `sdr`, `rustfft`)
-- **ストレージ**: DuckDB, Parquet, SQLite, TimescaleDB, MinIO
-- **可視化・運用**: Grafana, Prometheus, JupyterLab, KubeEdge, k3s, kubectl, k9s
+- **ストレージ**: Garage S3, SQLite（MetaManager / Temporal）, Parquet
+- **可視化・運用**: Grafana, Prometheus, satellite-viewer, Temporal, KEDA, KubeEdge, k3s, kubectl, k9s
 
 ## コード・ドキュメント慣習
 
 - 地上局デーモンは `apps/ground-station/`（Rust）。観測成功の定義は「中身が見える」（画像・テレメトリJSON・復号テキスト）。判定困難な対象は `unknown`（あきらめる作戦）。詳細は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md)。
 - 観測地は東京都（代表値: 北緯 35.6895, 東経 139.6917、プライバシー保護のため広域公称値を採用）。アンテナは **北向きベランダ**（2026-09-15 移設、見通しおおよそ方位 $270^\circ \sim 90^\circ$）。南〜南西側は建物 RC 遮蔽を想定。極軌道は北寄りパス（北西・北・東北東など）を優先する。
 - NOAA APT は退役済み。気象画像系は Meteor-M LRPT 等を優先。
-- **現行フェーズ（案A）**: 衛星受信（Meteor / CubeSat / ISS）とデイリー衛星スケジュールは `config.toml` で一時オフ。RTL-SDR は ADS-B（Ultrafeeder 1090 MHz）に明け渡し、「機影が見える」成功を先に取る。
-- ADS-B / tar1090 のホスト公開ポートは **18090**（8080/8081 は他アプリ、8090 は PocketBase）。`data_url` / `tar1090_url` も 18090 に合わせる。
+- **現行の実行系**: `infrastructure/` の KubeEdge 衛星観測パイプライン（`satellite-tracker-rs` → Garage → viewer / Temporal / KEDA → `satellite-analyzer-worker`）。ADS-B レーダー（Ultrafeeder / tar1090）は構成に含めない。
 
 ## コミットルール
 
