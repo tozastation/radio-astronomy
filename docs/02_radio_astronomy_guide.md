@@ -1,6 +1,6 @@
 # 電波天文学 & 21cm中性水素線 観測ガイド
 
-この文書は、21cm 中性水素線（HI）の放射機構、天球座標、ドップラー補正、銀河回転曲線の読み方を残した背景資料です。北向きベランダの現行プログラム（ADS-B、衛星ダウンリンク）には入っていません。現行の運用は [README.md](../README.md) と [03_system_architecture.md](03_system_architecture.md) を参照します。
+この文書は、21cm 中性水素線（HI。銀河の水素ガスが出す電波）の出方、天球座標、ドップラー補正、銀河の回転曲線の読み方です。式と用語の参照用で、いまのベランダ観測（ADS-B と衛星のダウンリンク）の手順は [README.md](../README.md) と [03_system_architecture.md](03_system_architecture.md) にあります。
 
 不明な用語は [00_glossary.md](00_glossary.md) を参照します。
 

@@ -1,8 +1,8 @@
-# Getting Started: 初日の受信手順（WSL2 記録）
+# 初日の受信手順（WSL2 の記録）
 
-この文書は、GPD Pocket3 をまだ Windows 11 + WSL2 で動かしていた初日に、ベランダのアンテナで FM 放送を受信して LAN 越しに再生した手順の記録です。
+この文書は、GPD Pocket3 をまだ Windows 11 + WSL2 で動かしていた初日に、ベランダのアンテナで FM 放送を受信し、LAN 越しに再生した手順の記録です。
 
-現行ホストは **Ubuntu 26.04 LTS のネイティブインストール** です。USB パススルー（`usbipd-win`）と WSL2 の Mirrored ネットワークは、この初日の構成に対する手順です。いまの観測プログラム（案Aの ADS-B、衛星パイプライン、KubeEdge）は [README.md](../README.md) と [03_system_architecture.md](03_system_architecture.md) を参照します。V4 ドライバを Ubuntu に入れる手順の現行版は README のクイックスタートと [setup/03_kubeedge_deployment_guide.md](setup/03_kubeedge_deployment_guide.md) にあります。
+いまの PC には **Ubuntu 26.04 LTS を直接インストール**しています。USB パススルー（`usbipd-win`）と、WSL2 の Mirrored ネットワーク（Windows と同じ IP アドレスを使う設定）は、この初日の構成向けです。いまの観測（案Aの ADS-B、衛星の受信と解析、KubeEdge）は [README.md](../README.md) と [03_system_architecture.md](03_system_architecture.md) にあります。V4 用ドライバを Ubuntu に入れる手順は、README のクイックスタートと [setup/03_kubeedge_deployment_guide.md](setup/03_kubeedge_deployment_guide.md) にあります。
 
 ---
 
@@ -229,16 +229,16 @@ ssh <WSLユーザー名>@<GPD Pocket3のLAN_IP> "rtl_fm -M wfm -f 81.3M -s 200k 
 
 ## このあとに進んだ場所
 
-FM が鳴ったあとの現行の到達点は、次のとおりです。
+FM が鳴ったあと、観測は次の状態まで進んでいます。
 
-1. **ホストをネイティブ Ubuntu 26.04 LTS にし、KubeEdge を 1 台に同居させた**
+1. **OS を Ubuntu 26.04 LTS の直接インストールにし、KubeEdge をこの 1 台にまとめた**
    - 手順: [setup/03_kubeedge_deployment_guide.md](setup/03_kubeedge_deployment_guide.md)
    - 構成: [03_system_architecture.md](03_system_architecture.md)
-2. **案Aとして ADS-B（1090 MHz）で機影を見る**
-   - `docker compose up -d ultrafeeder`（ホストポート 18090）
+2. **案Aとして、ADS-B（1090 MHz。航空機が送る位置情報）で地図上の航跡を見る**
+   - `docker compose up -d ultrafeeder`（ポート 18090）
    - 解説: [qa/08_adsb_flight_tracking_and_tar1090.md](qa/08_adsb_flight_tracking_and_tar1090.md)
-3. **衛星は北向きベランダの見通しに合わせて実装済みで、ドングルは案Aのあいだ ADS-B に明け渡している**
-   - NOAA の APT は退役済み。気象画像を戻すときは Meteor-M LRPT
-   - 北向きの幾何: [qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md)
+3. **衛星の受信プログラムは、北向きベランダから見える空に合わせて実装済みである。案Aのあいだ、受信機は ADS-B が専有する**
+   - NOAA の APT（画像のアナログ放送）は停波済み。気象画像を受けるときは Meteor-M の LRPT
+   - 北向きから見える範囲: [qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md)
 
-軌道計算ライブラリの一次情報として、衛星パスの予測では [Skyfield](https://rhodesmill.org/skyfield/) と、実装側では Rust の `sgp4` を使っています。汎用デコーダの参照実装は [SatDump](https://github.com/SatDump/SatDump) です。
+上空通過の予測では、Python では [Skyfield](https://rhodesmill.org/skyfield/)、実装では Rust の `sgp4` を使っています。衛星電波の汎用デコーダとして参照している実装は [SatDump](https://github.com/SatDump/SatDump) です。

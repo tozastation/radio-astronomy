@@ -1,8 +1,8 @@
 # ベランダ電波観測所
 
-> 東京都の北向きベランダから、RTL-SDR Blog V4 と GPD Pocket3 で電波を受信し、**機影・画像・テレメトリ・復号テキスト**として中身を確認するためのリポジトリです。
+> 東京都の北向きベランダから、RTL-SDR Blog V4 と小型PC（GPD Pocket3）で電波を受信し、**航空機の航跡、衛星画像、テレメトリ（計測値）、復号した文字列**まで確認するためのリポジトリです。
 
-マンションのベランダという限られた見通しのなかで、個人の地上局を動かすプロジェクトです。通称はベランダ天文学です。成功の定義は、受信結果の中身が見えることです。基準は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md) にあります。
+マンションのベランダから、個人の地上局を動かすプロジェクトです。通称はベランダ天文学です。受信できたかどうかは、結果の中身が見えることで判断します。判断基準は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md) に書いてあります。
 
 ---
 
@@ -12,42 +12,42 @@
 | :--- | :--- |
 | 観測地 | 東京都（広域代表値: 北緯 35.6895、東経 139.6917、標高 30 m） |
 | アンテナ | 北向きベランダ（2026-09-15 移設）。マグネットホイップを室外機などの金属面に吸着 |
-| 見通し | 方位およそ \(270^\circ\)（西）から北を経て \(90^\circ\)（東） |
-| 遮蔽 | 南〜南西は建物の鉄筋コンクリート。この方向の低仰角パスは減衰が大きい |
+| 見通せる範囲 | 方位およそ \(270^\circ\)（西）から北を経て \(90^\circ\)（東） |
+| 遮られる範囲 | 南から南西。建物の鉄筋コンクリートがあり、地平線近くの衛星は大きく減衰する |
 
-北極側から降りてくる極軌道衛星と、北半球側の航空路は、この開口の正面に入ります。太陽は南天（東→南→西）を通るため、このベランダから太陽電波を直視する観測は成立しません。`solar-station` の実装は残していますが、現行の観測対象には入れていません。
+北極上空から日本へ近づく極軌道の衛星と、北側の航空路は、このベランダの正面に入ります。太陽は東から南を通って西へ沈みます。ベランダは北向きで南側を建物が遮るため、太陽の電波を直接受ける観測には向きません。太陽観測用の `solar-station` はコードとして残しています。
 
-NOAA の APT 画像放送は退役しています。気象画像を狙うときは Meteor-M の LRPT を優先します。
-
----
-
-## 現行フェーズ（案A）
-
-RTL-SDR は 1 本です。衛星受信と ADS-B を同時に同じドングルへ載せると取り合いになります。いまはドングルを ADS-B（1090 MHz）に明け渡し、**機影が見える**ところを先に取ります。
-
-`apps/ground-station/config.toml` の状態:
-
-- `satellites.meteor` / `cubesats` / `iss` は `enabled = false`
-- `scheduler.daily_schedule_enabled = false`（朝の衛星スケジュール通知も停止）
-- `adsb.enabled = true`
-- tar1090 のホスト公開ポートは **18090**（8080 / 8081 は他アプリ、8090 は PocketBase）
-
-衛星の追尾・録音・解析パイプライン（`satellite-tracker-rs`、Garage、Temporal、KEDA、`satellite-analyzer`、`satellite-viewer`）はリポジトリにあります。案Aのあいだは、ドングルを Ultrafeeder が占有します。北寄りの高仰角パスから、対象を 1 つずつ戻す想定です。
+米国の気象衛星 NOAA が送っていた APT（画像のアナログ放送）は停波しています。気象画像を受けるときは、ロシアの気象衛星 Meteor-M の LRPT（デジタル画像放送）を使います。
 
 ---
 
-## 動いているシステムの置き場所
+## いまの運用（設定名は案A）
 
-エッジ観測機は **GPD Pocket3（Ubuntu 26.04 LTS、ネイティブ Linux）** です。同じ端末の上で k3s（CloudCore）と KubeEdge EdgeCore を同居させています。論理的には次の 2 層です。
+USB の受信機は 1 台です。衛星の受信と ADS-B（航空機が 1090 MHz で送る位置情報）は、同時には使えません。いまは ADS-B を優先し、地図上に航空機の航跡が出るところを先に確認します。このリポジトリでは、その航跡を機影と呼びます。
 
-- **エッジ**: アンテナ直下。RTL-SDR v4。通過時だけ狭帯域を録音する `satellite-tracker-rs`。案Aでは Ultrafeeder（readsb + tar1090）が 1090 MHz を常時受信する。
-- **クラスタ側**: Garage S3、Temporal、KEDA、`satellite-analyzer`（普段は 0 レプリカ）、`satellite-viewer`、Prometheus / Grafana。
+`apps/ground-station/config.toml` の状態は次のとおりです。
 
-物理的な分析用 PC への分離は、同じマニフェストのまま広げられるようにしてある拡張先です。現行の稼働形態は、この 1 台の上の同居です。
+- 衛星（Meteor、CubeSat、ISS）は `enabled = false`
+- 朝の衛星スケジュール通知（`daily_schedule_enabled`）も `false`
+- ADS-B（`adsb.enabled`）は `true`
+- 地図画面 tar1090 のポートは **18090** です。8080 と 8081 は他のアプリ、8090 は PocketBase が使っています
 
-Windows 11 + WSL2 で FM 放送を鳴らした手順は、初日の記録として [docs/05_getting_started.md](docs/05_getting_started.md) に残しています。現行ホストの OS はネイティブの Ubuntu 26.04 LTS です。
+衛星を追って録音し、解析する一式（`satellite-tracker-rs`、オブジェクトストレージの Garage、ワークフローの Temporal、必要なときだけ起動する KEDA、解析の `satellite-analyzer`、結果を見る `satellite-viewer`）はリポジトリにあります。案Aのあいだは、受信ソフト Ultrafeeder が RTL-SDR を専有します。衛星観測へ戻すときは、北寄りの高い通過から 1 機ずつ有効にします。
 
-全体図は [docs/03_system_architecture.md](docs/03_system_architecture.md)。Edge と Cloud の通信は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md)。
+---
+
+## 動いている場所
+
+受信機を挿しているPCは **GPD Pocket3** で、OS は **Ubuntu 26.04 LTS を直接インストール**したものです。この 1 台の上で、軽量な Kubernetes（k3s。制御側の名前は CloudCore）と、KubeEdge の EdgeCore（アンテナ側でコンテナを動かす部分）をまとめて動かしています。役割は次の 2 つです。
+
+- **アンテナ側（エッジ）**: ベランダのすぐ内側。案Aでは Ultrafeeder（受信エンジン readsb と地図画面 tar1090）が 1090 MHz を受信し続けます。衛星用の `satellite-tracker-rs` は、衛星が上空を通る時間だけ、音声帯域（48 kHz）まで絞って録音します。
+- **同じPC上の Kubernetes**: Garage、Temporal、KEDA、`satellite-analyzer`（待ち時間はコンテナを止めておく）、`satellite-viewer`、監視の Prometheus と Grafana。
+
+制御側（CloudCore）を別のPCへ移す構成は、同じ定義ファイルのまま移せるようにしてあります。いまはすべてこの 1 台です。
+
+Windows の WSL2 で FM ラジオを鳴らした手順は、初日の記録として [docs/05_getting_started.md](docs/05_getting_started.md) に残しています。
+
+全体の図は [docs/03_system_architecture.md](docs/03_system_architecture.md)、アンテナ側と制御側の通信は [docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md](docs/qa/13_kubeedge_architecture_and_edge_cloud_communication.md) にあります。
 
 ```mermaid
 flowchart LR
@@ -58,10 +58,10 @@ flowchart LR
     subgraph Pocket["GPD Pocket3 / Ubuntu 26.04 LTS"]
         SDR["RTL-SDR Blog V4"]
         subgraph Edge["エッジ"]
-            ADSB["Ultrafeeder / tar1090 :18090<br/>案Aでドングルを占有"]
-            Tracker["satellite-tracker-rs<br/>通過時のみ録音"]
+            ADSB["Ultrafeeder / tar1090 :18090<br/>案Aでは受信機を使用"]
+            Tracker["satellite-tracker-rs<br/>上空通過のあいだだけ録音"]
         end
-        subgraph Cluster["クラスタ側 k3s"]
+        subgraph Cluster["同じPC上の k3s"]
             Store["Garage / Temporal / KEDA"]
             Analyze["satellite-analyzer → viewer"]
             Graf["Prometheus / Grafana"]
@@ -81,21 +81,21 @@ flowchart LR
 
 | パス | 役割 |
 | :--- | :--- |
-| `apps/ground-station` | Rust の地上局。パス予測、復調、ADS-B 近接通知、メトリクス、VOICEVOX / Discord。`solar-station` バイナリも含む |
-| `apps/satellite-tracker` | エッジ追尾の Python 版（先行実装） |
-| `apps/satellite-tracker-rs` | エッジ追尾の Rust 版。北向き視界判定、通過時のみ SDR を開き、48 kHz WAV を Garage へ置く |
-| `apps/satellite-analyzer` | Temporal ワーカー。パケット復号とスペクトログラム |
-| `apps/satellite-viewer` | 録音と解析結果を見る Web ビューア |
-| `apps/kubeedge-metrics-proxy` | Edge の cAdvisor メトリクスを Prometheus へ中継 |
+| `apps/ground-station` | Rust の地上局。衛星の通過予測、復調、近くを飛ぶ航空機の通知、成否の記録、音声合成（VOICEVOX）と Discord。`solar-station` も含む |
+| `apps/satellite-tracker` | アンテナ側の追尾プログラム。先に書いた Python 版 |
+| `apps/satellite-tracker-rs` | 同じ追尾の Rust 版。北向きから見える方位かを判定し、通過中だけ受信機を開いて 48 kHz の WAV を Garage へ置く |
+| `apps/satellite-analyzer` | Temporal のワーカー。パケットの復号とスペクトログラム（周波数、時間、強さの図）を作る |
+| `apps/satellite-viewer` | 録音と解析結果をブラウザで見る |
+| `apps/kubeedge-metrics-proxy` | アンテナ側コンテナの CPU とメモリを Prometheus へ中継する |
 | `infrastructure/kubeedge` | k3s と CloudCore / EdgeCore |
 | `infrastructure/monitoring` | kube-prometheus-stack |
 | `infrastructure/storage/garage` | Garage S3 |
 | `infrastructure/apps` | Temporal、tracker、analyzer のマニフェスト |
 | `docker-compose.yaml` | 案Aの Ultrafeeder と VOICEVOX |
-| `docs/qa/` | 受信幾何、復調、ADS-B、KubeEdge の個別解説 |
+| `docs/qa/` | 見通し、復調、ADS-B、KubeEdge の個別解説 |
 | `docs/articles/` | 「ベランダ電波観測所」連載の原稿 |
 
-観測対象の初期値は `apps/satellite-tracker-rs` では ISS（145.825 MHz APRS）、METEOR-M2 4、FUNcube-1 です。`ground-station` の衛星リストはこれに加え XW-2A、CAS-4A、UmKA-1、SONATE-2、SO-50 を持っています。案Aではどちらもドングルを使わない側に回しています。
+`satellite-tracker-rs` が最初から知っている衛星は、ISS（145.825 MHz の APRS パケット）、METEOR-M2 4、FUNcube-1 です。`ground-station` のリストには、これに加えて XW-2A、CAS-4A、UmKA-1、SONATE-2、SO-50 があります。案Aでは、どちらのリストも受信には使いません。受信機は ADS-B が使います。
 
 ---
 
@@ -111,9 +111,9 @@ RTL-SDR Blog V4 を使います。仕様の一次情報は [RTL-SDR Blog V4 User
 - Bias-T: 4.5 V（ソフトウェアで ON/OFF）
 - アンテナ端子: SMA メス（50 Ω）
 
-Ubuntu の標準パッケージ `rtl-sdr` は V3 / R820T 向けです。V4 では公式ドライバを自前ビルドしないと、`[R82XX] PLL not locked!` で周波数にロックできません。
+Ubuntu のパッケージ `rtl-sdr` は、1 世代前の V3（チューナー R820T）向けです。いま使っている V4（チューナー R828D）では、公式ドライバを自分でビルドします。入れていないと `[R82XX] PLL not locked!` が出て、指定した周波数に同調できません。
 
-ベランダ側のアンテナは、付属のマグネットホイップを金属面（室外機天板など）に吸着させたモノポールです。金属面がグラウンドプレーンになります。吸着しないと給電点のインピーダンスが合わず、感度が落ちます。
+ベランダのアンテナは、付属のマグネット式ホイップ（棒状のアンテナ）を、室外機の天板などの金属面に付けたものです。アンテナとしてはモノポールで、金属面が地面側の導体（グラウンドプレーン）になります。金属面に付けないと、給電点のインピーダンスが合わず、感度が落ちます。
 
 ---
 
@@ -142,7 +142,7 @@ rtl_test -t
 
 `Found Rafael Micro R828D tuner` が出れば認識できています。末尾の `No E4000 tuner found, aborting.` は、このコマンドが E4000 用の試験で終わっているだけで、故障ではありません。
 
-KubeEdge 上で Pod からドングルを使うときの udev と blacklist は [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) にまとめてあります。
+KubeEdge のコンテナから受信機を開くときの udev ルールと、カーネル標準ドライバの無効化は [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) にまとめてあります。
 
 ### 2. 案A: ADS-B レーダー
 
@@ -155,30 +155,30 @@ docker compose up -d ultrafeeder
 - 地図: `http://localhost:18090`
 - 機体 JSON: `http://localhost:18090/data/aircraft.json`
 
-地上局から近接通知の疎通を見るときは、`apps/ground-station` で次を実行します。
+近くを飛ぶ航空機の通知が届くかを試すときは、`apps/ground-station` で次を実行します。
 
 ```bash
 cargo run -- test-adsb -c config.toml
 ```
 
-受信の物理と tar1090 の構成は [docs/qa/08_adsb_flight_tracking_and_tar1090.md](docs/qa/08_adsb_flight_tracking_and_tar1090.md) です。
+電波の届く距離と、tar1090 の構成は [docs/qa/08_adsb_flight_tracking_and_tar1090.md](docs/qa/08_adsb_flight_tracking_and_tar1090.md) にあります。
 
-### 3. 衛星パイプラインを戻すとき
+### 3. 衛星の受信に戻すとき
 
-ドングルを Ultrafeeder から外したうえで、`config.toml` の対象衛星を有効にします。エッジの追尾実装は `apps/satellite-tracker-rs`、解析側の設計は [docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md](docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md) です。北向きベランダで UHF CubeSat を優先する理由は [docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md) にあります。
+Ultrafeeder を止めて受信機を空けてから、`config.toml` で見る衛星を有効にします。アンテナ側の追尾は `apps/satellite-tracker-rs`、解析の設計は [docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md](docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md) にあります。北向きベランダで UHF 帯の CubeSat（超小型衛星）を優先する理由は [docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](docs/qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md) にあります。
 
 ---
 
 ## 資料の読み分け
 
-現行の運用と実装を知るときの入口です。
+いまの運用と実装を知るときは、ここから読みます。
 
-- [docs/03_system_architecture.md](docs/03_system_architecture.md) — 1 台同居の KubeEdge と、いま載っているワークロード
-- [docs/04_qa.md](docs/04_qa.md) — 質疑の索引。個別解説は `docs/qa/`
+- [docs/03_system_architecture.md](docs/03_system_architecture.md) — 1 台にまとめた KubeEdge と、いま動かしている処理
+- [docs/04_qa.md](docs/04_qa.md) — 質疑の索引。長い解説は `docs/qa/`
 - [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) — k3s と EdgeCore の導入
-- [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) — Cloud / Edge の手順への目次
+- [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) — 制御側とアンテナ側の手順への目次
 
-背景として残している理論資料です。21cm 中性水素線や銀河回転曲線は、このベランダの現行プログラムには入っていません。式と用語の参照用です。
+式と用語の参照用です。21cm 中性水素線と銀河の回転曲線は、いまのベランダ観測（ADS-B と衛星）の手順とは別の資料です。
 
 - [docs/00_glossary.md](docs/00_glossary.md) — SDR と電波天文学の用語
 - [docs/01_math_and_dsp_cheatsheet.md](docs/01_math_and_dsp_cheatsheet.md) — IQ、FFT、窓関数、雑音
@@ -187,8 +187,8 @@ cargo run -- test-adsb -c config.toml
 連載原稿と初日の手順は、その時点の記録です。
 
 - [docs/articles/qiita_rtl_sdr_v4_getting_started.md](docs/articles/qiita_rtl_sdr_v4_getting_started.md) — #1 WSL2 で受信するまで
-- [docs/articles/qiita_kubeedge_satellite_tracker.md](docs/articles/qiita_kubeedge_satellite_tracker.md) — #2 ネイティブ Ubuntu と衛星追尾
-- [docs/articles/qiita_kubeedge_pipeline.md](docs/articles/qiita_kubeedge_pipeline.md) — #3 Rust エッジとゼロスケール解析
+- [docs/articles/qiita_kubeedge_satellite_tracker.md](docs/articles/qiita_kubeedge_satellite_tracker.md) — #2 Ubuntu を直接インストールして衛星を追う
+- [docs/articles/qiita_kubeedge_pipeline.md](docs/articles/qiita_kubeedge_pipeline.md) — #3 Rust 版の受信と、必要なときだけ起動する解析
 
 ---
 
@@ -202,8 +202,8 @@ cargo run -- test-adsb -c config.toml
 ├── docker-compose.yaml                # ultrafeeder (:18090) と VOICEVOX
 ├── apps/
 │   ├── ground-station/                # Rust 地上局と solar-station
-│   ├── satellite-tracker/             # Python エッジ追尾（先行実装）
-│   ├── satellite-tracker-rs/          # Rust エッジ追尾
+│   ├── satellite-tracker/             # アンテナ側の追尾（Python、先に書いた版）
+│   ├── satellite-tracker-rs/          # アンテナ側の追尾（Rust）
 │   ├── satellite-analyzer/            # Temporal 解析ワーカー
 │   ├── satellite-viewer/              # 観測結果ビューア
 │   └── kubeedge-metrics-proxy/

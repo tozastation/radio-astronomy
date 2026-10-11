@@ -1,6 +1,6 @@
 # 数学 & デジタル信号処理 (DSP) 基礎チートシート
 
-IQ サンプリング、FFT、窓関数、熱雑音など、ベランダの受信機を読むときに使う信号処理の要点です。21cm 線そのものの観測手順は [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md) にあり、こちらは現行プログラムの対象外の背景資料です。現行の運用は [README.md](../README.md) を参照します。
+この文書は、IQ サンプリング、FFT、窓関数、熱雑音など、受信データを読むための信号処理の要点です。21cm 線の観測手順は [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md) にあります。どちらも式の参照用で、いまの運用手順は [README.md](../README.md) にあります。
 
 不明な用語は [00_glossary.md](00_glossary.md) を参照します。
 
