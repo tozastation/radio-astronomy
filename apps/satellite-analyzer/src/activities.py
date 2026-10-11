@@ -7,6 +7,8 @@ from typing import Dict, Any
 from temporalio import activity
 
 from aprs_decoder import APRSDecoder
+from funcube_decoder import FUNcubeDecoder
+from meteor_decoder import MeteorDecoder
 from spectrogram_generator import SpectrogramGenerator
 
 logger = logging.getLogger(__name__)
@@ -97,13 +99,21 @@ async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[st
         packets = [f.to_dict() for f in frames]
         summary_text = f"APRS パケット {packets_count} 件検出"
     elif category == "weather_lrpt":
-        packets_count = 0
-        packets = []
-        summary_text = "METEOR-M2 4 気象衛星 LRPT (QPSK 72kbps) 信号受信完了 (SatDump 連携準備中)"
+        decoder = MeteorDecoder()
+        tmp_out = os.path.join(os.path.dirname(wav_path), "satdump_meteor")
+        res = decoder.decode_baseband(wav_path, tmp_out)
+        packets_count = len(res.images) or len(res.cadu_files)
+        packets = [res.to_dict()] if (res.images or res.cadu_files) else []
+        summary_text = res.summary_text
     elif category == "cubesat_telemetry":
-        packets_count = 0
-        packets = []
-        summary_text = "FUNcube-1 (AO-73) CubeSat BPSK (1200bps) テレメトリ信号受信完了"
+        decoder = FUNcubeDecoder()
+        frames = decoder.decode_wav(wav_path)
+        packets_count = len(frames)
+        packets = [f.to_dict() for f in frames]
+        if packets_count > 0:
+            summary_text = f"FUNcube-1 テレメトリ {packets_count} 件検出"
+        else:
+            summary_text = "FUNcube-1 信号微弱 (テレメトリフレーム未検出)"
     else:
         packets_count = 0
         packets = []
@@ -214,13 +224,24 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
             packets = [f.to_dict() for f in frames]
             summary_text = f"APRS パケット {packets_count} 件検出"
         elif category == "weather_lrpt":
-            packets_count = 0
-            packets = []
-            summary_text = "METEOR-M2 4 気象衛星 LRPT (QPSK 72kbps) 信号受信完了 (SatDump 連携準備中)"
+            decoder = MeteorDecoder()
+            meteor_out = os.path.join(tmp_dir, "satdump_meteor")
+            res = decoder.decode_baseband(local_wav, meteor_out)
+            packets_count = len(res.images) or len(res.cadu_files)
+            packets = [res.to_dict()] if (res.images or res.cadu_files) else []
+            summary_text = res.summary_text
+            for img in res.images:
+                img_name = os.path.basename(img)
+                s3.upload_file(img, bucket, f"{prefix}/{img_name}")
         elif category == "cubesat_telemetry":
-            packets_count = 0
-            packets = []
-            summary_text = "FUNcube-1 (AO-73) CubeSat BPSK (1200bps) テレメトリ信号受信完了"
+            decoder = FUNcubeDecoder()
+            frames = decoder.decode_wav(local_wav)
+            packets_count = len(frames)
+            packets = [f.to_dict() for f in frames]
+            if packets_count > 0:
+                summary_text = f"FUNcube-1 テレメトリ {packets_count} 件検出"
+            else:
+                summary_text = "FUNcube-1 信号微弱 (テレメトリフレーム未検出)"
         else:
             packets_count = 0
             packets = []

@@ -651,7 +651,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
                 for item in resp.get("Contents", []):
-                    if item["Key"].endswith(".wav"):
+                    if any(item["Key"].lower().endswith(ext) for ext in (".wav", ".u8", ".raw")):
                         pending_count += 1
             except Exception as e:
                 print(f"Error checking pending tasks: {e}", flush=True)
@@ -670,7 +670,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
                 for item in resp.get("Contents", []):
-                    if item["Key"].endswith(".wav"):
+                    if any(item["Key"].lower().endswith(ext) for ext in (".wav", ".u8", ".raw")):
                         pending_count += 1
             except Exception:
                 pass
@@ -813,9 +813,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     spectrogram_html = f"""
                     <div class="spectrogram-container">
                       <img class="spectrogram-img" src="{img_url}" alt="Spectrogram" onclick="openImageModal('{img_url}')">
-                      <span class="spectrogram-hint">🔍 タップで拡大</span>
+                      <span class="spectrogram-hint">🔍 スペクトログラム拡大</span>
                     </div>
                     """
+
+                decoded_images_html = ""
+                for fname, fkey in p["files"].items():
+                    if fname != "spectrogram.png" and any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg")):
+                        decoded_img_url = f"/view?key={urllib.parse.quote(fkey)}"
+                        decoded_images_html += f"""
+                        <div class="spectrogram-container" style="margin-top: 8px;">
+                          <div style="padding: 4px 8px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: var(--accent); font-weight: bold; text-align: left;">
+                            🛰️ 復調気象画像: {fname}
+                          </div>
+                          <img class="spectrogram-img" src="{decoded_img_url}" alt="{fname}" onclick="openImageModal('{decoded_img_url}')">
+                          <span class="spectrogram-hint">🔍 気象画像タップで拡大</span>
+                        </div>
+                        """
 
                 summary = p.get("summary") or {}
                 status = summary.get("status", "completed")
@@ -880,9 +894,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 packet_items = packets_data.get("packets", [])
                 if packet_items:
                     pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
+                    accordion_title = f"📡 受信パケット ({len(packet_items)} 件) の中身を見る"
+                    if "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+                        accordion_title = f"📻 受信テレメトリ ({len(packet_items)} 件) の中身を見る"
                     packets_accordion = f"""
                     <details class="data-accordion">
-                      <summary>📡 受信パケット ({len(packet_items)} 件) の中身を見る</summary>
+                      <summary>{accordion_title}</summary>
                       <div class="accordion-content">
                         <pre class="code-block"><code>{pretty_packets}</code></pre>
                       </div>
@@ -894,6 +911,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                       <summary>📡 APRS 受信パケット (0 件)</summary>
                       <div class="accordion-content">
                         <pre class="code-block"><code>パケットは検出されませんでした (0 packets)</code></pre>
+                      </div>
+                    </details>
+                    """
+                elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+                    packets_accordion = f"""
+                    <details class="data-accordion">
+                      <summary>📻 BPSK テレメトリフレーム (0 件)</summary>
+                      <div class="accordion-content">
+                        <pre class="code-block"><code>テレメトリフレームは検出されませんでした (0 frames)</code></pre>
                       </div>
                     </details>
                     """
@@ -942,6 +968,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                   </div>
                   <div class="card-body">
                     {spectrogram_html}
+                    {decoded_images_html}
                     {summary_box_html}
                     <div class="meta-grid">
                       <div class="meta-item">
@@ -999,7 +1026,7 @@ async def run_dispatcher():
             resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
             for item in resp.get("Contents", []):
                 key = item["Key"]
-                if not key.endswith(".wav"):
+                if not any(key.lower().endswith(ext) for ext in (".wav", ".u8", ".raw")):
                     continue
                 parts = key.split("/")
                 if len(parts) >= 3:
