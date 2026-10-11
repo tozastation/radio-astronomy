@@ -70,9 +70,10 @@ class MeteorDecoder:
         # 外部ネットワーク (celestrak.org) への TLE ダウンロード試行によるタイムアウトを防止
         satdump_cfg_dir = os.path.expanduser("~/.config/satdump")
         satdump_tle_path = os.path.join(satdump_cfg_dir, "satdump_tles.txt")
-        if not os.path.exists(satdump_tle_path):
-            try:
-                os.makedirs(satdump_cfg_dir, exist_ok=True)
+        satdump_settings_path = os.path.join(satdump_cfg_dir, "settings.json")
+        try:
+            os.makedirs(satdump_cfg_dir, exist_ok=True)
+            if not os.path.exists(satdump_tle_path):
                 default_tle_content = (
                     "METEOR-M2 4\n"
                     "1 59051U 24039A   26284.50000000  .00000000  00000-0  50000-4 0  9999\n"
@@ -80,8 +81,23 @@ class MeteorDecoder:
                 )
                 with open(satdump_tle_path, "w", encoding="utf-8") as f:
                     f.write(default_tle_content)
-            except Exception as e:
-                logger.warning(f"Could not initialize satdump_tles.txt: {e}")
+
+            # TLE 自動更新を確実に Never に設定して外部ネットワーク接続待ちを完全に抑止
+            settings_data = {
+                "user_interface": {
+                    "tle_update_interval": {
+                        "value": "Never"
+                    }
+                },
+                "user": {
+                    "tles_last_updated": 2147483647
+                }
+            }
+            import json
+            with open(satdump_settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings_data, f, indent=4)
+        except Exception as e:
+            logger.warning(f"Could not initialize satdump settings/TLEs: {e}")
 
         try:
             cmd = [
