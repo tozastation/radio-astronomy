@@ -9,6 +9,7 @@ import json
 import urllib.parse
 import threading
 import asyncio
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import boto3
 from botocore.client import Config
@@ -781,10 +782,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                                 "satellite": sat,
                                 "pass_id": pass_id,
                                 "last_modified": item["LastModified"].strftime("%Y-%m-%d %H:%M:%S UTC"),
+                                "last_modified_dt": item["LastModified"],
                                 "files": {},
                                 "summary": None,
                                 "packets": None
                             }
+                        else:
+                            if item["LastModified"] > passes[pass_id]["last_modified_dt"]:
+                                passes[pass_id]["last_modified_dt"] = item["LastModified"]
+                                passes[pass_id]["last_modified"] = item["LastModified"].strftime("%Y-%m-%d %H:%M:%S UTC")
                         passes[pass_id]["files"][filename] = key
 
             # 各パスの summary.json と packets.json を読み込み
@@ -802,8 +808,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
 
-            # 最新順にソート
-            sorted_passes = sorted(passes.values(), key=lambda x: x["pass_id"], reverse=True)
+            # 最新の観測日時順（タイムスタンプ降順）にソート
+            sorted_passes = sorted(
+                passes.values(),
+                key=lambda x: x.get("last_modified_dt", datetime.min.replace(tzinfo=timezone.utc)),
+                reverse=True
+            )
 
             cards_html = []
             for p in sorted_passes:
