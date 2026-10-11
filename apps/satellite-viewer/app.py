@@ -651,7 +651,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
                 for item in resp.get("Contents", []):
-                    if any(item["Key"].lower().endswith(ext) for ext in (".wav", ".u8", ".raw")):
+                    if any(item["Key"].lower().endswith(ext) for ext in (".wav", ".u8", ".raw", ".cadu")):
                         pending_count += 1
             except Exception as e:
                 print(f"Error checking pending tasks: {e}", flush=True)
@@ -670,7 +670,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
                 for item in resp.get("Contents", []):
-                    if any(item["Key"].lower().endswith(ext) for ext in (".wav", ".u8", ".raw")):
+                    if any(item["Key"].lower().endswith(ext) for ext in (".wav", ".u8", ".raw", ".cadu")):
                         pending_count += 1
             except Exception:
                 pass
@@ -1026,7 +1026,7 @@ async def run_dispatcher():
             resp = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix="raw/")
             for item in resp.get("Contents", []):
                 key = item["Key"]
-                if not any(key.lower().endswith(ext) for ext in (".wav", ".u8", ".raw")):
+                if not any(key.lower().endswith(ext) for ext in (".wav", ".u8", ".raw", ".cadu")):
                     continue
                 parts = key.split("/")
                 if len(parts) >= 3:

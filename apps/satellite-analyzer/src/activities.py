@@ -10,6 +10,7 @@ from aprs_decoder import APRSDecoder
 from funcube_decoder import FUNcubeDecoder
 from meteor_decoder import MeteorDecoder
 from spectrogram_generator import SpectrogramGenerator
+from retention import archive_and_rotate_raw_recording
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +211,8 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
     local_wav = os.path.join(tmp_dir, os.path.basename(s3_key))
 
     try:
+        prefix = f"results/{satellite}/{pass_id}"
+
         # 1. WAV ダウンロード
         logger.info(f"Downloading s3://{bucket}/{s3_key} to {local_wav}...")
         s3.download_file(bucket, s3_key, local_wav)
@@ -261,11 +264,12 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         # 3. スペクトログラム生成
         generator = SpectrogramGenerator()
         out_png = os.path.splitext(local_wav)[0] + "_spectrogram.png"
-        generator.generate(local_wav, out_png, title=f"{satellite} Pass Analysis")
+        try:
+            generator.generate(local_wav, out_png, title=f"{satellite} Pass Analysis")
+        except Exception as e:
+            logger.warning(f"Could not generate spectrogram for {local_wav}: {e}")
 
         # 4. S3 へ解析成果物を保存
-        prefix = f"results/{satellite}/{pass_id}"
-
         packets_tmp = os.path.join(tmp_dir, "packets.json")
         with open(packets_tmp, "w", encoding="utf-8") as f:
             json.dump(packets_data, f, indent=2, ensure_ascii=False)
@@ -290,13 +294,19 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
         s3.upload_file(summary_tmp, bucket, f"{prefix}/summary.json")
 
-        # 5. 元 WAV の削除
+        # 5. 元 raw ファイルの archive 退避と世代・容量ローテーション
+        archive_key = None
         if not keep_raw:
-            logger.info(f"Cleaning up raw WAV: s3://{bucket}/{s3_key}")
-            try:
-                s3.delete_object(Bucket=bucket, Key=s3_key)
-            except Exception as e:
-                logger.warning(f"Failed to delete raw WAV: {e}")
+            max_versions = int(os.getenv("RAW_RETENTION_MAX_VERSIONS", "3"))
+            max_bytes = int(os.getenv("RAW_RETENTION_MAX_BYTES", str(1024 * 1024 * 1024)))
+            archive_key = archive_and_rotate_raw_recording(
+                s3_client=s3,
+                bucket=bucket,
+                raw_s3_key=s3_key,
+                satellite=satellite,
+                max_versions=max_versions,
+                max_total_bytes=max_bytes,
+            )
 
         logger.info(f"Successfully processed pass: {pass_id} for {satellite}")
         return {

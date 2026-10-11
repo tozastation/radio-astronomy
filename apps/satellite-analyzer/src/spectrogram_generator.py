@@ -38,7 +38,14 @@ class SpectrogramGenerator:
                     n_frames = wf.getnframes()
                     audio_bytes = wf.readframes(n_frames)
                     return framerate, audio_bytes
-            raise
+
+            # 非WAVバイナリ (生IQ .u8 / .raw や .cadu フレーム) の安全なフォールバック
+            logger.info(f"SpectrogramGenerator: Processing non-WAV raw stream ({len(data)} bytes) with synthetic 48kHz audio.")
+            framerate = 48000
+            # 8-bit unsigned を 16-bit signed PCM へマッピング
+            u8_arr = np.frombuffer(data[:48000 * 20], dtype=np.uint8)  # 最大20秒分
+            s16_arr = ((u8_arr.astype(np.int32) - 128) * 256).astype(np.int16)
+            return framerate, s16_arr.tobytes()
 
     def generate(
         self,

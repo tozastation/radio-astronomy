@@ -41,3 +41,18 @@ fll_band_edge_cc :warning: Using legacy FLL loop filter.
 """
     frames = decoder.parse_output(sample_output)
     assert len(frames) == 0
+
+
+def test_funcube_decoder_with_golden_wav():
+    wav_asset = os.path.join(os.path.dirname(__file__), "../assets/ao73_telemetry_48k.wav")
+    if not os.path.exists(wav_asset):
+        pytest.skip("Golden AO-73 WAV sample not found")
+
+    decoder = FUNcubeDecoder()
+    if not decoder.has_binary:
+        pytest.skip("gr_satellites binary not found")
+
+    frames = decoder.decode_wav(wav_asset)
+    assert len(frames) > 0
+    assert frames[0].satellite == "FUNcube-1 (AO-73)"
+    assert "batteryvoltage" in frames[0].telemetry or len(frames[0].telemetry) > 0

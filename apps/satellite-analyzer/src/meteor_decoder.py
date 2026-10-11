@@ -75,6 +75,9 @@ class MeteorDecoder:
             os.makedirs(satdump_cfg_dir, exist_ok=True)
             if not os.path.exists(satdump_tle_path):
                 default_tle_content = (
+                    "METEOR-M2 3\n"
+                    "1 57166U 23091A   26247.84598514 -.00000034  00000+0  40546-5 0  9996\n"
+                    "2 57166  98.6012 301.1650 0002937 309.2560  50.8358 14.24051969165850\n"
                     "METEOR-M2 4\n"
                     "1 59051U 24039A   26284.50000000  .00000000  00000-0  50000-4 0  9999\n"
                     "2 59051  98.7000 120.0000 0001000  90.0000 270.0000 14.20000000 30000\n"
@@ -100,15 +103,24 @@ class MeteorDecoder:
             logger.warning(f"Could not initialize satdump settings/TLEs: {e}")
 
         try:
-            cmd = [
-                self.binary_path,
-                pipeline,
-                "baseband",
-                input_path,
-                output_dir,
-                "--samplerate", str(samplerate),
-                "--baseband_format", baseband_format,
-            ]
+            if input_path.lower().endswith(".cadu"):
+                cmd = [
+                    self.binary_path,
+                    pipeline,
+                    "cadu",
+                    input_path,
+                    output_dir,
+                ]
+            else:
+                cmd = [
+                    self.binary_path,
+                    pipeline,
+                    "baseband",
+                    input_path,
+                    output_dir,
+                    "--samplerate", str(samplerate),
+                    "--baseband_format", baseband_format,
+                ]
             logger.info(f"Running SatDump: {' '.join(cmd)}")
             result = subprocess.run(
                 cmd,

@@ -1,10 +1,11 @@
-FROM ubuntu:devel
+FROM ubuntu:resolute
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # SatDump (気象衛星QPSKデコーダ), gr-satellites (CubeSat BPSKデコーダ), direwolf (APRS AFSKデコーダ)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     satdump \
+    satdump-data \
     gr-satellites \
     direwolf \
     python3 \
@@ -23,6 +24,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 COPY src/ ./src/
+COPY assets/satdump_tles.txt /root/.config/satdump/satdump_tles.txt
 
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
