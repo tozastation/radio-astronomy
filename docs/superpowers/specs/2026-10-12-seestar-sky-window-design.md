@@ -12,7 +12,7 @@
 
 ## 1. 目的
 
-その夜、SeeStar をどこに置くと対象が窓に入るかを一文で出し、高度の曲線を Grafana で見る。撮れた画像は、撮影を始めたあと `satellite-viewer` で見る。
+その夜、SeeStar を北の長辺と東の短辺のどちらに置くと、どの対象が何時に窓に入るかを Grafana で見る。撮れた画像は、撮影を始めたあと `satellite-viewer` で見る。
 
 成功は、電波観測と同じく中身が見えることである。ここではスタックした JPEG が見えること。計画の曲線だけでは撮影成功にしない。
 
@@ -97,20 +97,36 @@ a =
 | M45 | 3h 47m | \(+24.1^\circ\) | 南中は南。東から入っている時間だけ窓に入る |
 | M42 | 5h 35m | \(-5.4^\circ\) | 南中は南。東の空にいる短い時間だけ |
 
-計画の一文は、基本姿勢で窓に入る時間が 30 分以上の対象が一つでもあれば「今夜は北のガラス際・中央。動かさない。」とする。30 分以上の対象が無ければ「今夜は北の窓に、30 分以上とどまる対象がない。」とする。東の短辺への移動は、第一段階の文には出さない。
+置き場所は、北の長辺（ガラス際・中央）と東の短辺の二つを並べて出す。どちらに置くかは、ボードの表を見て人が決める。東の短辺の窓は、方位 \(45^\circ\) から \(180^\circ\)、床 \(20^\circ\) を仮に置く。向かいの棟の屋上と、短辺の手すりから見える方位を現地で読むまでの値である。
 
 ---
 
 ## 5. 可視化
 
-Prometheus のメモリ上限は 512 MiB、保持は 2 日である（`infrastructure/monitoring/kube-prometheus-stack/values-minimal.yaml`）。一晩分の予測曲線を Prometheus の時系列には入れない。
+Prometheus は取りに来た時刻の値を集める。これから先の時刻の点は入れられない。そこで計画器 `apps/seestar-plan` を exporter にし、Prometheus が値を取りに来るたびに、その時刻の値と、今夜の窓に入る時刻・出る時刻を値として返す。描画は Grafana（NodePort 30080）の標準パネルに任せる。
 
-計画器は、太陽高度が \(-18^\circ\) を下回ってから再び \(-18^\circ\) を超えるまで（天文薄明の夜）の高度曲線を PNG にし、同じ応答で一文を返す。Grafana（NodePort 30080）のボードは、既存の衛星高度ボードとは別に次を置く。
+| メトリクス | ラベル | 中身 |
+|---|---|---|
+| `seestar_target_altitude_degrees` / `seestar_target_azimuth_degrees` | `target`, `name` | 今の高度・方位 |
+| `seestar_target_moon_separation_degrees` | `target`, `name` | 星と月の離角 |
+| `seestar_target_in_window` | `target`, `name`, `window`, `window_name` | いま窓の中なら 1 |
+| `seestar_target_window_start_timestamp_seconds` / `_end_` / `seestar_target_window_duration_seconds` | 同上 | 今夜の暗い時間のうち、いま入っている窓か次の窓 |
+| `seestar_window_floor_degrees` / `_ceiling_` / `_azimuth_from_` / `_azimuth_to_` | `window`, `window_name` | 置き場所の設定 |
+| `seestar_sun_altitude_degrees`, `seestar_sky_dark` | なし | 太陽の高度、天文薄明が終わっていれば 1 |
+| `seestar_night_start_timestamp_seconds` / `_end_` | なし | 今夜の暗い時間 |
+| `seestar_moon_altitude_degrees` / `_azimuth_` / `_illumination_ratio` / `_phase_ratio` / `_age_days` | なし | 月の位置と満ち欠け |
+| `seestar_moon_in_window` | `window`, `window_name` | 月が窓の中なら 1 |
+| `seestar_moon_next_rise_` / `_set_` / `_new_` / `_full_timestamp_seconds` | なし | 次の月の出・月の入り・新月・満月 |
 
-- 一文を出すテキストパネル
-- PNG を出す画像パネル。ブラウザが計画器の URL を直接読む
+「暗い時間で、しかも窓の中」は exporter では出さず、ボード側の PromQL `seestar_target_in_window * on() group_left() max(seestar_sky_dark)` で組み合わせる。月は天体暦の低精度式で求め、PyEphem との差は高度 0.1 度以下、新月・満月の時刻で 15 分以内である。
 
-曲線には、各対象の高度、\(\mathrm{Alt}_{\mathrm{ridge}}\)、\(\mathrm{Alt}_{\max}\) を描く。窓の中にいる区間が分かる色にする。
+ボード「SeeStar 今夜の窓」は次の標準パネルで組む。
+
+- Stat: 今夜の暗い時間、いまの空、太陽の高度、置き場所ごとのいま撮れる星の数と今夜窓に入る星の数
+- Stat と Gauge: 月相、輝面比、月齢、月の高度、次の月の出・月の入り、次の新月・満月
+- Table: 北の長辺と東の短辺の表を並べる。星ごとに、窓に入る時刻・出る時刻・長さ、いま撮れるか、高度、方位、月との離角を出す
+- Time series: 高度（置き場所ごとの床と天井の破線、月を重ねる）、方位、月との離角
+- State timeline: 置き場所ごとに、暗い時間に窓の中にいたあいだと、月が窓にいたあいだ
 
 撮影が始まる第二段階では、SeeStar の現在の高度・方位、バッテリー、スタック枚数だけを Prometheus のゲージにする。画像の JPEG は Garage の `optical/` に置き、`satellite-viewer`（NodePort 30088）が既存の画像カードと同じやり方で表示する。Grafana は鏡筒が窓のどこにいるかを見せ、画像の中身は viewer が見せる。
 
@@ -120,7 +136,7 @@ Prometheus のメモリ上限は 512 MiB、保持は 2 日である（`infrastru
 
 ファームウェア 7.18 以降は、TCP 4700 番で `get_verify_str` のあとに `verify_client` を通した相手にだけ命令へ返事をする。このプログラムはその署名を持たない。導入、ライブスタック、画像の取り込みは SeeStar 公式アプリで行う。
 
-計画器 `apps/seestar-plan` は望遠鏡に接続しない。ポート 30089 で今夜の PNG と JSON を返し、Grafana のボード「SeeStar 今夜の窓」が PNG を表示する。
+計画器 `apps/seestar-plan` は望遠鏡に接続しない。ポート 9101 の `/metrics` で値を返し、ServiceMonitor を通して Prometheus が 30 秒ごとに取りに来る。
 
 ---
 
@@ -130,7 +146,7 @@ Prometheus のメモリ上限は 512 MiB、保持は 2 日である（`infrastru
 
 1. 代表緯度で、カタログ 6 天体の南中が北か南かを式どおりに判定するテストがある。
 2. 高度が \(\mathrm{Alt}_{\mathrm{ridge}}\) 未満、または \(\mathrm{Alt}_{\max}\) を超える時刻は窓の外になるテストがある。
-3. 計画器が、指定した夜の PNG と一文を返す。
-4. Grafana のボード定義がリポジトリにあり、一文と PNG の URL を参照する。
+3. 計画器が、指定した時刻の窓・星・月の値を Prometheus の形式で返す。
+4. Grafana のボード定義がリポジトリにあり、標準パネルだけで置き場所ごとの窓と月を表示する。
 
-第二段階に入る条件は、第一段階のボードを見て、ガラス際に置いた夜の曲線が使えると判断したときである。
+第二段階に入る条件は、第一段階のボードを見て、ガラス際に置いた夜の窓の時刻が使えると判断したときである。
