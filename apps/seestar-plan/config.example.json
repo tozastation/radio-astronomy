@@ -3,6 +3,6 @@
   "longitude_deg": 139.6917,
   "windows": [
     {"key": "north", "name": "北の長辺", "az_from_deg": 270, "az_to_deg": 90, "floor_deg": 10, "ceiling_deg": 85},
-    {"key": "east", "name": "東の短辺", "az_from_deg": 45, "az_to_deg": 180, "floor_deg": 20, "ceiling_deg": 85}
+    {"key": "east", "name": "東の短辺", "az_from_deg": 45, "az_to_deg": 135, "floor_deg": 20, "ceiling_deg": 85}
   ]
 }
