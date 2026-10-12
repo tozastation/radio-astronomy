@@ -165,3 +165,9 @@ infrastructure/
 ```
 
 対応するコンテナイメージのソースは `apps/satellite-tracker-rs/`、`apps/satellite-analyzer/`、`apps/satellite-viewer/`、`apps/kubeedge-metrics-proxy/` です。
+
+---
+
+## 6. 次にやりたいこと
+
+- SatDump に任せている CCSDS の層を Java で自作し、GraalVM Native Image と OpenTelemetry で運用する構想: [superpowers/specs/2026-10-12-ccsds-parser-java-cloud-native-idea.md](superpowers/specs/2026-10-12-ccsds-parser-java-cloud-native-idea.md)（未着手）
