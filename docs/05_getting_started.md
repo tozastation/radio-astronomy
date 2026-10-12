@@ -1,6 +1,8 @@
-# 🚀 Getting Started: エッジ観測ノード構築＆電波受信ファーストステップ
+# 初日の受信手順（WSL2 の記録）
 
-本ドキュメントは、**GPD Pocket3（WSL2）** と **RTL-SDR Blog V4** を用い、ベランダのアンテナで電波を受信してLAN経由でリアルタイム再生・データ化するまでの**完全ハンズオン手順書**です。
+この文書は、GPD Pocket3 をまだ Windows 11 + WSL2 で動かしていた初日に、ベランダのアンテナで FM 放送を受信し、LAN 越しに再生した手順の記録です。
+
+いまの PC には **Ubuntu 26.04 LTS を直接インストール**しています。USB パススルー（`usbipd-win`）と、WSL2 の Mirrored ネットワーク（Windows と同じ IP アドレスを使う設定）は、この初日の構成向けです。いまの観測（案Aの ADS-B、衛星の受信と解析、KubeEdge）は [README.md](../README.md) と [03_system_architecture.md](03_system_architecture.md) にあります。V4 用ドライバを Ubuntu に入れる手順は、README のクイックスタートと [setup/03_kubeedge_deployment_guide.md](setup/03_kubeedge_deployment_guide.md) にあります。
 
 ---
 
@@ -225,19 +227,18 @@ ssh <WSLユーザー名>@<GPD Pocket3のLAN_IP> "rtl_fm -M wfm -f 81.3M -s 200k 
 
 ---
 
-## 🎯 次のステップへ
+## このあとに進んだ場所
 
-おめでとうございます！これで「電波を受信し、データ処理し、ネットワーク越しに活用する」ための基盤が完成しました。
+FM が鳴ったあと、観測は次の状態まで進んでいます。
 
-ここからは、本プロジェクトの真の目的である**宇宙・天体観測**に進みます：
-1. **人工衛星（NOAA気象衛星 / Meteor-M）の軌道計算とリアルタイム地球画像デコード**:
-   - 軌道要素（TLE）計算: [Skyfield 公式ドキュメント](https://rhodesmill.org/skyfield/)
-   - NOAA APT デコーダ: [noaa-apt 公式サイト・GitHub](https://noaa-apt.mbernardi.com.ar/)
-   - 汎用衛星デコーダ: [GitHub: SatDump/SatDump](https://github.com/SatDump/SatDump)
-   - 詳細解説: [04_qa.md#3-アプリケーションシステム応用](04_qa.md#3-アプリケーションシステム応用)
-2. **流星電波前方散乱観測（53.57MHz 流星エコー検知）**:
-   - 福井高専の送信所や国内の電波反射観測網を活用した突入エコーの自動カウント。
-   - 詳細解説: [04_qa.md#1-観測対象宇宙の状態](04_qa.md#1-観測対象宇宙の状態)
-3. **天の川銀河の21cm中性水素線観測＆銀河回転曲線解析**:
-   - 1420MHz水素線スペクトルからドップラー速度を算出し、ダークマターの存在を検証。
-   - 詳細解説: [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md)
+1. **OS を Ubuntu 26.04 LTS の直接インストールにし、KubeEdge をこの 1 台にまとめた**
+   - 手順: [setup/03_kubeedge_deployment_guide.md](setup/03_kubeedge_deployment_guide.md)
+   - 構成: [03_system_architecture.md](03_system_architecture.md)
+2. **案Aとして、ADS-B（1090 MHz。航空機が送る位置情報）で地図上の航跡を見る**
+   - `docker compose up -d ultrafeeder`（ポート 18090）
+   - 解説: [qa/08_adsb_flight_tracking_and_tar1090.md](qa/08_adsb_flight_tracking_and_tar1090.md)
+3. **衛星の受信プログラムは、北向きベランダから見える空に合わせて実装済みである。案Aのあいだ、受信機は ADS-B が専有する**
+   - NOAA の APT（画像のアナログ放送）は停波済み。気象画像を受けるときは Meteor-M の LRPT
+   - 北向きから見える範囲: [qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md](qa/15_uhf_cubesat_doppler_tracking_and_containerd_pipeline.md)
+
+上空通過の予測では、Python では [Skyfield](https://rhodesmill.org/skyfield/)、実装では Rust の `sgp4` を使っています。衛星電波の汎用デコーダとして参照している実装は [SatDump](https://github.com/SatDump/SatDump) です。
