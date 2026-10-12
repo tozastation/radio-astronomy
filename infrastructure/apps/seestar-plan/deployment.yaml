@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
         - name: exporter
-          image: localhost:5000/seestar-plan:v0.2.0
+          image: localhost:5000/seestar-plan:v0.3.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9101
