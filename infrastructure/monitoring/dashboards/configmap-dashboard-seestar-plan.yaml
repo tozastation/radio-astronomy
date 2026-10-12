@@ -2,16 +2,16 @@ apiVersion: v1
 data:
   seestar-plan.json: "{\n  \"annotations\": {\n    \"list\": []\n  },\n  \"editable\"\
     : true,\n  \"fiscalYearStartMonth\": 0,\n  \"graphTooltip\": 1,\n  \"id\": null,\n\
-    \  \"links\": [],\n  \"panels\": [\n    {\n      \"type\": \"row\",\n      \"\
-    title\": \"今夜\",\n      \"id\": 2,\n      \"collapsed\": false,\n      \"gridPos\"\
-    : {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\":\
-    \ 0\n      },\n      \"panels\": []\n    },\n    {\n      \"type\": \"stat\",\n\
-    \      \"title\": \"暗い時間の始まり\",\n      \"id\": 3,\n      \"datasource\": {\n \
-    \       \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n\
-    \      \"description\": \"\",\n      \"gridPos\": {\n        \"h\": 4,\n     \
-    \   \"w\": 4,\n        \"x\": 0,\n        \"y\": 1\n      },\n      \"targets\"\
-    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
-    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max(seestar_night_start_timestamp_seconds)\
+    \  \"panels\": [\n    {\n      \"type\": \"row\",\n      \"title\": \"今夜\",\n\
+    \      \"id\": 2,\n      \"collapsed\": false,\n      \"gridPos\": {\n       \
+    \ \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\": 0\n      },\n\
+    \      \"panels\": []\n    },\n    {\n      \"type\": \"stat\",\n      \"title\"\
+    : \"暗い時間の始まり\",\n      \"id\": 3,\n      \"datasource\": {\n        \"type\":\
+    \ \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"description\"\
+    : \"\",\n      \"gridPos\": {\n        \"h\": 4,\n        \"w\": 4,\n        \"\
+    x\": 0,\n        \"y\": 1\n      },\n      \"targets\": [\n        {\n       \
+    \   \"datasource\": {\n            \"type\": \"prometheus\",\n            \"uid\"\
+    : \"prometheus\"\n          },\n          \"expr\": \"max(seestar_night_start_timestamp_seconds)\
     \ * 1000\",\n          \"legendFormat\": \"始まり\",\n          \"refId\": \"A\"\
     ,\n          \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n\
     \        \"defaults\": {\n          \"unit\": \"dateTimeAsLocalNoDateIfToday\"\
@@ -137,73 +137,349 @@ data:
     \    \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\",\n        \"\
     orientation\": \"auto\",\n        \"textMode\": \"value_and_name\",\n        \"\
     wideLayout\": true,\n        \"showPercentChange\": false\n      }\n    },\n \
-    \   {\n      \"type\": \"row\",\n      \"title\": \"月\",\n      \"id\": 9,\n \
-    \     \"collapsed\": false,\n      \"gridPos\": {\n        \"h\": 1,\n       \
-    \ \"w\": 24,\n        \"x\": 0,\n        \"y\": 5\n      },\n      \"panels\"\
-    : []\n    },\n    {\n      \"type\": \"stat\",\n      \"title\": \"月相\",\n   \
-    \   \"id\": 10,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n\
-    \        \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n   \
-    \   \"gridPos\": {\n        \"h\": 4,\n        \"w\": 4,\n        \"x\": 0,\n\
+    \   {\n      \"type\": \"row\",\n      \"title\": \"星空の天気予報（Open-Meteo）\",\n \
+    \     \"id\": 9,\n      \"collapsed\": false,\n      \"gridPos\": {\n        \"\
+    h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\": 5\n      },\n \
+    \     \"panels\": []\n    },\n    {\n      \"type\": \"stat\",\n      \"title\"\
+    : \"今夜の晴れ\",\n      \"id\": 10,\n      \"datasource\": {\n        \"type\": \"\
+    prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"description\"\
+    : \"今夜の暗い時間のうち、雲量 30% 未満かつ降水確率 30% 未満の予報の長さ\",\n      \"gridPos\": {\n       \
+    \ \"h\": 5,\n        \"w\": 4,\n        \"x\": 0,\n        \"y\": 6\n      },\n\
+    \      \"targets\": [\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
+    \         \"expr\": \"max(seestar_weather_tonight_clear_seconds) / 3600\",\n \
+    \         \"legendFormat\": \"晴れ\",\n          \"refId\": \"A\",\n          \"\
+    range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"unit\": \"h\",\n          \"mappings\": [],\n          \"color\"\
+    : {\n            \"mode\": \"thresholds\"\n          },\n          \"thresholds\"\
+    : {\n            \"mode\": \"absolute\",\n            \"steps\": [\n         \
+    \     {\n                \"color\": \"red\",\n                \"value\": null\n\
+    \              },\n              {\n                \"color\": \"orange\",\n \
+    \               \"value\": 1\n              },\n              {\n            \
+    \    \"color\": \"green\",\n                \"value\": 3\n              }\n  \
+    \          ]\n          },\n          \"decimals\": 1\n        },\n        \"\
+    overrides\": []\n      },\n      \"options\": {\n        \"reduceOptions\": {\n\
+    \          \"calcs\": [\n            \"lastNotNull\"\n          ],\n         \
+    \ \"fields\": \"\",\n          \"values\": false\n        },\n        \"colorMode\"\
+    : \"background\",\n        \"graphMode\": \"none\",\n        \"justifyMode\":\
+    \ \"auto\",\n        \"orientation\": \"auto\",\n        \"textMode\": \"value\"\
+    ,\n        \"wideLayout\": true,\n        \"showPercentChange\": false\n     \
+    \ }\n    },\n    {\n      \"type\": \"gauge\",\n      \"title\": \"いまの雲量\",\n\
+    \      \"id\": 11,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n \
+    \     \"gridPos\": {\n        \"h\": 5,\n        \"w\": 4,\n        \"x\": 4,\n\
     \        \"y\": 6\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
     : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
-    \n          },\n          \"expr\": \"max(seestar_moon_phase_ratio)\",\n     \
-    \     \"legendFormat\": \"月相\",\n          \"refId\": \"A\",\n          \"range\"\
-    : true\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\": {\n\
-    \          \"unit\": \"none\",\n          \"mappings\": [\n            {\n   \
-    \           \"type\": \"range\",\n              \"options\": {\n             \
-    \   \"from\": 0.0,\n                \"to\": 0.034,\n                \"result\"\
-    : {\n                  \"text\": \"新月\",\n                  \"index\": 0\n   \
-    \             }\n              }\n            },\n            {\n            \
-    \  \"type\": \"range\",\n              \"options\": {\n                \"from\"\
-    : 0.034,\n                \"to\": 0.216,\n                \"result\": {\n    \
-    \              \"text\": \"三日月から上弦へ\",\n                  \"index\": 1\n     \
-    \           }\n              }\n            },\n            {\n              \"\
-    type\": \"range\",\n              \"options\": {\n                \"from\": 0.216,\n\
-    \                \"to\": 0.284,\n                \"result\": {\n             \
-    \     \"text\": \"上弦\",\n                  \"index\": 2\n                }\n \
-    \             }\n            },\n            {\n              \"type\": \"range\"\
-    ,\n              \"options\": {\n                \"from\": 0.284,\n          \
-    \      \"to\": 0.466,\n                \"result\": {\n                  \"text\"\
-    : \"満ちていく\",\n                  \"index\": 3\n                }\n            \
-    \  }\n            },\n            {\n              \"type\": \"range\",\n    \
-    \          \"options\": {\n                \"from\": 0.466,\n                \"\
-    to\": 0.534,\n                \"result\": {\n                  \"text\": \"満月\"\
-    ,\n                  \"index\": 4\n                }\n              }\n      \
-    \      },\n            {\n              \"type\": \"range\",\n              \"\
-    options\": {\n                \"from\": 0.534,\n                \"to\": 0.716,\n\
-    \                \"result\": {\n                  \"text\": \"欠けていく\",\n     \
-    \             \"index\": 5\n                }\n              }\n            },\n\
-    \            {\n              \"type\": \"range\",\n              \"options\"\
-    : {\n                \"from\": 0.716,\n                \"to\": 0.784,\n      \
-    \          \"result\": {\n                  \"text\": \"下弦\",\n              \
-    \    \"index\": 6\n                }\n              }\n            },\n      \
-    \      {\n              \"type\": \"range\",\n              \"options\": {\n \
-    \               \"from\": 0.784,\n                \"to\": 0.966,\n           \
-    \     \"result\": {\n                  \"text\": \"有明の月\",\n                 \
-    \ \"index\": 7\n                }\n              }\n            },\n         \
-    \   {\n              \"type\": \"range\",\n              \"options\": {\n    \
-    \            \"from\": 0.966,\n                \"to\": 1.0,\n                \"\
-    result\": {\n                  \"text\": \"新月\",\n                  \"index\"\
-    : 8\n                }\n              }\n            }\n          ],\n       \
-    \   \"color\": {\n            \"mode\": \"thresholds\"\n          },\n       \
-    \   \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
-    : [\n              {\n                \"color\": \"text\",\n                \"\
-    value\": null\n              }\n            ]\n          }\n        },\n     \
-    \   \"overrides\": []\n      },\n      \"options\": {\n        \"reduceOptions\"\
+    \n          },\n          \"expr\": \"max(seestar_weather_cloud_cover_percent{layer=\\\
+    \"total\\\"})\",\n          \"legendFormat\": \"雲量\",\n          \"refId\": \"\
+    A\",\n          \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"percent\",\n          \"mappings\"\
+    : [],\n          \"color\": {\n            \"mode\": \"thresholds\"\n        \
+    \  },\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n    \
+    \        \"steps\": [\n              {\n                \"color\": \"green\",\n\
+    \                \"value\": null\n              },\n              {\n        \
+    \        \"color\": \"orange\",\n                \"value\": 30\n             \
+    \ },\n              {\n                \"color\": \"red\",\n                \"\
+    value\": 70\n              }\n            ]\n          },\n          \"decimals\"\
+    : 0\n        },\n        \"overrides\": []\n      },\n      \"options\": {\n \
+    \       \"reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\
+    \n          ],\n          \"fields\": \"\",\n          \"values\": false\n   \
+    \     },\n        \"minVizHeight\": 75,\n        \"minVizWidth\": 75,\n      \
+    \  \"showThresholdLabels\": false,\n        \"showThresholdMarkers\": true\n \
+    \     }\n    },\n    {\n      \"type\": \"bargauge\",\n      \"title\": \"雲の高さ\"\
+    ,\n      \"id\": 12,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"低層は 2 km\
+    \ 以下、中層は 2〜6 km、高層は 6 km 以上の雲\",\n      \"gridPos\": {\n        \"h\": 5,\n  \
+    \      \"w\": 4,\n        \"x\": 8,\n        \"y\": 6\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max\
+    \ by (layer) (seestar_weather_cloud_cover_percent{layer!=\\\"total\\\"})\",\n\
+    \          \"legendFormat\": \"{{layer}}\",\n          \"refId\": \"A\",\n   \
+    \       \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n     \
+    \   \"defaults\": {\n          \"unit\": \"percent\",\n          \"mappings\"\
+    : [],\n          \"color\": {\n            \"mode\": \"thresholds\"\n        \
+    \  },\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n    \
+    \        \"steps\": [\n              {\n                \"color\": \"green\",\n\
+    \                \"value\": null\n              },\n              {\n        \
+    \        \"color\": \"orange\",\n                \"value\": 30\n             \
+    \ },\n              {\n                \"color\": \"red\",\n                \"\
+    value\": 70\n              }\n            ]\n          },\n          \"decimals\"\
+    : 0\n        },\n        \"overrides\": [\n          {\n            \"matcher\"\
+    : {\n              \"id\": \"byName\",\n              \"options\": \"low\"\n \
+    \           },\n            \"properties\": [\n              {\n             \
+    \   \"id\": \"displayName\",\n                \"value\": \"低層\"\n            \
+    \  }\n            ]\n          },\n          {\n            \"matcher\": {\n \
+    \             \"id\": \"byName\",\n              \"options\": \"mid\"\n      \
+    \      },\n            \"properties\": [\n              {\n                \"\
+    id\": \"displayName\",\n                \"value\": \"中層\"\n              }\n \
+    \           ]\n          },\n          {\n            \"matcher\": {\n       \
+    \       \"id\": \"byName\",\n              \"options\": \"high\"\n           \
+    \ },\n            \"properties\": [\n              {\n                \"id\":\
+    \ \"displayName\",\n                \"value\": \"高層\"\n              }\n     \
+    \       ]\n          }\n        ]\n      },\n      \"options\": {\n        \"\
+    reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\n    \
+    \      ],\n          \"fields\": \"\",\n          \"values\": false\n        },\n\
+    \        \"orientation\": \"horizontal\",\n        \"displayMode\": \"gradient\"\
+    ,\n        \"showUnfilled\": true,\n        \"valueMode\": \"color\",\n      \
+    \  \"minVizHeight\": 10,\n        \"minVizWidth\": 0\n      }\n    },\n    {\n\
+    \      \"type\": \"stat\",\n      \"title\": \"降水確率\",\n      \"id\": 13,\n  \
+    \    \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"\
+    prometheus\"\n      },\n      \"description\": \"\",\n      \"gridPos\": {\n \
+    \       \"h\": 5,\n        \"w\": 3,\n        \"x\": 12,\n        \"y\": 6\n \
+    \     },\n      \"targets\": [\n        {\n          \"datasource\": {\n     \
+    \       \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n     \
+    \     },\n          \"expr\": \"max(seestar_weather_precipitation_probability_percent)\"\
+    ,\n          \"legendFormat\": \"雨\",\n          \"refId\": \"A\",\n         \
+    \ \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"unit\": \"percent\",\n          \"mappings\": [],\n         \
+    \ \"color\": {\n            \"mode\": \"thresholds\"\n          },\n         \
+    \ \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              },\n              {\n                \"color\": \"\
+    orange\",\n                \"value\": 30\n              },\n              {\n\
+    \                \"color\": \"red\",\n                \"value\": 70\n        \
+    \      }\n            ]\n          },\n          \"decimals\": 0\n        },\n\
+    \        \"overrides\": []\n      },\n      \"options\": {\n        \"reduceOptions\"\
     : {\n          \"calcs\": [\n            \"lastNotNull\"\n          ],\n     \
     \     \"fields\": \"\",\n          \"values\": false\n        },\n        \"colorMode\"\
     : \"value\",\n        \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\"\
     ,\n        \"orientation\": \"auto\",\n        \"textMode\": \"value\",\n    \
     \    \"wideLayout\": true,\n        \"showPercentChange\": false\n      }\n  \
-    \  },\n    {\n      \"type\": \"gauge\",\n      \"title\": \"輝面比\",\n      \"\
-    id\": 11,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n      \
-    \  \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n      \"gridPos\"\
-    : {\n        \"h\": 4,\n        \"w\": 4,\n        \"x\": 4,\n        \"y\": 6\n\
+    \  },\n    {\n      \"type\": \"stat\",\n      \"title\": \"気温と露点の差\",\n     \
+    \ \"id\": 14,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n  \
+    \      \"uid\": \"prometheus\"\n      },\n      \"description\": \"2 度より小さいと、鏡筒やレンズが結露しやすい\"\
+    ,\n      \"gridPos\": {\n        \"h\": 5,\n        \"w\": 3,\n        \"x\":\
+    \ 15,\n        \"y\": 6\n      },\n      \"targets\": [\n        {\n         \
+    \ \"datasource\": {\n            \"type\": \"prometheus\",\n            \"uid\"\
+    : \"prometheus\"\n          },\n          \"expr\": \"max(seestar_weather_temperature_celsius)\
+    \ - max(seestar_weather_dew_point_celsius)\",\n          \"legendFormat\": \"\
+    差\",\n          \"refId\": \"A\",\n          \"range\": true\n        }\n    \
+    \  ],\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\":\
+    \ \"celsius\",\n          \"mappings\": [],\n          \"color\": {\n        \
+    \    \"mode\": \"thresholds\"\n          },\n          \"thresholds\": {\n   \
+    \         \"mode\": \"absolute\",\n            \"steps\": [\n              {\n\
+    \                \"color\": \"red\",\n                \"value\": null\n      \
+    \        },\n              {\n                \"color\": \"orange\",\n       \
+    \         \"value\": 2\n              },\n              {\n                \"\
+    color\": \"green\",\n                \"value\": 4\n              }\n         \
+    \   ]\n          },\n          \"decimals\": 1\n        },\n        \"overrides\"\
+    : []\n      },\n      \"options\": {\n        \"reduceOptions\": {\n         \
+    \ \"calcs\": [\n            \"lastNotNull\"\n          ],\n          \"fields\"\
+    : \"\",\n          \"values\": false\n        },\n        \"colorMode\": \"value\"\
+    ,\n        \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\",\n    \
+    \    \"orientation\": \"auto\",\n        \"textMode\": \"value\",\n        \"\
+    wideLayout\": true,\n        \"showPercentChange\": false\n      }\n    },\n \
+    \   {\n      \"type\": \"stat\",\n      \"title\": \"湿度\",\n      \"id\": 15,\n\
+    \      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\":\
+    \ \"prometheus\"\n      },\n      \"description\": \"\",\n      \"gridPos\": {\n\
+    \        \"h\": 5,\n        \"w\": 3,\n        \"x\": 18,\n        \"y\": 6\n\
     \      },\n      \"targets\": [\n        {\n          \"datasource\": {\n    \
     \        \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n    \
-    \      },\n          \"expr\": \"max(seestar_moon_illumination_ratio)\",\n   \
-    \       \"legendFormat\": \"輝面比\",\n          \"refId\": \"A\",\n          \"\
-    range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
+    \      },\n          \"expr\": \"max(seestar_weather_relative_humidity_percent)\"\
+    ,\n          \"legendFormat\": \"湿度\",\n          \"refId\": \"A\",\n        \
+    \  \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"\
+    defaults\": {\n          \"unit\": \"percent\",\n          \"mappings\": [],\n\
+    \          \"color\": {\n            \"mode\": \"thresholds\"\n          },\n\
+    \          \"thresholds\": {\n            \"mode\": \"absolute\",\n          \
+    \  \"steps\": [\n              {\n                \"color\": \"green\",\n    \
+    \            \"value\": null\n              },\n              {\n            \
+    \    \"color\": \"orange\",\n                \"value\": 80\n              },\n\
+    \              {\n                \"color\": \"red\",\n                \"value\"\
+    : 90\n              }\n            ]\n          },\n          \"decimals\": 0\n\
+    \        },\n        \"overrides\": []\n      },\n      \"options\": {\n     \
+    \   \"reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\n\
+    \          ],\n          \"fields\": \"\",\n          \"values\": false\n    \
+    \    },\n        \"colorMode\": \"value\",\n        \"graphMode\": \"none\",\n\
+    \        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n    \
+    \    \"textMode\": \"value\",\n        \"wideLayout\": true,\n        \"showPercentChange\"\
+    : false\n      }\n    },\n    {\n      \"type\": \"stat\",\n      \"title\": \"\
+    風速\",\n      \"id\": 16,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n \
+    \     \"gridPos\": {\n        \"h\": 5,\n        \"w\": 3,\n        \"x\": 21,\n\
+    \        \"y\": 6\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
+    : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
+    \n          },\n          \"expr\": \"max(seestar_weather_wind_speed_meters_per_second)\"\
+    ,\n          \"legendFormat\": \"風\",\n          \"refId\": \"A\",\n         \
+    \ \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"unit\": \"velocityms\",\n          \"mappings\": [],\n      \
+    \    \"color\": {\n            \"mode\": \"thresholds\"\n          },\n      \
+    \    \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              },\n              {\n                \"color\": \"\
+    orange\",\n                \"value\": 5\n              },\n              {\n \
+    \               \"color\": \"red\",\n                \"value\": 8\n          \
+    \    }\n            ]\n          },\n          \"decimals\": 1\n        },\n \
+    \       \"overrides\": []\n      },\n      \"options\": {\n        \"reduceOptions\"\
+    : {\n          \"calcs\": [\n            \"lastNotNull\"\n          ],\n     \
+    \     \"fields\": \"\",\n          \"values\": false\n        },\n        \"colorMode\"\
+    : \"value\",\n        \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\"\
+    ,\n        \"orientation\": \"auto\",\n        \"textMode\": \"value\",\n    \
+    \    \"wideLayout\": true,\n        \"showPercentChange\": false\n      }\n  \
+    \  },\n    {\n      \"type\": \"barchart\",\n      \"title\": \"今夜の雲量と降水確率（1 時間ごと）\"\
+    ,\n      \"id\": 17,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"今夜の暗い時間にかかる時間帯の予報\"\
+    ,\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 18,\n        \"x\"\
+    : 0,\n        \"y\": 11\n      },\n      \"targets\": [\n        {\n         \
+    \ \"datasource\": {\n            \"type\": \"prometheus\",\n            \"uid\"\
+    : \"prometheus\"\n          },\n          \"expr\": \"max by (slot, hour) (seestar_weather_tonight_cloud_cover_percent)\"\
+    ,\n          \"legendFormat\": \"\",\n          \"refId\": \"A\",\n          \"\
+    instant\": true,\n          \"range\": false,\n          \"format\": \"table\"\
+    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"max by (slot, hour) (seestar_weather_tonight_precipitation_probability_percent)\"\
+    ,\n          \"legendFormat\": \"\",\n          \"refId\": \"B\",\n          \"\
+    instant\": true,\n          \"range\": false,\n          \"format\": \"table\"\
+    \n        }\n      ],\n      \"transformations\": [\n        {\n          \"id\"\
+    : \"merge\",\n          \"options\": {}\n        },\n        {\n          \"id\"\
+    : \"sortBy\",\n          \"options\": {\n            \"sort\": [\n           \
+    \   {\n                \"field\": \"slot\"\n              }\n            ]\n \
+    \         }\n        },\n        {\n          \"id\": \"organize\",\n        \
+    \  \"options\": {\n            \"excludeByName\": {\n              \"Time\": true,\n\
+    \              \"slot\": true\n            },\n            \"renameByName\": {\n\
+    \              \"hour\": \"時刻\",\n              \"Value #A\": \"雲量\",\n      \
+    \        \"Value #B\": \"降水確率\"\n            }\n          }\n        }\n     \
+    \ ],\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"\
+    percent\",\n          \"min\": 0,\n          \"max\": 100,\n          \"decimals\"\
+    : 0,\n          \"color\": {\n            \"mode\": \"palette-classic\"\n    \
+    \      },\n          \"custom\": {\n            \"fillOpacity\": 80,\n       \
+    \     \"lineWidth\": 0,\n            \"gradientMode\": \"none\"\n          }\n\
+    \        },\n        \"overrides\": [\n          {\n            \"matcher\": {\n\
+    \              \"id\": \"byName\",\n              \"options\": \"雲量\"\n      \
+    \      },\n            \"properties\": [\n              {\n                \"\
+    id\": \"color\",\n                \"value\": {\n                  \"mode\": \"\
+    thresholds\"\n                }\n              },\n              {\n         \
+    \       \"id\": \"thresholds\",\n                \"value\": {\n              \
+    \    \"mode\": \"absolute\",\n                  \"steps\": [\n               \
+    \     {\n                      \"color\": \"green\",\n                      \"\
+    value\": null\n                    },\n                    {\n               \
+    \       \"color\": \"orange\",\n                      \"value\": 30\n        \
+    \            },\n                    {\n                      \"color\": \"red\"\
+    ,\n                      \"value\": 70\n                    }\n              \
+    \    ]\n                }\n              }\n            ]\n          },\n    \
+    \      {\n            \"matcher\": {\n              \"id\": \"byName\",\n    \
+    \          \"options\": \"降水確率\"\n            },\n            \"properties\":\
+    \ [\n              {\n                \"id\": \"color\",\n                \"value\"\
+    : {\n                  \"mode\": \"fixed\",\n                  \"fixedColor\"\
+    : \"blue\"\n                }\n              }\n            ]\n          }\n \
+    \       ]\n      },\n      \"options\": {\n        \"xField\": \"時刻\",\n     \
+    \   \"orientation\": \"vertical\",\n        \"groupWidth\": 0.7,\n        \"barWidth\"\
+    : 0.9,\n        \"showValue\": \"auto\",\n        \"stacking\": \"none\",\n  \
+    \      \"colorByField\": \"雲量\",\n        \"legend\": {\n          \"showLegend\"\
+    : true,\n          \"displayMode\": \"list\",\n          \"placement\": \"bottom\"\
+    \n        },\n        \"tooltip\": {\n          \"mode\": \"multi\"\n        },\n\
+    \        \"xTickLabelRotation\": 0\n      }\n    },\n    {\n      \"type\": \"\
+    stat\",\n      \"title\": \"予報の取得\",\n      \"id\": 18,\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n    \
+    \  },\n      \"description\": \"\",\n      \"gridPos\": {\n        \"h\": 4,\n\
+    \        \"w\": 6,\n        \"x\": 18,\n        \"y\": 11\n      },\n      \"\
+    targets\": [\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"max(seestar_weather_forecast_up)\",\n          \"legendFormat\": \"\
+    取得\",\n          \"refId\": \"A\",\n          \"range\": true\n        }\n   \
+    \   ],\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\"\
+    : \"none\",\n          \"mappings\": [\n            {\n              \"type\"\
+    : \"value\",\n              \"options\": {\n                \"0\": {\n       \
+    \           \"text\": \"失敗（前回の予報を表示）\",\n                  \"color\": \"orange\"\
+    ,\n                  \"index\": 0\n                },\n                \"1\":\
+    \ {\n                  \"text\": \"成功\",\n                  \"color\": \"green\"\
+    ,\n                  \"index\": 1\n                }\n              }\n      \
+    \      }\n          ],\n          \"color\": {\n            \"mode\": \"thresholds\"\
+    \n          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"text\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ }\n        },\n        \"overrides\": []\n      },\n      \"options\": {\n \
+    \       \"reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\
+    \n          ],\n          \"fields\": \"\",\n          \"values\": false\n   \
+    \     },\n        \"colorMode\": \"background\",\n        \"graphMode\": \"none\"\
+    ,\n        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n  \
+    \      \"textMode\": \"value\",\n        \"wideLayout\": true,\n        \"showPercentChange\"\
+    : false\n      }\n    },\n    {\n      \"type\": \"stat\",\n      \"title\": \"\
+    予報を取った時刻\",\n      \"id\": 19,\n      \"datasource\": {\n        \"type\": \"\
+    prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"description\"\
+    : \"\",\n      \"gridPos\": {\n        \"h\": 4,\n        \"w\": 6,\n        \"\
+    x\": 18,\n        \"y\": 15\n      },\n      \"targets\": [\n        {\n     \
+    \     \"datasource\": {\n            \"type\": \"prometheus\",\n            \"\
+    uid\": \"prometheus\"\n          },\n          \"expr\": \"max(seestar_weather_forecast_fetch_timestamp_seconds)\
+    \ * 1000\",\n          \"legendFormat\": \"時刻\",\n          \"refId\": \"A\",\n\
+    \          \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n  \
+    \      \"defaults\": {\n          \"unit\": \"dateTimeFromNow\",\n          \"\
+    mappings\": [],\n          \"color\": {\n            \"mode\": \"thresholds\"\n\
+    \          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"text\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ }\n        },\n        \"overrides\": []\n      },\n      \"options\": {\n \
+    \       \"reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\
+    \n          ],\n          \"fields\": \"\",\n          \"values\": false\n   \
+    \     },\n        \"colorMode\": \"value\",\n        \"graphMode\": \"none\",\n\
+    \        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n    \
+    \    \"textMode\": \"value\",\n        \"wideLayout\": true,\n        \"showPercentChange\"\
+    : false\n      }\n    },\n    {\n      \"type\": \"row\",\n      \"title\": \"\
+    月\",\n      \"id\": 20,\n      \"collapsed\": false,\n      \"gridPos\": {\n \
+    \       \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\": 19\n\
+    \      },\n      \"panels\": []\n    },\n    {\n      \"type\": \"stat\",\n  \
+    \    \"title\": \"月相\",\n      \"id\": 21,\n      \"datasource\": {\n        \"\
+    type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"description\"\
+    : \"\",\n      \"gridPos\": {\n        \"h\": 4,\n        \"w\": 4,\n        \"\
+    x\": 0,\n        \"y\": 20\n      },\n      \"targets\": [\n        {\n      \
+    \    \"datasource\": {\n            \"type\": \"prometheus\",\n            \"\
+    uid\": \"prometheus\"\n          },\n          \"expr\": \"max(seestar_moon_phase_ratio)\"\
+    ,\n          \"legendFormat\": \"月相\",\n          \"refId\": \"A\",\n        \
+    \  \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"\
+    defaults\": {\n          \"unit\": \"none\",\n          \"mappings\": [\n    \
+    \        {\n              \"type\": \"range\",\n              \"options\": {\n\
+    \                \"from\": 0.0,\n                \"to\": 0.034,\n            \
+    \    \"result\": {\n                  \"text\": \"新月\",\n                  \"\
+    index\": 0\n                }\n              }\n            },\n            {\n\
+    \              \"type\": \"range\",\n              \"options\": {\n          \
+    \      \"from\": 0.034,\n                \"to\": 0.216,\n                \"result\"\
+    : {\n                  \"text\": \"三日月から上弦へ\",\n                  \"index\": 1\n\
+    \                }\n              }\n            },\n            {\n         \
+    \     \"type\": \"range\",\n              \"options\": {\n                \"from\"\
+    : 0.216,\n                \"to\": 0.284,\n                \"result\": {\n    \
+    \              \"text\": \"上弦\",\n                  \"index\": 2\n           \
+    \     }\n              }\n            },\n            {\n              \"type\"\
+    : \"range\",\n              \"options\": {\n                \"from\": 0.284,\n\
+    \                \"to\": 0.466,\n                \"result\": {\n             \
+    \     \"text\": \"満ちていく\",\n                  \"index\": 3\n                }\n\
+    \              }\n            },\n            {\n              \"type\": \"range\"\
+    ,\n              \"options\": {\n                \"from\": 0.466,\n          \
+    \      \"to\": 0.534,\n                \"result\": {\n                  \"text\"\
+    : \"満月\",\n                  \"index\": 4\n                }\n              }\n\
+    \            },\n            {\n              \"type\": \"range\",\n         \
+    \     \"options\": {\n                \"from\": 0.534,\n                \"to\"\
+    : 0.716,\n                \"result\": {\n                  \"text\": \"欠けていく\"\
+    ,\n                  \"index\": 5\n                }\n              }\n      \
+    \      },\n            {\n              \"type\": \"range\",\n              \"\
+    options\": {\n                \"from\": 0.716,\n                \"to\": 0.784,\n\
+    \                \"result\": {\n                  \"text\": \"下弦\",\n        \
+    \          \"index\": 6\n                }\n              }\n            },\n\
+    \            {\n              \"type\": \"range\",\n              \"options\"\
+    : {\n                \"from\": 0.784,\n                \"to\": 0.966,\n      \
+    \          \"result\": {\n                  \"text\": \"有明の月\",\n            \
+    \      \"index\": 7\n                }\n              }\n            },\n    \
+    \        {\n              \"type\": \"range\",\n              \"options\": {\n\
+    \                \"from\": 0.966,\n                \"to\": 1.0,\n            \
+    \    \"result\": {\n                  \"text\": \"新月\",\n                  \"\
+    index\": 8\n                }\n              }\n            }\n          ],\n\
+    \          \"color\": {\n            \"mode\": \"thresholds\"\n          },\n\
+    \          \"thresholds\": {\n            \"mode\": \"absolute\",\n          \
+    \  \"steps\": [\n              {\n                \"color\": \"text\",\n     \
+    \           \"value\": null\n              }\n            ]\n          }\n   \
+    \     },\n        \"overrides\": []\n      },\n      \"options\": {\n        \"\
+    reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\n    \
+    \      ],\n          \"fields\": \"\",\n          \"values\": false\n        },\n\
+    \        \"colorMode\": \"value\",\n        \"graphMode\": \"none\",\n       \
+    \ \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n        \"textMode\"\
+    : \"value\",\n        \"wideLayout\": true,\n        \"showPercentChange\": false\n\
+    \      }\n    },\n    {\n      \"type\": \"gauge\",\n      \"title\": \"輝面比\"\
+    ,\n      \"id\": 22,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n \
+    \     \"gridPos\": {\n        \"h\": 4,\n        \"w\": 4,\n        \"x\": 4,\n\
+    \        \"y\": 20\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
+    : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
+    \n          },\n          \"expr\": \"max(seestar_moon_illumination_ratio)\",\n\
+    \          \"legendFormat\": \"輝面比\",\n          \"refId\": \"A\",\n         \
+    \ \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
     : {\n          \"unit\": \"percentunit\",\n          \"mappings\": [],\n     \
     \     \"color\": {\n            \"mode\": \"thresholds\"\n          },\n     \
     \     \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
@@ -217,10 +493,10 @@ data:
     \     \"fields\": \"\",\n          \"values\": false\n        },\n        \"minVizHeight\"\
     : 75,\n        \"minVizWidth\": 75,\n        \"showThresholdLabels\": false,\n\
     \        \"showThresholdMarkers\": true\n      }\n    },\n    {\n      \"type\"\
-    : \"stat\",\n      \"title\": \"月齢\",\n      \"id\": 12,\n      \"datasource\"\
+    : \"stat\",\n      \"title\": \"月齢\",\n      \"id\": 23,\n      \"datasource\"\
     : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n    \
     \  },\n      \"description\": \"\",\n      \"gridPos\": {\n        \"h\": 4,\n\
-    \        \"w\": 3,\n        \"x\": 8,\n        \"y\": 6\n      },\n      \"targets\"\
+    \        \"w\": 3,\n        \"x\": 8,\n        \"y\": 20\n      },\n      \"targets\"\
     : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
     ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max(seestar_moon_age_days)\"\
     ,\n          \"legendFormat\": \"日\",\n          \"refId\": \"A\",\n         \
@@ -237,10 +513,10 @@ data:
     \ \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n        \"textMode\"\
     : \"value\",\n        \"wideLayout\": true,\n        \"showPercentChange\": false\n\
     \      }\n    },\n    {\n      \"type\": \"stat\",\n      \"title\": \"月の高度\"\
-    ,\n      \"id\": 13,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n      \"id\": 24,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
     ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n \
     \     \"gridPos\": {\n        \"h\": 4,\n        \"w\": 3,\n        \"x\": 11,\n\
-    \        \"y\": 6\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
+    \        \"y\": 20\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
     : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
     \n          },\n          \"expr\": \"max(seestar_moon_altitude_degrees)\",\n\
     \          \"legendFormat\": \"月\",\n          \"refId\": \"A\",\n          \"\
@@ -258,36 +534,37 @@ data:
     \   \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\",\n        \"orientation\"\
     : \"auto\",\n        \"textMode\": \"value\",\n        \"wideLayout\": true,\n\
     \        \"showPercentChange\": false\n      }\n    },\n    {\n      \"type\"\
-    : \"stat\",\n      \"title\": \"次の月の出・月の入り\",\n      \"id\": 14,\n      \"datasource\"\
+    : \"stat\",\n      \"title\": \"次の月の出・月の入り\",\n      \"id\": 25,\n      \"datasource\"\
     : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n    \
     \  },\n      \"description\": \"\",\n      \"gridPos\": {\n        \"h\": 4,\n\
-    \        \"w\": 5,\n        \"x\": 14,\n        \"y\": 6\n      },\n      \"targets\"\
-    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
-    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max(seestar_moon_next_rise_timestamp_seconds)\
-    \ * 1000\",\n          \"legendFormat\": \"月の出\",\n          \"refId\": \"A\"\
-    ,\n          \"range\": true\n        },\n        {\n          \"datasource\"\
+    \        \"w\": 5,\n        \"x\": 14,\n        \"y\": 20\n      },\n      \"\
+    targets\": [\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"max(seestar_moon_next_rise_timestamp_seconds) * 1000\",\n          \"\
+    legendFormat\": \"月の出\",\n          \"refId\": \"A\",\n          \"range\": true\n\
+    \        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"max(seestar_moon_next_set_timestamp_seconds) * 1000\",\n          \"\
+    legendFormat\": \"月の入り\",\n          \"refId\": \"B\",\n          \"range\": true\n\
+    \        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\": {\n    \
+    \      \"unit\": \"dateTimeAsLocal\",\n          \"mappings\": [],\n         \
+    \ \"color\": {\n            \"mode\": \"thresholds\"\n          },\n         \
+    \ \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"text\",\n                \"\
+    value\": null\n              }\n            ]\n          }\n        },\n     \
+    \   \"overrides\": []\n      },\n      \"options\": {\n        \"reduceOptions\"\
+    : {\n          \"calcs\": [\n            \"lastNotNull\"\n          ],\n     \
+    \     \"fields\": \"\",\n          \"values\": false\n        },\n        \"colorMode\"\
+    : \"value\",\n        \"graphMode\": \"none\",\n        \"justifyMode\": \"auto\"\
+    ,\n        \"orientation\": \"auto\",\n        \"textMode\": \"value_and_name\"\
+    ,\n        \"wideLayout\": true,\n        \"showPercentChange\": false\n     \
+    \ }\n    },\n    {\n      \"type\": \"stat\",\n      \"title\": \"次の新月・満月\",\n\
+    \      \"id\": 26,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"\",\n \
+    \     \"gridPos\": {\n        \"h\": 4,\n        \"w\": 5,\n        \"x\": 19,\n\
+    \        \"y\": 20\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
     : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
-    \n          },\n          \"expr\": \"max(seestar_moon_next_set_timestamp_seconds)\
-    \ * 1000\",\n          \"legendFormat\": \"月の入り\",\n          \"refId\": \"B\"\
-    ,\n          \"range\": true\n        }\n      ],\n      \"fieldConfig\": {\n\
-    \        \"defaults\": {\n          \"unit\": \"dateTimeAsLocal\",\n         \
-    \ \"mappings\": [],\n          \"color\": {\n            \"mode\": \"thresholds\"\
-    \n          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
-    ,\n            \"steps\": [\n              {\n                \"color\": \"text\"\
-    ,\n                \"value\": null\n              }\n            ]\n         \
-    \ }\n        },\n        \"overrides\": []\n      },\n      \"options\": {\n \
-    \       \"reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\
-    \n          ],\n          \"fields\": \"\",\n          \"values\": false\n   \
-    \     },\n        \"colorMode\": \"value\",\n        \"graphMode\": \"none\",\n\
-    \        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n    \
-    \    \"textMode\": \"value_and_name\",\n        \"wideLayout\": true,\n      \
-    \  \"showPercentChange\": false\n      }\n    },\n    {\n      \"type\": \"stat\"\
-    ,\n      \"title\": \"次の新月・満月\",\n      \"id\": 15,\n      \"datasource\": {\n\
-    \        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n\
-    \      \"description\": \"\",\n      \"gridPos\": {\n        \"h\": 4,\n     \
-    \   \"w\": 5,\n        \"x\": 19,\n        \"y\": 6\n      },\n      \"targets\"\
-    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
-    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max(seestar_moon_next_new_timestamp_seconds)\
+    \n          },\n          \"expr\": \"max(seestar_moon_next_new_timestamp_seconds)\
     \ * 1000\",\n          \"legendFormat\": \"新月\",\n          \"refId\": \"A\",\n\
     \          \"range\": true\n        },\n        {\n          \"datasource\": {\n\
     \            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n\
@@ -306,34 +583,34 @@ data:
     \        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n    \
     \    \"textMode\": \"value_and_name\",\n        \"wideLayout\": true,\n      \
     \  \"showPercentChange\": false\n      }\n    },\n    {\n      \"type\": \"row\"\
-    ,\n      \"title\": \"置き場所ごとの今夜の窓\",\n      \"id\": 16,\n      \"collapsed\":\
+    ,\n      \"title\": \"置き場所ごとの今夜の窓\",\n      \"id\": 27,\n      \"collapsed\":\
     \ false,\n      \"gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n      \
-    \  \"x\": 0,\n        \"y\": 10\n      },\n      \"panels\": []\n    },\n    {\n\
+    \  \"x\": 0,\n        \"y\": 24\n      },\n      \"panels\": []\n    },\n    {\n\
     \      \"type\": \"table\",\n      \"title\": \"北の長辺（ガラス際・中央）\",\n      \"id\"\
-    : 17,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"\
-    uid\": \"prometheus\"\n      },\n      \"description\": \"今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。\"\
-    ,\n      \"gridPos\": {\n        \"h\": 9,\n        \"w\": 12,\n        \"x\"\
-    : 0,\n        \"y\": 11\n      },\n      \"targets\": [\n        {\n         \
-    \ \"datasource\": {\n            \"type\": \"prometheus\",\n            \"uid\"\
-    : \"prometheus\"\n          },\n          \"expr\": \"max by (target, name, window,\
-    \ window_name) (seestar_target_window_start_timestamp_seconds{window=\\\"north\\\
-    \"}) * 1000\",\n          \"legendFormat\": \"\",\n          \"refId\": \"A\"\
-    ,\n          \"instant\": true,\n          \"range\": false,\n          \"format\"\
-    : \"table\"\n        },\n        {\n          \"datasource\": {\n            \"\
-    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
-    \         \"expr\": \"max by (target, name, window, window_name) (seestar_target_window_end_timestamp_seconds{window=\\\
+    : 28,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"\
+    uid\": \"prometheus\"\n      },\n      \"description\": \"今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。晴れの長さは、その窓のこれから先のうち、雲量\
+    \ 30% 未満かつ降水確率 30% 未満の予報の長さ。\",\n      \"gridPos\": {\n        \"h\": 9,\n   \
+    \     \"w\": 12,\n        \"x\": 0,\n        \"y\": 25\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max\
+    \ by (target, name, window, window_name) (seestar_target_window_start_timestamp_seconds{window=\\\
     \"north\\\"}) * 1000\",\n          \"legendFormat\": \"\",\n          \"refId\"\
-    : \"B\",\n          \"instant\": true,\n          \"range\": false,\n        \
+    : \"A\",\n          \"instant\": true,\n          \"range\": false,\n        \
     \  \"format\": \"table\"\n        },\n        {\n          \"datasource\": {\n\
     \            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n\
     \          },\n          \"expr\": \"max by (target, name, window, window_name)\
-    \ (seestar_target_window_duration_seconds{window=\\\"north\\\"})\",\n        \
-    \  \"legendFormat\": \"\",\n          \"refId\": \"C\",\n          \"instant\"\
-    : true,\n          \"range\": false,\n          \"format\": \"table\"\n      \
-    \  },\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
-    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max\
-    \ by (target, name, window, window_name) (seestar_target_in_window{window=\\\"\
-    north\\\"}) * on() group_left() max(seestar_sky_dark)\",\n          \"legendFormat\"\
+    \ (seestar_target_window_end_timestamp_seconds{window=\\\"north\\\"}) * 1000\"\
+    ,\n          \"legendFormat\": \"\",\n          \"refId\": \"B\",\n          \"\
+    instant\": true,\n          \"range\": false,\n          \"format\": \"table\"\
+    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"max by (target, name, window, window_name) (seestar_target_window_duration_seconds{window=\\\
+    \"north\\\"})\",\n          \"legendFormat\": \"\",\n          \"refId\": \"C\"\
+    ,\n          \"instant\": true,\n          \"range\": false,\n          \"format\"\
+    : \"table\"\n        },\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
+    \         \"expr\": \"max by (target, name, window, window_name) (seestar_target_in_window{window=\\\
+    \"north\\\"}) * on() group_left() max(seestar_sky_dark)\",\n          \"legendFormat\"\
     : \"\",\n          \"refId\": \"D\",\n          \"instant\": true,\n         \
     \ \"range\": false,\n          \"format\": \"table\"\n        },\n        {\n\
     \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
@@ -355,53 +632,74 @@ data:
     \ (0 * max by (target, name, window, window_name) (seestar_target_in_window{window=\\\
     \"north\\\"}))\",\n          \"legendFormat\": \"\",\n          \"refId\": \"\
     G\",\n          \"instant\": true,\n          \"range\": false,\n          \"\
-    format\": \"table\"\n        }\n      ],\n      \"transformations\": [\n     \
-    \   {\n          \"id\": \"merge\",\n          \"options\": {}\n        },\n \
-    \       {\n          \"id\": \"organize\",\n          \"options\": {\n       \
-    \     \"excludeByName\": {\n              \"Time\": true,\n              \"target\"\
-    : true,\n              \"window\": true,\n              \"window_name\": true\n\
-    \            },\n            \"indexByName\": {\n              \"name\": 0,\n\
-    \              \"Value #A\": 1,\n              \"Value #B\": 2,\n            \
-    \  \"Value #C\": 3,\n              \"Value #D\": 4,\n              \"Value #E\"\
-    : 5,\n              \"Value #F\": 6,\n              \"Value #G\": 7\n        \
-    \    },\n            \"renameByName\": {\n              \"name\": \"星\",\n   \
-    \           \"Value #A\": \"窓に入る\",\n              \"Value #B\": \"窓を出る\",\n \
-    \             \"Value #C\": \"窓にいる長さ\",\n              \"Value #D\": \"いま\",\n\
-    \              \"Value #E\": \"高度\",\n              \"Value #F\": \"方位\",\n  \
-    \            \"Value #G\": \"月との離角\"\n            }\n          }\n        },\n\
-    \        {\n          \"id\": \"sortBy\",\n          \"options\": {\n        \
-    \    \"sort\": [\n              {\n                \"field\": \"窓に入る\"\n     \
-    \         }\n            ]\n          }\n        }\n      ],\n      \"fieldConfig\"\
-    : {\n        \"defaults\": {\n          \"custom\": {\n            \"align\":\
-    \ \"auto\",\n            \"cellOptions\": {\n              \"type\": \"auto\"\n\
-    \            }\n          },\n          \"mappings\": [],\n          \"thresholds\"\
-    : {\n            \"mode\": \"absolute\",\n            \"steps\": [\n         \
-    \     {\n                \"color\": \"text\",\n                \"value\": null\n\
-    \              }\n            ]\n          }\n        },\n        \"overrides\"\
-    : [\n          {\n            \"matcher\": {\n              \"id\": \"byName\"\
-    ,\n              \"options\": \"窓に入る\"\n            },\n            \"properties\"\
-    : [\n              {\n                \"id\": \"unit\",\n                \"value\"\
-    : \"dateTimeAsLocalNoDateIfToday\"\n              }\n            ]\n         \
-    \ },\n          {\n            \"matcher\": {\n              \"id\": \"byName\"\
-    ,\n              \"options\": \"窓を出る\"\n            },\n            \"properties\"\
-    : [\n              {\n                \"id\": \"unit\",\n                \"value\"\
-    : \"dateTimeAsLocalNoDateIfToday\"\n              }\n            ]\n         \
-    \ },\n          {\n            \"matcher\": {\n              \"id\": \"byName\"\
-    ,\n              \"options\": \"窓にいる長さ\"\n            },\n            \"properties\"\
-    : [\n              {\n                \"id\": \"unit\",\n                \"value\"\
-    : \"s\"\n              },\n              {\n                \"id\": \"decimals\"\
-    ,\n                \"value\": 1\n              }\n            ]\n          },\n\
-    \          {\n            \"matcher\": {\n              \"id\": \"byName\",\n\
-    \              \"options\": \"いま\"\n            },\n            \"properties\"\
-    : [\n              {\n                \"id\": \"mappings\",\n                \"\
-    value\": [\n                  {\n                    \"type\": \"value\",\n  \
-    \                  \"options\": {\n                      \"0\": {\n          \
-    \              \"text\": \"—\",\n                        \"color\": \"transparent\"\
-    ,\n                        \"index\": 0\n                      },\n          \
-    \            \"1\": {\n                        \"text\": \"撮れる\",\n          \
-    \              \"color\": \"green\",\n                        \"index\": 1\n \
-    \                     }\n                    }\n                  }\n        \
-    \        ]\n              },\n              {\n                \"id\": \"custom.cellOptions\"\
+    format\": \"table\"\n        },\n        {\n          \"datasource\": {\n    \
+    \        \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n    \
+    \      },\n          \"expr\": \"max by (target, name, window, window_name) (seestar_target_window_clear_seconds{window=\\\
+    \"north\\\"})\",\n          \"legendFormat\": \"\",\n          \"refId\": \"H\"\
+    ,\n          \"instant\": true,\n          \"range\": false,\n          \"format\"\
+    : \"table\"\n        }\n      ],\n      \"transformations\": [\n        {\n  \
+    \        \"id\": \"merge\",\n          \"options\": {}\n        },\n        {\n\
+    \          \"id\": \"organize\",\n          \"options\": {\n            \"excludeByName\"\
+    : {\n              \"Time\": true,\n              \"target\": true,\n        \
+    \      \"window\": true,\n              \"window_name\": true\n            },\n\
+    \            \"indexByName\": {\n              \"name\": 0,\n              \"\
+    Value #A\": 1,\n              \"Value #B\": 2,\n              \"Value #C\": 3,\n\
+    \              \"Value #H\": 4,\n              \"Value #D\": 5,\n            \
+    \  \"Value #E\": 6,\n              \"Value #F\": 7,\n              \"Value #G\"\
+    : 8\n            },\n            \"renameByName\": {\n              \"name\":\
+    \ \"星\",\n              \"Value #A\": \"窓に入る\",\n              \"Value #B\": \"\
+    窓を出る\",\n              \"Value #C\": \"窓にいる長さ\",\n              \"Value #H\":\
+    \ \"晴れの長さ\",\n              \"Value #D\": \"いま\",\n              \"Value #E\"\
+    : \"高度\",\n              \"Value #F\": \"方位\",\n              \"Value #G\": \"\
+    月との離角\"\n            }\n          }\n        },\n        {\n          \"id\":\
+    \ \"sortBy\",\n          \"options\": {\n            \"sort\": [\n           \
+    \   {\n                \"field\": \"窓に入る\"\n              }\n            ]\n \
+    \         }\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"custom\": {\n            \"align\": \"auto\",\n            \"\
+    cellOptions\": {\n              \"type\": \"auto\"\n            }\n          },\n\
+    \          \"mappings\": [],\n          \"thresholds\": {\n            \"mode\"\
+    : \"absolute\",\n            \"steps\": [\n              {\n                \"\
+    color\": \"text\",\n                \"value\": null\n              }\n       \
+    \     ]\n          }\n        },\n        \"overrides\": [\n          {\n    \
+    \        \"matcher\": {\n              \"id\": \"byName\",\n              \"options\"\
+    : \"窓に入る\"\n            },\n            \"properties\": [\n              {\n \
+    \               \"id\": \"unit\",\n                \"value\": \"dateTimeAsLocalNoDateIfToday\"\
+    \n              }\n            ]\n          },\n          {\n            \"matcher\"\
+    : {\n              \"id\": \"byName\",\n              \"options\": \"窓を出る\"\n\
+    \            },\n            \"properties\": [\n              {\n            \
+    \    \"id\": \"unit\",\n                \"value\": \"dateTimeAsLocalNoDateIfToday\"\
+    \n              }\n            ]\n          },\n          {\n            \"matcher\"\
+    : {\n              \"id\": \"byName\",\n              \"options\": \"窓にいる長さ\"\n\
+    \            },\n            \"properties\": [\n              {\n            \
+    \    \"id\": \"unit\",\n                \"value\": \"s\"\n              },\n \
+    \             {\n                \"id\": \"decimals\",\n                \"value\"\
+    : 1\n              }\n            ]\n          },\n          {\n            \"\
+    matcher\": {\n              \"id\": \"byName\",\n              \"options\": \"\
+    晴れの長さ\"\n            },\n            \"properties\": [\n              {\n    \
+    \            \"id\": \"unit\",\n                \"value\": \"s\"\n           \
+    \   },\n              {\n                \"id\": \"decimals\",\n             \
+    \   \"value\": 1\n              },\n              {\n                \"id\": \"\
+    thresholds\",\n                \"value\": {\n                  \"mode\": \"absolute\"\
+    ,\n                  \"steps\": [\n                    {\n                   \
+    \   \"color\": \"red\",\n                      \"value\": null\n             \
+    \       },\n                    {\n                      \"color\": \"orange\"\
+    ,\n                      \"value\": 1800\n                    },\n           \
+    \         {\n                      \"color\": \"green\",\n                   \
+    \   \"value\": 7200\n                    }\n                  ]\n            \
+    \    }\n              },\n              {\n                \"id\": \"custom.cellOptions\"\
+    ,\n                \"value\": {\n                  \"type\": \"color-text\"\n\
+    \                }\n              }\n            ]\n          },\n          {\n\
+    \            \"matcher\": {\n              \"id\": \"byName\",\n             \
+    \ \"options\": \"いま\"\n            },\n            \"properties\": [\n       \
+    \       {\n                \"id\": \"mappings\",\n                \"value\": [\n\
+    \                  {\n                    \"type\": \"value\",\n             \
+    \       \"options\": {\n                      \"0\": {\n                     \
+    \   \"text\": \"—\",\n                        \"color\": \"transparent\",\n  \
+    \                      \"index\": 0\n                      },\n              \
+    \        \"1\": {\n                        \"text\": \"撮れる\",\n              \
+    \          \"color\": \"green\",\n                        \"index\": 1\n     \
+    \                 }\n                    }\n                  }\n            \
+    \    ]\n              },\n              {\n                \"id\": \"custom.cellOptions\"\
     ,\n                \"value\": {\n                  \"type\": \"color-background\"\
     ,\n                  \"mode\": \"basic\"\n                }\n              }\n\
     \            ]\n          },\n          {\n            \"matcher\": {\n      \
@@ -431,31 +729,31 @@ data:
     \            ]\n          }\n        ]\n      },\n      \"options\": {\n     \
     \   \"showHeader\": true,\n        \"cellHeight\": \"sm\",\n        \"footer\"\
     : {\n          \"show\": false\n        }\n      }\n    },\n    {\n      \"type\"\
-    : \"table\",\n      \"title\": \"東の短辺\",\n      \"id\": 18,\n      \"datasource\"\
+    : \"table\",\n      \"title\": \"東の短辺\",\n      \"id\": 29,\n      \"datasource\"\
     : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n    \
-    \  },\n      \"description\": \"今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。\",\n  \
-    \    \"gridPos\": {\n        \"h\": 9,\n        \"w\": 12,\n        \"x\": 12,\n\
-    \        \"y\": 11\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
-    : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
-    \n          },\n          \"expr\": \"max by (target, name, window, window_name)\
-    \ (seestar_target_window_start_timestamp_seconds{window=\\\"east\\\"}) * 1000\"\
-    ,\n          \"legendFormat\": \"\",\n          \"refId\": \"A\",\n          \"\
-    instant\": true,\n          \"range\": false,\n          \"format\": \"table\"\
-    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
-    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
-    expr\": \"max by (target, name, window, window_name) (seestar_target_window_end_timestamp_seconds{window=\\\
+    \  },\n      \"description\": \"今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。晴れの長さは、その窓のこれから先のうち、雲量\
+    \ 30% 未満かつ降水確率 30% 未満の予報の長さ。\",\n      \"gridPos\": {\n        \"h\": 9,\n   \
+    \     \"w\": 12,\n        \"x\": 12,\n        \"y\": 25\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max\
+    \ by (target, name, window, window_name) (seestar_target_window_start_timestamp_seconds{window=\\\
     \"east\\\"}) * 1000\",\n          \"legendFormat\": \"\",\n          \"refId\"\
-    : \"B\",\n          \"instant\": true,\n          \"range\": false,\n        \
+    : \"A\",\n          \"instant\": true,\n          \"range\": false,\n        \
     \  \"format\": \"table\"\n        },\n        {\n          \"datasource\": {\n\
     \            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n\
     \          },\n          \"expr\": \"max by (target, name, window, window_name)\
-    \ (seestar_target_window_duration_seconds{window=\\\"east\\\"})\",\n         \
-    \ \"legendFormat\": \"\",\n          \"refId\": \"C\",\n          \"instant\"\
-    : true,\n          \"range\": false,\n          \"format\": \"table\"\n      \
-    \  },\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
-    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max\
-    \ by (target, name, window, window_name) (seestar_target_in_window{window=\\\"\
-    east\\\"}) * on() group_left() max(seestar_sky_dark)\",\n          \"legendFormat\"\
+    \ (seestar_target_window_end_timestamp_seconds{window=\\\"east\\\"}) * 1000\"\
+    ,\n          \"legendFormat\": \"\",\n          \"refId\": \"B\",\n          \"\
+    instant\": true,\n          \"range\": false,\n          \"format\": \"table\"\
+    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"max by (target, name, window, window_name) (seestar_target_window_duration_seconds{window=\\\
+    \"east\\\"})\",\n          \"legendFormat\": \"\",\n          \"refId\": \"C\"\
+    ,\n          \"instant\": true,\n          \"range\": false,\n          \"format\"\
+    : \"table\"\n        },\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
+    \         \"expr\": \"max by (target, name, window, window_name) (seestar_target_in_window{window=\\\
+    \"east\\\"}) * on() group_left() max(seestar_sky_dark)\",\n          \"legendFormat\"\
     : \"\",\n          \"refId\": \"D\",\n          \"instant\": true,\n         \
     \ \"range\": false,\n          \"format\": \"table\"\n        },\n        {\n\
     \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
@@ -477,6 +775,11 @@ data:
     \ (0 * max by (target, name, window, window_name) (seestar_target_in_window{window=\\\
     \"east\\\"}))\",\n          \"legendFormat\": \"\",\n          \"refId\": \"G\"\
     ,\n          \"instant\": true,\n          \"range\": false,\n          \"format\"\
+    : \"table\"\n        },\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
+    \         \"expr\": \"max by (target, name, window, window_name) (seestar_target_window_clear_seconds{window=\\\
+    \"east\\\"})\",\n          \"legendFormat\": \"\",\n          \"refId\": \"H\"\
+    ,\n          \"instant\": true,\n          \"range\": false,\n          \"format\"\
     : \"table\"\n        }\n      ],\n      \"transformations\": [\n        {\n  \
     \        \"id\": \"merge\",\n          \"options\": {}\n        },\n        {\n\
     \          \"id\": \"organize\",\n          \"options\": {\n            \"excludeByName\"\
@@ -484,14 +787,15 @@ data:
     \      \"window\": true,\n              \"window_name\": true\n            },\n\
     \            \"indexByName\": {\n              \"name\": 0,\n              \"\
     Value #A\": 1,\n              \"Value #B\": 2,\n              \"Value #C\": 3,\n\
-    \              \"Value #D\": 4,\n              \"Value #E\": 5,\n            \
-    \  \"Value #F\": 6,\n              \"Value #G\": 7\n            },\n         \
-    \   \"renameByName\": {\n              \"name\": \"星\",\n              \"Value\
-    \ #A\": \"窓に入る\",\n              \"Value #B\": \"窓を出る\",\n              \"Value\
-    \ #C\": \"窓にいる長さ\",\n              \"Value #D\": \"いま\",\n              \"Value\
-    \ #E\": \"高度\",\n              \"Value #F\": \"方位\",\n              \"Value #G\"\
-    : \"月との離角\"\n            }\n          }\n        },\n        {\n          \"id\"\
-    : \"sortBy\",\n          \"options\": {\n            \"sort\": [\n           \
+    \              \"Value #H\": 4,\n              \"Value #D\": 5,\n            \
+    \  \"Value #E\": 6,\n              \"Value #F\": 7,\n              \"Value #G\"\
+    : 8\n            },\n            \"renameByName\": {\n              \"name\":\
+    \ \"星\",\n              \"Value #A\": \"窓に入る\",\n              \"Value #B\": \"\
+    窓を出る\",\n              \"Value #C\": \"窓にいる長さ\",\n              \"Value #H\":\
+    \ \"晴れの長さ\",\n              \"Value #D\": \"いま\",\n              \"Value #E\"\
+    : \"高度\",\n              \"Value #F\": \"方位\",\n              \"Value #G\": \"\
+    月との離角\"\n            }\n          }\n        },\n        {\n          \"id\":\
+    \ \"sortBy\",\n          \"options\": {\n            \"sort\": [\n           \
     \   {\n                \"field\": \"窓に入る\"\n              }\n            ]\n \
     \         }\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
     : {\n          \"custom\": {\n            \"align\": \"auto\",\n            \"\
@@ -514,21 +818,36 @@ data:
     \             {\n                \"id\": \"decimals\",\n                \"value\"\
     : 1\n              }\n            ]\n          },\n          {\n            \"\
     matcher\": {\n              \"id\": \"byName\",\n              \"options\": \"\
-    いま\"\n            },\n            \"properties\": [\n              {\n       \
-    \         \"id\": \"mappings\",\n                \"value\": [\n              \
-    \    {\n                    \"type\": \"value\",\n                    \"options\"\
-    : {\n                      \"0\": {\n                        \"text\": \"—\",\n\
-    \                        \"color\": \"transparent\",\n                       \
-    \ \"index\": 0\n                      },\n                      \"1\": {\n   \
-    \                     \"text\": \"撮れる\",\n                        \"color\": \"\
-    green\",\n                        \"index\": 1\n                      }\n    \
-    \                }\n                  }\n                ]\n              },\n\
-    \              {\n                \"id\": \"custom.cellOptions\",\n          \
-    \      \"value\": {\n                  \"type\": \"color-background\",\n     \
-    \             \"mode\": \"basic\"\n                }\n              }\n      \
-    \      ]\n          },\n          {\n            \"matcher\": {\n            \
-    \  \"id\": \"byName\",\n              \"options\": \"高度\"\n            },\n  \
-    \          \"properties\": [\n              {\n                \"id\": \"unit\"\
+    晴れの長さ\"\n            },\n            \"properties\": [\n              {\n    \
+    \            \"id\": \"unit\",\n                \"value\": \"s\"\n           \
+    \   },\n              {\n                \"id\": \"decimals\",\n             \
+    \   \"value\": 1\n              },\n              {\n                \"id\": \"\
+    thresholds\",\n                \"value\": {\n                  \"mode\": \"absolute\"\
+    ,\n                  \"steps\": [\n                    {\n                   \
+    \   \"color\": \"red\",\n                      \"value\": null\n             \
+    \       },\n                    {\n                      \"color\": \"orange\"\
+    ,\n                      \"value\": 1800\n                    },\n           \
+    \         {\n                      \"color\": \"green\",\n                   \
+    \   \"value\": 7200\n                    }\n                  ]\n            \
+    \    }\n              },\n              {\n                \"id\": \"custom.cellOptions\"\
+    ,\n                \"value\": {\n                  \"type\": \"color-text\"\n\
+    \                }\n              }\n            ]\n          },\n          {\n\
+    \            \"matcher\": {\n              \"id\": \"byName\",\n             \
+    \ \"options\": \"いま\"\n            },\n            \"properties\": [\n       \
+    \       {\n                \"id\": \"mappings\",\n                \"value\": [\n\
+    \                  {\n                    \"type\": \"value\",\n             \
+    \       \"options\": {\n                      \"0\": {\n                     \
+    \   \"text\": \"—\",\n                        \"color\": \"transparent\",\n  \
+    \                      \"index\": 0\n                      },\n              \
+    \        \"1\": {\n                        \"text\": \"撮れる\",\n              \
+    \          \"color\": \"green\",\n                        \"index\": 1\n     \
+    \                 }\n                    }\n                  }\n            \
+    \    ]\n              },\n              {\n                \"id\": \"custom.cellOptions\"\
+    ,\n                \"value\": {\n                  \"type\": \"color-background\"\
+    ,\n                  \"mode\": \"basic\"\n                }\n              }\n\
+    \            ]\n          },\n          {\n            \"matcher\": {\n      \
+    \        \"id\": \"byName\",\n              \"options\": \"高度\"\n            },\n\
+    \            \"properties\": [\n              {\n                \"id\": \"unit\"\
     ,\n                \"value\": \"degree\"\n              },\n              {\n\
     \                \"id\": \"decimals\",\n                \"value\": 1\n       \
     \       }\n            ]\n          },\n          {\n            \"matcher\":\
@@ -553,14 +872,14 @@ data:
     \            ]\n          }\n        ]\n      },\n      \"options\": {\n     \
     \   \"showHeader\": true,\n        \"cellHeight\": \"sm\",\n        \"footer\"\
     : {\n          \"show\": false\n        }\n      }\n    },\n    {\n      \"type\"\
-    : \"row\",\n      \"title\": \"高度と方位\",\n      \"id\": 19,\n      \"collapsed\"\
+    : \"row\",\n      \"title\": \"高度と方位\",\n      \"id\": 30,\n      \"collapsed\"\
     : false,\n      \"gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n      \
-    \  \"x\": 0,\n        \"y\": 20\n      },\n      \"panels\": []\n    },\n    {\n\
-    \      \"type\": \"timeseries\",\n      \"title\": \"高度\",\n      \"id\": 20,\n\
+    \  \"x\": 0,\n        \"y\": 34\n      },\n      \"panels\": []\n    },\n    {\n\
+    \      \"type\": \"timeseries\",\n      \"title\": \"高度\",\n      \"id\": 31,\n\
     \      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\":\
     \ \"prometheus\"\n      },\n      \"description\": \"破線は置き場所ごとの床（遠くの稜線や向かいの棟）と天井（上の階の床板）\"\
     ,\n      \"gridPos\": {\n        \"h\": 10,\n        \"w\": 24,\n        \"x\"\
-    : 0,\n        \"y\": 21\n      },\n      \"targets\": [\n        {\n         \
+    : 0,\n        \"y\": 35\n      },\n      \"targets\": [\n        {\n         \
     \ \"datasource\": {\n            \"type\": \"prometheus\",\n            \"uid\"\
     : \"prometheus\"\n          },\n          \"expr\": \"max by (name) (seestar_target_altitude_degrees)\"\
     ,\n          \"legendFormat\": \"{{name}}\",\n          \"refId\": \"A\",\n  \
@@ -628,10 +947,10 @@ data:
     placement\": \"right\",\n          \"showLegend\": true\n        },\n        \"\
     tooltip\": {\n          \"mode\": \"multi\",\n          \"sort\": \"desc\"\n \
     \       }\n      }\n    },\n    {\n      \"type\": \"timeseries\",\n      \"title\"\
-    : \"方位\",\n      \"id\": 21,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    : \"方位\",\n      \"id\": 32,\n      \"datasource\": {\n        \"type\": \"prometheus\"\
     ,\n        \"uid\": \"prometheus\"\n      },\n      \"description\": \"北の窓は 270\
     \ 度から北を通って 90 度、東の窓は 45 度から 180 度\",\n      \"gridPos\": {\n        \"h\": 9,\n\
-    \        \"w\": 12,\n        \"x\": 0,\n        \"y\": 31\n      },\n      \"\
+    \        \"w\": 12,\n        \"x\": 0,\n        \"y\": 45\n      },\n      \"\
     targets\": [\n        {\n          \"datasource\": {\n            \"type\": \"\
     prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
     expr\": \"max by (name) (seestar_target_azimuth_degrees)\",\n          \"legendFormat\"\
@@ -666,10 +985,10 @@ data:
     placement\": \"right\",\n          \"showLegend\": true\n        },\n        \"\
     tooltip\": {\n          \"mode\": \"multi\",\n          \"sort\": \"desc\"\n \
     \       }\n      }\n    },\n    {\n      \"type\": \"timeseries\",\n      \"title\"\
-    : \"月との離角\",\n      \"id\": 22,\n      \"datasource\": {\n        \"type\": \"\
+    : \"月との離角\",\n      \"id\": 33,\n      \"datasource\": {\n        \"type\": \"\
     prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"description\"\
     : \"30 度より近いと、月明かりで淡い天体が写りにくい\",\n      \"gridPos\": {\n        \"h\": 9,\n  \
-    \      \"w\": 12,\n        \"x\": 12,\n        \"y\": 31\n      },\n      \"targets\"\
+    \      \"w\": 12,\n        \"x\": 12,\n        \"y\": 45\n      },\n      \"targets\"\
     : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
     ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"max\
     \ by (name) (seestar_target_moon_separation_degrees)\",\n          \"legendFormat\"\
@@ -690,14 +1009,14 @@ data:
     : \"list\",\n          \"placement\": \"right\",\n          \"showLegend\": true\n\
     \        },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n        \
     \  \"sort\": \"desc\"\n        }\n      }\n    },\n    {\n      \"type\": \"row\"\
-    ,\n      \"title\": \"撮れた時間帯\",\n      \"id\": 23,\n      \"collapsed\": false,\n\
+    ,\n      \"title\": \"撮れた時間帯\",\n      \"id\": 34,\n      \"collapsed\": false,\n\
     \      \"gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n\
-    \        \"y\": 40\n      },\n      \"panels\": []\n    },\n    {\n      \"type\"\
-    : \"state-timeline\",\n      \"title\": \"北の長辺\",\n      \"id\": 24,\n      \"\
+    \        \"y\": 54\n      },\n      \"panels\": []\n    },\n    {\n      \"type\"\
+    : \"state-timeline\",\n      \"title\": \"北の長辺\",\n      \"id\": 35,\n      \"\
     datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\
     \n      },\n      \"description\": \"暗い時間に窓の中にいたあいだ。月の行は、月が窓の中にいたあいだ。\",\n   \
     \   \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n        \"x\": 0,\n\
-    \        \"y\": 41\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
+    \        \"y\": 55\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
     : {\n            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\
     \n          },\n          \"expr\": \"max by (name) (seestar_target_in_window{window=\\\
     \"north\\\"}) * on() group_left() max(seestar_sky_dark)\",\n          \"legendFormat\"\
@@ -733,11 +1052,11 @@ data:
     : true,\n        \"rowHeight\": 0.8,\n        \"alignValue\": \"left\",\n    \
     \    \"legend\": {\n          \"showLegend\": false\n        },\n        \"tooltip\"\
     : {\n          \"mode\": \"single\"\n        }\n      }\n    },\n    {\n     \
-    \ \"type\": \"state-timeline\",\n      \"title\": \"東の短辺\",\n      \"id\": 25,\n\
+    \ \"type\": \"state-timeline\",\n      \"title\": \"東の短辺\",\n      \"id\": 36,\n\
     \      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\":\
     \ \"prometheus\"\n      },\n      \"description\": \"暗い時間に窓の中にいたあいだ。月の行は、月が窓の中にいたあいだ。\"\
     ,\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n        \"x\"\
-    : 12,\n        \"y\": 41\n      },\n      \"targets\": [\n        {\n        \
+    : 12,\n        \"y\": 55\n      },\n      \"targets\": [\n        {\n        \
     \  \"datasource\": {\n            \"type\": \"prometheus\",\n            \"uid\"\
     : \"prometheus\"\n          },\n          \"expr\": \"max by (name) (seestar_target_in_window{window=\\\
     \"east\\\"}) * on() group_left() max(seestar_sky_dark)\",\n          \"legendFormat\"\
@@ -773,11 +1092,13 @@ data:
     : true,\n        \"rowHeight\": 0.8,\n        \"alignValue\": \"left\",\n    \
     \    \"legend\": {\n          \"showLegend\": false\n        },\n        \"tooltip\"\
     : {\n          \"mode\": \"single\"\n        }\n      }\n    }\n  ],\n  \"refresh\"\
-    : \"1m\",\n  \"schemaVersion\": 39,\n  \"tags\": [\n    \"seestar\",\n    \"astronomy\"\
-    ,\n    \"balcony\"\n  ],\n  \"templating\": {\n    \"list\": []\n  },\n  \"time\"\
-    : {\n    \"from\": \"now-12h\",\n    \"to\": \"now\"\n  },\n  \"timepicker\":\
-    \ {},\n  \"timezone\": \"browser\",\n  \"title\": \"SeeStar 今夜の窓\",\n  \"uid\"\
-    : \"seestar-plan\",\n  \"version\": 1\n}\n"
+    : \"1m\",\n  \"schemaVersion\": 39,\n  \"links\": [\n    {\n      \"title\": \"\
+    Open-Meteo\",\n      \"url\": \"https://open-meteo.com/\",\n      \"type\": \"\
+    link\",\n      \"targetBlank\": true\n    }\n  ],\n  \"tags\": [\n    \"seestar\"\
+    ,\n    \"astronomy\",\n    \"balcony\",\n    \"weather\"\n  ],\n  \"templating\"\
+    : {\n    \"list\": []\n  },\n  \"time\": {\n    \"from\": \"now-12h\",\n    \"\
+    to\": \"now\"\n  },\n  \"timepicker\": {},\n  \"timezone\": \"browser\",\n  \"\
+    title\": \"SeeStar 今夜の窓\",\n  \"uid\": \"seestar-plan\",\n  \"version\": 1\n}\n"
 kind: ConfigMap
 metadata:
   name: grafana-dashboard-seestar-plan

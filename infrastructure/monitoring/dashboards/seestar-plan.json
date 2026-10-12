@@ -6,7 +6,6 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
   "panels": [
     {
       "type": "row",
@@ -428,7 +427,7 @@
     },
     {
       "type": "row",
-      "title": "月",
+      "title": "星空の天気予報（Open-Meteo）",
       "id": 9,
       "collapsed": false,
       "gridPos": {
@@ -441,8 +440,857 @@
     },
     {
       "type": "stat",
-      "title": "月相",
+      "title": "今夜の晴れ",
       "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "今夜の暗い時間のうち、雲量 30% 未満かつ降水確率 30% 未満の予報の長さ",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_tonight_clear_seconds) / 3600",
+          "legendFormat": "晴れ",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 3
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "いまの雲量",
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_cloud_cover_percent{layer=\"total\"})",
+          "legendFormat": "雲量",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 70
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "雲の高さ",
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "低層は 2 km 以下、中層は 2〜6 km、高層は 6 km 以上の雲",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (layer) (seestar_weather_cloud_cover_percent{layer!=\"total\"})",
+          "legendFormat": "{{layer}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 70
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "low"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "低層"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mid"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "中層"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "high"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "高層"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 10,
+        "minVizWidth": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "降水確率",
+      "id": 13,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 12,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_precipitation_probability_percent)",
+          "legendFormat": "雨",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 70
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "気温と露点の差",
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "2 度より小さいと、鏡筒やレンズが結露しやすい",
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 15,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_temperature_celsius) - max(seestar_weather_dew_point_celsius)",
+          "legendFormat": "差",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "green",
+                "value": 4
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "湿度",
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 18,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_relative_humidity_percent)",
+          "legendFormat": "湿度",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "風速",
+      "id": 16,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 21,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_wind_speed_meters_per_second)",
+          "legendFormat": "風",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocityms",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 8
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "今夜の雲量と降水確率（1 時間ごと）",
+      "id": 17,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "今夜の暗い時間にかかる時間帯の予報",
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 0,
+        "y": 11
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (slot, hour) (seestar_weather_tonight_cloud_cover_percent)",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (slot, hour) (seestar_weather_tonight_precipitation_probability_percent)",
+          "legendFormat": "",
+          "refId": "B",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "slot"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "slot": true
+            },
+            "renameByName": {
+              "hour": "時刻",
+              "Value #A": "雲量",
+              "Value #B": "降水確率"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "gradientMode": "none"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "雲量"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 30
+                    },
+                    {
+                      "color": "red",
+                      "value": 70
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "降水確率"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "時刻",
+        "orientation": "vertical",
+        "groupWidth": 0.7,
+        "barWidth": 0.9,
+        "showValue": "auto",
+        "stacking": "none",
+        "colorByField": "雲量",
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xTickLabelRotation": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "予報の取得",
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 11
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_forecast_up)",
+          "legendFormat": "取得",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "失敗（前回の予報を表示）",
+                  "color": "orange",
+                  "index": 0
+                },
+                "1": {
+                  "text": "成功",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "予報を取った時刻",
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 15
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_forecast_fetch_timestamp_seconds) * 1000",
+          "legendFormat": "時刻",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "row",
+      "title": "月",
+      "id": 20,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "月相",
+      "id": 21,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -452,7 +1300,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 6
+        "y": 20
       },
       "targets": [
         {
@@ -605,7 +1453,7 @@
     {
       "type": "gauge",
       "title": "輝面比",
-      "id": 11,
+      "id": 22,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -615,7 +1463,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 6
+        "y": 20
       },
       "targets": [
         {
@@ -674,7 +1522,7 @@
     {
       "type": "stat",
       "title": "月齢",
-      "id": 12,
+      "id": 23,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -684,7 +1532,7 @@
         "h": 4,
         "w": 3,
         "x": 8,
-        "y": 6
+        "y": 20
       },
       "targets": [
         {
@@ -738,7 +1586,7 @@
     {
       "type": "stat",
       "title": "月の高度",
-      "id": 13,
+      "id": 24,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -748,7 +1596,7 @@
         "h": 4,
         "w": 3,
         "x": 11,
-        "y": 6
+        "y": 20
       },
       "targets": [
         {
@@ -806,7 +1654,7 @@
     {
       "type": "stat",
       "title": "次の月の出・月の入り",
-      "id": 14,
+      "id": 25,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -816,7 +1664,7 @@
         "h": 4,
         "w": 5,
         "x": 14,
-        "y": 6
+        "y": 20
       },
       "targets": [
         {
@@ -879,7 +1727,7 @@
     {
       "type": "stat",
       "title": "次の新月・満月",
-      "id": 15,
+      "id": 26,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -889,7 +1737,7 @@
         "h": 4,
         "w": 5,
         "x": 19,
-        "y": 6
+        "y": 20
       },
       "targets": [
         {
@@ -952,30 +1800,30 @@
     {
       "type": "row",
       "title": "置き場所ごとの今夜の窓",
-      "id": 16,
+      "id": 27,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 24
       },
       "panels": []
     },
     {
       "type": "table",
       "title": "北の長辺（ガラス際・中央）",
-      "id": 17,
+      "id": 28,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。",
+      "description": "今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。晴れの長さは、その窓のこれから先のうち、雲量 30% 未満かつ降水確率 30% 未満の予報の長さ。",
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 11
+        "y": 25
       },
       "targets": [
         {
@@ -1061,6 +1909,18 @@
           "instant": true,
           "range": false,
           "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (target, name, window, window_name) (seestar_target_window_clear_seconds{window=\"north\"})",
+          "legendFormat": "",
+          "refId": "H",
+          "instant": true,
+          "range": false,
+          "format": "table"
         }
       ],
       "transformations": [
@@ -1082,16 +1942,18 @@
               "Value #A": 1,
               "Value #B": 2,
               "Value #C": 3,
-              "Value #D": 4,
-              "Value #E": 5,
-              "Value #F": 6,
-              "Value #G": 7
+              "Value #H": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8
             },
             "renameByName": {
               "name": "星",
               "Value #A": "窓に入る",
               "Value #B": "窓を出る",
               "Value #C": "窓にいる長さ",
+              "Value #H": "晴れの長さ",
               "Value #D": "いま",
               "Value #E": "高度",
               "Value #F": "方位",
@@ -1167,6 +2029,48 @@
               {
                 "id": "decimals",
                 "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "晴れの長さ"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1800
+                    },
+                    {
+                      "color": "green",
+                      "value": 7200
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               }
             ]
           },
@@ -1288,17 +2192,17 @@
     {
       "type": "table",
       "title": "東の短辺",
-      "id": 18,
+      "id": 29,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。",
+      "description": "今夜の暗い時間のうち、いま入っている窓か次の窓。窓に入らない星は時刻が空欄。晴れの長さは、その窓のこれから先のうち、雲量 30% 未満かつ降水確率 30% 未満の予報の長さ。",
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 11
+        "y": 25
       },
       "targets": [
         {
@@ -1384,6 +2288,18 @@
           "instant": true,
           "range": false,
           "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (target, name, window, window_name) (seestar_target_window_clear_seconds{window=\"east\"})",
+          "legendFormat": "",
+          "refId": "H",
+          "instant": true,
+          "range": false,
+          "format": "table"
         }
       ],
       "transformations": [
@@ -1405,16 +2321,18 @@
               "Value #A": 1,
               "Value #B": 2,
               "Value #C": 3,
-              "Value #D": 4,
-              "Value #E": 5,
-              "Value #F": 6,
-              "Value #G": 7
+              "Value #H": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8
             },
             "renameByName": {
               "name": "星",
               "Value #A": "窓に入る",
               "Value #B": "窓を出る",
               "Value #C": "窓にいる長さ",
+              "Value #H": "晴れの長さ",
               "Value #D": "いま",
               "Value #E": "高度",
               "Value #F": "方位",
@@ -1490,6 +2408,48 @@
               {
                 "id": "decimals",
                 "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "晴れの長さ"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1800
+                    },
+                    {
+                      "color": "green",
+                      "value": 7200
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               }
             ]
           },
@@ -1611,20 +2571,20 @@
     {
       "type": "row",
       "title": "高度と方位",
-      "id": 19,
+      "id": 30,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 34
       },
       "panels": []
     },
     {
       "type": "timeseries",
       "title": "高度",
-      "id": 20,
+      "id": 31,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1634,7 +2594,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 35
       },
       "targets": [
         {
@@ -1831,7 +2791,7 @@
     {
       "type": "timeseries",
       "title": "方位",
-      "id": 21,
+      "id": 32,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1841,7 +2801,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 31
+        "y": 45
       },
       "targets": [
         {
@@ -1947,7 +2907,7 @@
     {
       "type": "timeseries",
       "title": "月との離角",
-      "id": 22,
+      "id": 33,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1957,7 +2917,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 31
+        "y": 45
       },
       "targets": [
         {
@@ -2021,20 +2981,20 @@
     {
       "type": "row",
       "title": "撮れた時間帯",
-      "id": 23,
+      "id": 34,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 54
       },
       "panels": []
     },
     {
       "type": "state-timeline",
       "title": "北の長辺",
-      "id": 24,
+      "id": 35,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2044,7 +3004,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 55
       },
       "targets": [
         {
@@ -2151,7 +3111,7 @@
     {
       "type": "state-timeline",
       "title": "東の短辺",
-      "id": 25,
+      "id": 36,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2161,7 +3121,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 41
+        "y": 55
       },
       "targets": [
         {
@@ -2268,10 +3228,19 @@
   ],
   "refresh": "1m",
   "schemaVersion": 39,
+  "links": [
+    {
+      "title": "Open-Meteo",
+      "url": "https://open-meteo.com/",
+      "type": "link",
+      "targetBlank": true
+    }
+  ],
   "tags": [
     "seestar",
     "astronomy",
-    "balcony"
+    "balcony",
+    "weather"
   ],
   "templating": {
     "list": []
