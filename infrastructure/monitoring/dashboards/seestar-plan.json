@@ -1,0 +1,43 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false },
+        "content": "SeeStar は公式アプリで操作する。置く位置は北側長辺の中央、ガラスのすぐ内側。図と表は http://192.168.68.66:30089/ にもある。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "13.0.0",
+      "title": "今夜の置き場所",
+      "type": "text"
+    },
+    {
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 3 },
+      "id": 2,
+      "options": {
+        "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false },
+        "content": "<img alt=\"今夜の北の窓\" src=\"http://192.168.68.66:30089/plan.png\" style=\"max-width:100%;height:auto\" />",
+        "mode": "html"
+      },
+      "pluginVersion": "13.0.0",
+      "title": "北の窓に入る時刻",
+      "type": "text"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "tags": ["seestar"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now+18h" },
+  "timezone": "browser",
+  "title": "SeeStar 今夜の窓",
+  "uid": "seestar-tonight",
+  "version": 1
+}

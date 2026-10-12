@@ -100,6 +100,11 @@ grafana:
     type: NodePort
     nodePort: 30080
 
+  # 計画器の PNG をテキストパネルへ埋め込む
+  grafana.ini:
+    panels:
+      disable_sanitize_html: true
+
   # ConfigMap によるダッシュボード自動読み込み
   sidecar:
     dashboards:

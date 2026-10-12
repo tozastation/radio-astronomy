@@ -1,8 +1,8 @@
 # SeeStar の空の窓と、その夜の撮影計画
 
 - **作成日**: 2026-10-12
-- **ステータス**: 設計承認（第一段階は計画の可視化。撮影命令は第二段階）
-- **対象**: SeeStar S50。人が北側バルコニーの決まった位置へ置く。三脚の移動は自動にしない
+- **ステータス**: 計画の可視化を実装する。SeeStar への命令は送らない
+- **対象**: SeeStar S50。人が北側バルコニーの決まった位置へ置き、公式アプリで撮影する
 
 この仕様は、いま動いている衛星ダウンリンク（`satellite-tracker-rs`、Garage、Temporal、`satellite-viewer`、Grafana）に、光学の計画を足す。電波の受信系は変えない。
 
@@ -116,13 +116,11 @@ Prometheus のメモリ上限は 512 MiB、保持は 2 日である（`infrastru
 
 ---
 
-## 6. 撮影命令（第二段階。第一段階では接続しない）
+## 6. 撮影は公式アプリ
 
-SeeStar との通信は、自宅 LAN の Station モードで TCP 4700 番の JSON である。公式の安定した API は無い。メソッド名は [scopinator-seestar](https://docs.rs/scopinator-seestar/latest/scopinator_seestar/command/enum.Command.html) と [seestar_alp](https://github.com/smart-underworld/seestar_alp) に依る。ファームウェアによっては `get_verify_str` と `verify_client` が先に要る。
+ファームウェア 7.18 以降は、TCP 4700 番で `get_verify_str` のあとに `verify_client` を通した相手にだけ命令へ返事をする。このプログラムはその署名を持たない。導入、ライブスタック、画像の取り込みは SeeStar 公式アプリで行う。
 
-命令は、その時刻の \((\mathrm{Az}, \mathrm{Alt})\) が第 3 節の窓に入る対象にだけ送る。窓の外への導入はしない。一度に追う対象は一つである。三脚をガラスから離す命令は無い。
-
-Alpaca 互換レイヤの高度・方位が定数 `0` を返す実装は使わない。4700 番の `scope_get_horiz_coord` と `scope_get_equ_coord` を読む。
+計画器 `apps/seestar-plan` は望遠鏡に接続しない。ポート 30089 で今夜の PNG と JSON を返し、Grafana のボード「SeeStar 今夜の窓」が PNG を表示する。
 
 ---
 
