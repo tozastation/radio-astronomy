@@ -117,14 +117,23 @@ Prometheus は取りに来た時刻の値を集める。これから先の時刻
 | `seestar_moon_altitude_degrees` / `_azimuth_` / `_illumination_ratio` / `_phase_ratio` / `_age_days` | なし | 月の位置と満ち欠け |
 | `seestar_moon_in_window` | `window`, `window_name` | 月が窓の中なら 1 |
 | `seestar_moon_next_rise_` / `_set_` / `_new_` / `_full_timestamp_seconds` | なし | 次の月の出・月の入り・新月・満月 |
+| `seestar_weather_cloud_cover_percent` | `layer`（`total` / `low` / `mid` / `high`） | いまの時間帯の雲量 |
+| `seestar_weather_precipitation_probability_percent` / `_relative_humidity_percent` / `_temperature_celsius` / `_dew_point_celsius` / `_wind_speed_meters_per_second` / `_visibility_meters` | なし | いまの時間帯の降水確率・湿度・気温・露点・風速・視程 |
+| `seestar_weather_tonight_cloud_cover_percent` / `_precipitation_probability_percent` | `slot`, `hour` | 今夜の暗い時間にかかる 1 時間ごとの予報 |
+| `seestar_weather_tonight_clear_seconds` | なし | 今夜の暗い時間のうち、晴れの予報の長さ |
+| `seestar_target_window_clear_seconds` | `target`, `name`, `window`, `window_name` | 窓のこれから先のうち、晴れの予報の長さ |
+| `seestar_weather_forecast_up` / `_fetch_timestamp_seconds` | なし | 予報の取得に成功したか、手元の予報を取った時刻 |
 
 「暗い時間で、しかも窓の中」は exporter では出さず、ボード側の PromQL `seestar_target_in_window * on() group_left() max(seestar_sky_dark)` で組み合わせる。月は天体暦の低精度式で求め、PyEphem との差は高度 0.1 度以下、新月・満月の時刻で 15 分以内である。
+
+天気は [Open-Meteo の予報 API](https://open-meteo.com/en/docs)（キー不要、非商用は無料、出典の表示が必要）から 1 時間ごとの値を取る。Prometheus が値を取りに来るたびに外へ問い合わせることはしない。裏のスレッドが 30 分ごとに取り直し、失敗したときは前回の予報を返したまま 5 分後に取り直す。晴れは、雲量 30% 未満かつ降水確率 30% 未満の時間帯とする。1 時間ごとの予報は、ラベル `slot`（今夜の何番目の時間帯か）と `hour`（何時か）で持ち、未来の時刻の点としては入れない。
 
 ボード「SeeStar 今夜の窓」は次の標準パネルで組む。
 
 - Stat: 今夜の暗い時間、いまの空、太陽の高度、置き場所ごとのいま撮れる星の数と今夜窓に入る星の数
+- Stat、Gauge、Bar gauge、Bar chart: 星空の天気予報。今夜の晴れの長さ、いまの雲量と雲の高さ、降水確率、気温と露点の差（2 度より小さいと結露しやすい）、湿度、風速、今夜 1 時間ごとの雲量と降水確率
 - Stat と Gauge: 月相、輝面比、月齢、月の高度、次の月の出・月の入り、次の新月・満月
-- Table: 北の長辺と東の短辺の表を並べる。星ごとに、窓に入る時刻・出る時刻・長さ、いま撮れるか、高度、方位、月との離角を出す
+- Table: 北の長辺と東の短辺の表を並べる。星ごとに、窓に入る時刻・出る時刻・長さ、晴れの長さ、いま撮れるか、高度、方位、月との離角を出す
 - Time series: 高度（置き場所ごとの床と天井の破線、月を重ねる）、方位、月との離角
 - State timeline: 置き場所ごとに、暗い時間に窓の中にいたあいだと、月が窓にいたあいだ
 
