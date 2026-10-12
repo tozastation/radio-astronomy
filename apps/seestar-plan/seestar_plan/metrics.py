@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 from typing import Callable, Iterator
+from zoneinfo import ZoneInfo
 
 from prometheus_client.core import GaugeMetricFamily, Metric
 from prometheus_client.registry import Collector
@@ -23,7 +24,9 @@ from seestar_plan.sky import (
     next_phase,
     sun_horizontal,
 )
+from seestar_plan.weather import Forecast
 
+JST = ZoneInfo("Asia/Tokyo")
 DARK_SUN_ALT_DEG = -18.0
 TARGET_LABELS = ["target", "name"]
 WINDOW_LABELS = ["window", "window_name"]
@@ -39,10 +42,12 @@ class PlanCollector(Collector):
         site_loader: Callable[[], Site],
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         targets: tuple[Target, ...] = CATALOG,
+        forecast: Callable[[], tuple[Forecast | None, bool]] | None = None,
     ) -> None:
         self._site_loader = site_loader
         self._clock = clock
         self._targets = targets
+        self._forecast = forecast
 
     def describe(self) -> list[Metric]:
         return []
@@ -140,6 +145,8 @@ class PlanCollector(Collector):
         if set_at is not None:
             moonset.add_metric([], set_at.timestamp())
 
+        yield from self._weather(now, plan)
+
         compute = _gauge("seestar_plan_compute_seconds", "この応答の計算にかかった時間")
         compute.add_metric([], time.perf_counter() - began)
 
@@ -151,3 +158,71 @@ class PlanCollector(Collector):
             next_new, next_full, moonrise, moonset,
             compute,
         )
+
+    def _weather(self, now: datetime, plan) -> Iterator[Metric]:
+        if self._forecast is None:
+            return
+        forecast, last_ok = self._forecast()
+        up = _gauge("seestar_weather_forecast_up", "直近の予報の取得に成功していれば 1")
+        up.add_metric([], 1.0 if last_ok else 0.0)
+        yield up
+        if forecast is None:
+            return
+        fetched = _gauge("seestar_weather_forecast_fetch_timestamp_seconds", "手元の予報を取った時刻（Unix 時刻）")
+        fetched.add_metric([], forecast.fetched_at.timestamp())
+        yield fetched
+
+        current = forecast.at(now)
+        if current is not None:
+            cloud = _gauge("seestar_weather_cloud_cover_percent", "いまの時間帯の雲量", ["layer"])
+            for layer, value in (
+                ("total", current.cloud_cover),
+                ("low", current.cloud_cover_low),
+                ("mid", current.cloud_cover_mid),
+                ("high", current.cloud_cover_high),
+            ):
+                cloud.add_metric([layer], value)
+            yield cloud
+            for name, documentation, value in (
+                ("seestar_weather_precipitation_probability_percent", "いまの時間帯の降水確率", current.precipitation_probability),
+                ("seestar_weather_relative_humidity_percent", "いまの時間帯の相対湿度（地上 2 m）", current.relative_humidity),
+                ("seestar_weather_temperature_celsius", "いまの時間帯の気温（地上 2 m）", current.temperature),
+                ("seestar_weather_dew_point_celsius", "いまの時間帯の露点（地上 2 m）", current.dew_point),
+                ("seestar_weather_wind_speed_meters_per_second", "いまの時間帯の風速（地上 10 m）", current.wind_speed),
+                ("seestar_weather_visibility_meters", "いまの時間帯の視程", current.visibility),
+            ):
+                gauge = _gauge(name, documentation)
+                gauge.add_metric([], value)
+                yield gauge
+
+        slot_labels = ["slot", "hour"]
+        tonight_cloud = _gauge(
+            "seestar_weather_tonight_cloud_cover_percent", "今夜の暗い時間にかかる 1 時間ごとの雲量", slot_labels
+        )
+        tonight_rain = _gauge(
+            "seestar_weather_tonight_precipitation_probability_percent",
+            "今夜の暗い時間にかかる 1 時間ごとの降水確率",
+            slot_labels,
+        )
+        for index, hour in enumerate(forecast.overlapping(plan.night_start, plan.night_end)):
+            labels = [f"{index:02d}", f"{hour.start.astimezone(JST):%H}時"]
+            tonight_cloud.add_metric(labels, hour.cloud_cover)
+            tonight_rain.add_metric(labels, hour.precipitation_probability)
+        clear = _gauge("seestar_weather_tonight_clear_seconds", "今夜の暗い時間のうち、晴れの予報の長さ")
+        clear.add_metric([], forecast.clear_seconds(plan.night_start, plan.night_end))
+        yield from (tonight_cloud, tonight_rain, clear)
+
+        target_clear = _gauge(
+            "seestar_target_window_clear_seconds",
+            "いま入っている窓か次の窓の、これから先のうち晴れの予報の長さ",
+            TARGET_LABELS + WINDOW_LABELS,
+        )
+        for item in plan.targets:
+            interval = item.upcoming(now)
+            if interval is None:
+                continue
+            target_clear.add_metric(
+                [item.target.key, item.target.name, item.window.key, item.window.name],
+                forecast.clear_seconds(max(interval.start, now), interval.end),
+            )
+        yield target_clear
