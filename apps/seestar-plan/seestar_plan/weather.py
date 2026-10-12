@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable
+from typing import Callable, Generic, TypeVar
 
 API_URL = "https://api.open-meteo.com/v1/forecast"
 HOURLY_FIELDS = (
@@ -121,21 +121,25 @@ def fetch_forecast(lat_deg: float, lon_deg: float, timeout: float = 15.0) -> For
     return parse_forecast(payload, datetime.now(timezone.utc))
 
 
-class ForecastCache:
+T = TypeVar("T")
+
+
+class ForecastCache(Generic[T]):
     """裏のスレッドで予報を取り直し、最後に取れた予報を返す。"""
 
-    def __init__(self, fetch: Callable[[], Forecast], interval_seconds: float = 1800.0) -> None:
+    def __init__(self, fetch: Callable[[], T], interval_seconds: float = 1800.0, name: str = "forecast") -> None:
         self._fetch = fetch
         self._interval = interval_seconds
+        self._name = name
         self._lock = threading.Lock()
-        self._forecast: Forecast | None = None
+        self._forecast: T | None = None
         self._last_ok = False
 
     def refresh(self) -> None:
         try:
             forecast = self._fetch()
         except Exception as error:  # noqa: BLE001
-            print(f"[seestar-plan] 予報の取得に失敗: {error}")
+            print(f"[seestar-plan] {self._name} の取得に失敗: {error}")
             with self._lock:
                 self._last_ok = False
             return
@@ -149,8 +153,8 @@ class ForecastCache:
                 self.refresh()
                 time.sleep(self._interval if self._last_ok else 300.0)
 
-        threading.Thread(target=loop, name="forecast", daemon=True).start()
+        threading.Thread(target=loop, name=self._name, daemon=True).start()
 
-    def get(self) -> tuple[Forecast | None, bool]:
+    def get(self) -> tuple[T | None, bool]:
         with self._lock:
             return self._forecast, self._last_ok

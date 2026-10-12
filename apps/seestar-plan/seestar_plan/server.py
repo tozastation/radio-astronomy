@@ -9,6 +9,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_l
 
 from seestar_plan.metrics import PlanCollector
 from seestar_plan.plan import Site
+from seestar_plan.astro import fetch_astro
 from seestar_plan.weather import ForecastCache, fetch_forecast
 
 PORT = int(os.environ.get("PORT", "9101"))
@@ -26,9 +27,15 @@ def fetch_site_forecast():
     return fetch_forecast(site.latitude_deg, site.longitude_deg)
 
 
-FORECAST = ForecastCache(fetch_site_forecast)
+def fetch_site_astro():
+    site = load_site()
+    return fetch_astro(site.latitude_deg, site.longitude_deg)
+
+
+FORECAST = ForecastCache(fetch_site_forecast, name="Open-Meteo")
+ASTRO = ForecastCache(fetch_site_astro, interval_seconds=3600.0, name="7Timer!")
 REGISTRY = CollectorRegistry()
-REGISTRY.register(PlanCollector(load_site, forecast=FORECAST.get))
+REGISTRY.register(PlanCollector(load_site, forecast=FORECAST.get, astro=ASTRO.get))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -56,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     if os.environ.get("WEATHER_FORECAST", "on") != "off":
         FORECAST.start()
+        ASTRO.start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"seestar-plan exporter listening on :{PORT}")
     server.serve_forever()

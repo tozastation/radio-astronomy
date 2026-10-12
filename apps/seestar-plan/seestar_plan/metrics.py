@@ -24,6 +24,7 @@ from seestar_plan.sky import (
     next_phase,
     sun_horizontal,
 )
+from seestar_plan.astro import AstroForecast
 from seestar_plan.weather import Forecast
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -43,11 +44,13 @@ class PlanCollector(Collector):
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         targets: tuple[Target, ...] = CATALOG,
         forecast: Callable[[], tuple[Forecast | None, bool]] | None = None,
+        astro: Callable[[], tuple[AstroForecast | None, bool]] | None = None,
     ) -> None:
         self._site_loader = site_loader
         self._clock = clock
         self._targets = targets
         self._forecast = forecast
+        self._astro = astro
 
     def describe(self) -> list[Metric]:
         return []
@@ -145,6 +148,7 @@ class PlanCollector(Collector):
             moonset.add_metric([], set_at.timestamp())
 
         yield from self._weather(now, plan)
+        yield from self._astro_weather(now, plan)
 
         compute = _gauge("seestar_plan_compute_seconds", "この応答の計算にかかった時間")
         compute.add_metric([], time.perf_counter() - began)
@@ -225,3 +229,51 @@ class PlanCollector(Collector):
                 forecast.clear_seconds(max(interval.start, now), interval.end),
             )
         yield target_clear
+
+    def _astro_weather(self, now: datetime, plan) -> Iterator[Metric]:
+        if self._astro is None:
+            return
+        forecast, last_ok = self._astro()
+        up = _gauge("seestar_weather_astro_forecast_up", "直近の 7Timer! 予報の取得に成功していれば 1")
+        up.add_metric([], 1.0 if last_ok else 0.0)
+        yield up
+        if forecast is None:
+            return
+        fetched = _gauge(
+            "seestar_weather_astro_forecast_fetch_timestamp_seconds", "手元の 7Timer! 予報を取った時刻（Unix 時刻）"
+        )
+        fetched.add_metric([], forecast.fetched_at.timestamp())
+        yield fetched
+
+        current = forecast.at(now)
+        if current is not None:
+            for name, documentation, value in (
+                ("seestar_weather_seeing_index", "いまの時間帯のシーイングの段階（1 が最良、8 が最悪）", current.seeing_index),
+                ("seestar_weather_seeing_arcseconds", "いまの時間帯のシーイング（段階の代表値）", current.seeing_arcsec),
+                ("seestar_weather_transparency_index", "いまの時間帯の透明度の段階（1 が最良、8 が最悪）", current.transparency_index),
+                (
+                    "seestar_weather_transparency_magnitudes_per_airmass",
+                    "いまの時間帯の 1 エアマスあたりの減光（段階の代表値）",
+                    current.transparency_mag,
+                ),
+            ):
+                if value is None:
+                    continue
+                gauge = _gauge(name, documentation)
+                gauge.add_metric([], float(value))
+                yield gauge
+
+        slot_labels = ["slot", "hour"]
+        seeing = _gauge(
+            "seestar_weather_tonight_seeing_arcseconds", "今夜の暗い時間にかかる 3 時間ごとのシーイング", slot_labels
+        )
+        transparency = _gauge(
+            "seestar_weather_tonight_transparency_index", "今夜の暗い時間にかかる 3 時間ごとの透明度の段階", slot_labels
+        )
+        for index, slot in enumerate(forecast.overlapping(plan.night_start, plan.night_end)):
+            labels = [f"{index:02d}", f"{slot.at.astimezone(JST):%H}時"]
+            if slot.seeing_arcsec is not None:
+                seeing.add_metric(labels, slot.seeing_arcsec)
+            if slot.transparency_index is not None:
+                transparency.add_metric(labels, float(slot.transparency_index))
+        yield from (seeing, transparency)
