@@ -125,15 +125,18 @@ Prometheus は取りに来た時刻の値を集める。これから先の時刻
 | `seestar_weather_tonight_clear_seconds` | なし | 今夜の暗い時間のうち、晴れの予報の長さ |
 | `seestar_target_window_clear_seconds` | `target`, `name`, `window`, `window_name` | 窓のこれから先のうち、晴れの予報の長さ |
 | `seestar_weather_forecast_up` / `_fetch_timestamp_seconds` | なし | 予報の取得に成功したか、手元の予報を取った時刻 |
+| `seestar_weather_seeing_index` / `_seeing_arcseconds` / `_transparency_index` / `_transparency_magnitudes_per_airmass` | なし | いまの時間帯のシーイングと透明度（7Timer!） |
+| `seestar_weather_tonight_seeing_arcseconds` / `_transparency_index` | `slot`, `hour` | 今夜の暗い時間にかかる 3 時間ごとの予報 |
+| `seestar_weather_astro_forecast_up` / `_fetch_timestamp_seconds` | なし | 7Timer! の予報の取得に成功したか、手元の予報を取った時刻 |
 
 「暗い時間で、しかも窓の中」は exporter では出さず、ボード側の PromQL `seestar_target_in_window * on() group_left() max(seestar_sky_dark)` で組み合わせる。月は天体暦の低精度式で求め、PyEphem との差は高度 0.1 度以下、新月・満月の時刻で 15 分以内である。
 
-天気は [Open-Meteo の予報 API](https://open-meteo.com/en/docs)（キー不要、非商用は無料、出典の表示が必要）から 1 時間ごとの値を取る。Prometheus が値を取りに来るたびに外へ問い合わせることはしない。裏のスレッドが 30 分ごとに取り直し、失敗したときは前回の予報を返したまま 5 分後に取り直す。晴れは、雲量 30% 未満かつ降水確率 30% 未満の時間帯とする。1 時間ごとの予報は、ラベル `slot`（今夜の何番目の時間帯か）と `hour`（何時か）で持ち、未来の時刻の点としては入れない。
+天気は [Open-Meteo の予報 API](https://open-meteo.com/en/docs)（キー不要、非商用は無料、出典の表示が必要）から 1 時間ごとの値を取る。Prometheus が値を取りに来るたびに外へ問い合わせることはしない。裏のスレッドが 30 分ごとに取り直し、失敗したときは前回の予報を返したまま 5 分後に取り直す。晴れは、雲量 30% 未満かつ降水確率 30% 未満の時間帯とする。シーイング（大気の揺らぎで星像がにじむ角度）と透明度（1 エアマスあたりの減光）は、[7Timer! の ASTRO 予報](https://www.7timer.info/doc.php)から 3 時間ごとの段階（1 が最良、8 が最悪）で取り、1 時間ごとに取り直す。シーイングは段階の範囲の代表値を秒角でも出す。SeeStar S50 の画素は約 \(2.4''\)（画素 \(2.9\,\mu\mathrm{m}\)、焦点距離 \(250\,\mathrm{mm}\)）なので、シーイングが \(2''\) より良ければ写りはほぼ変わらない。淡い星雲・銀河では、透明度のほうが効く。1 時間ごとの予報は、ラベル `slot`（今夜の何番目の時間帯か）と `hour`（何時か）で持ち、未来の時刻の点としては入れない。
 
 ボード「SeeStar 今夜の窓」は次の標準パネルで組む。
 
 - Stat: 今夜の暗い時間、いまの空、太陽の高度、置き場所ごとのいま撮れる星の数と今夜窓に入る星の数
-- Stat、Gauge、Bar gauge、Bar chart: 星空の天気予報。今夜の晴れの長さ、いまの雲量と雲の高さ、降水確率、気温と露点の差（2 度より小さいと結露しやすい）、湿度、風速、今夜 1 時間ごとの雲量と降水確率
+- Stat、Gauge、Bar gauge、Bar chart: 星空の天気予報。今夜の晴れの長さ、いまの雲量と雲の高さ、降水確率、気温と露点の差（2 度より小さいと結露しやすい）、湿度、風速、今夜 1 時間ごとの雲量と降水確率、いまと今夜 3 時間ごとのシーイングと透明度
 - Stat と Gauge: 月相、輝面比、月齢、月の高度、次の月の出・月の入り、次の新月・満月
 - Table: 北の長辺と東の短辺の表を並べる。星ごとに、窓に入る時刻・出る時刻・長さ、晴れの長さ、いま撮れるか、高度、方位、月との離角を出す
 - Time series: 高度（置き場所ごとの床と天井の破線、月を重ねる）、方位、月との離角
