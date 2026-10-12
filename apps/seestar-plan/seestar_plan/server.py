@@ -21,8 +21,12 @@ def load_site() -> Site:
     return Site()
 
 
-SITE = load_site()
-FORECAST = ForecastCache(lambda: fetch_forecast(SITE.latitude_deg, SITE.longitude_deg))
+def fetch_site_forecast():
+    site = load_site()
+    return fetch_forecast(site.latitude_deg, site.longitude_deg)
+
+
+FORECAST = ForecastCache(fetch_site_forecast)
 REGISTRY = CollectorRegistry()
 REGISTRY.register(PlanCollector(load_site, forecast=FORECAST.get))
 
