@@ -147,6 +147,15 @@ Prometheus は取りに来た時刻の値を集める。これから先の時刻
 
 計画器 `apps/seestar-plan` は望遠鏡に接続しない。ポート 9101 の `/metrics` で値を返し、ServiceMonitor を通して Prometheus が 30 秒ごとに取りに来る。
 
+場所の ConfigMap `seestar-plan-site` は、リポジトリの YAML には入れない。git の管理外にある `apps/seestar-plan/site.local.json`（実座標を 0.01 度に丸めた値と、窓の床・天井）から作る。ひな形は `apps/seestar-plan/config.example.json` である。測り直したら、次で差し替えて Pod を作り直す。計画器は、Prometheus からの取得のたびと、予報を取り直すたびに、このファイルを読み直す。
+
+```bash
+kubectl create configmap seestar-plan-site \
+  --from-file=site.json=apps/seestar-plan/site.local.json \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl rollout restart deployment/seestar-plan
+```
+
 ---
 
 ## 7. 第一段階の完了
