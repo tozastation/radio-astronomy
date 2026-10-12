@@ -28,7 +28,7 @@ from seestar_plan.weather import Forecast
 
 JST = ZoneInfo("Asia/Tokyo")
 DARK_SUN_ALT_DEG = -18.0
-TARGET_LABELS = ["target", "name"]
+TARGET_LABELS = ["target", "name", "kind"]
 WINDOW_LABELS = ["window", "window_name"]
 
 
@@ -87,14 +87,13 @@ class PlanCollector(Collector):
         separation = _gauge("seestar_target_moon_separation_degrees", "星と月の離角", TARGET_LABELS)
         positions = {}
         for target in self._targets:
-            labels = [target.key, target.name]
-            position = horizontal(now, lat, lon, target.ra_deg, target.dec_deg)
+            labels = [target.key, target.name, target.kind]
+            ra, dec = target.radec_deg(now)
+            position = horizontal(now, lat, lon, ra, dec)
             positions[target.key] = position
             alt.add_metric(labels, position.alt_deg)
             az.add_metric(labels, position.az_deg)
-            separation.add_metric(
-                labels, angular_separation_deg(target.ra_deg, target.dec_deg, moon_ra, moon_dec)
-            )
+            separation.add_metric(labels, angular_separation_deg(ra, dec, moon_ra, moon_dec))
 
         both = TARGET_LABELS + WINDOW_LABELS
         in_window = _gauge("seestar_target_in_window", "いま窓の中にいれば 1（明るさは問わない）", both)
@@ -106,7 +105,7 @@ class PlanCollector(Collector):
         end = _gauge("seestar_target_window_end_timestamp_seconds", "その窓の終わり（Unix 時刻）", both)
         duration = _gauge("seestar_target_window_duration_seconds", "その窓の長さ", both)
         for item in plan.targets:
-            labels = [item.target.key, item.target.name, item.window.key, item.window.name]
+            labels = [item.target.key, item.target.name, item.target.kind, item.window.key, item.window.name]
             inside = item.window.contains(positions[item.target.key])
             in_window.add_metric(labels, 1.0 if inside else 0.0)
             interval = item.upcoming(now)
@@ -222,7 +221,7 @@ class PlanCollector(Collector):
             if interval is None:
                 continue
             target_clear.add_metric(
-                [item.target.key, item.target.name, item.window.key, item.window.name],
+                [item.target.key, item.target.name, item.target.kind, item.window.key, item.window.name],
                 forecast.clear_seconds(max(interval.start, now), interval.end),
             )
         yield target_clear

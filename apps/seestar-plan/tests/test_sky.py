@@ -19,7 +19,7 @@ LAT = 35.6895
 LON = 139.6917
 NIGHT = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
 NORTH = Window("north", "北の長辺", 270, 90, 10, 85)
-EAST = Window("east", "東の短辺", 45, 180, 20, 85)
+EAST = Window("east", "東の短辺", 45, 135, 20, 85)
 
 
 def test_culmination_side_matches_declination():
@@ -33,7 +33,7 @@ def test_culmination_side_matches_declination():
 
 def test_polaris_stays_near_latitude_and_north():
     polaris = CATALOG[0]
-    position = horizontal(NIGHT, LAT, LON, polaris.ra_deg, polaris.dec_deg)
+    position = horizontal(NIGHT, LAT, LON, *polaris.radec_deg(NIGHT))
     assert abs(position.alt_deg - LAT) < 2.0
     assert position.az_deg < 15 or position.az_deg > 345
 
@@ -63,7 +63,7 @@ def test_visible_intervals_cover_a_known_hour():
     polaris = CATALOG[0]
     start = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
     end = datetime(2026, 10, 12, 13, 0, tzinfo=timezone.utc)
-    intervals = visible_intervals(start, end, LAT, LON, polaris.ra_deg, polaris.dec_deg, NORTH)
+    intervals = visible_intervals(start, end, LAT, LON, *polaris.radec_deg(start), NORTH)
     assert len(intervals) == 1
     assert abs(intervals[0].minutes - 60) < 1.5
 

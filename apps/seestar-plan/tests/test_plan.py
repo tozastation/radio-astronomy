@@ -19,7 +19,7 @@ def test_sample_night_has_long_northern_targets():
 def test_each_window_gets_every_target():
     plan = build_plan(NIGHT, Site())
     keys = {(item.window.key, item.target.key) for item in plan.targets}
-    assert len(keys) == 12
+    assert len(keys) == 24
 
 
 def test_high_floor_hides_everything():

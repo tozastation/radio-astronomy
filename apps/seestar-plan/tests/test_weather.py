@@ -76,7 +76,7 @@ def test_collector_exposes_tonight_forecast():
         "seestar_night_start_timestamp_seconds"
     )
     assert registry.get_sample_value("seestar_weather_tonight_clear_seconds") == night
-    polaris = {"target": "polaris", "name": "北極星", "window": "north", "window_name": "北の長辺"}
+    polaris = {"target": "polaris", "name": "北極星", "kind": "deep_sky", "window": "north", "window_name": "北の長辺"}
     end = registry.get_sample_value("seestar_target_window_end_timestamp_seconds", polaris)
     assert registry.get_sample_value("seestar_target_window_clear_seconds", polaris) == end - NIGHT.timestamp()
     assert registry.get_sample_value("seestar_weather_tonight_cloud_cover_percent", {"slot": "00", "hour": "18時"}) == 0.0

@@ -13,7 +13,7 @@ from seestar_plan.sky import Interval, Window, astronomical_night, visible_inter
 # どちらも現地で測るまでは、見込みの控えめな側を置く。
 DEFAULT_WINDOWS: tuple[Window, ...] = (
     Window("north", "北の長辺", 270.0, 90.0, 10.0, 85.0),
-    Window("east", "東の短辺", 45.0, 180.0, 20.0, 85.0),
+    Window("east", "東の短辺", 45.0, 135.0, 20.0, 85.0),
 )
 
 
@@ -72,6 +72,9 @@ def build_plan(now: datetime, site: Site, targets: tuple[Target, ...] = CATALOG)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     night_start, night_end = astronomical_night(now, site.latitude_deg, site.longitude_deg)
+    # 惑星が一晩で動く角度は 1 度ほどなので、夜の中ほどの位置で一晩を代表させる。
+    midnight = night_start + (night_end - night_start) / 2
+    coordinates = {target.key: target.radec_deg(midnight) for target in targets}
     planned = tuple(
         TargetPlan(
             target,
@@ -82,8 +85,7 @@ def build_plan(now: datetime, site: Site, targets: tuple[Target, ...] = CATALOG)
                     night_end,
                     site.latitude_deg,
                     site.longitude_deg,
-                    target.ra_deg,
-                    target.dec_deg,
+                    *coordinates[target.key],
                     window,
                 )
             ),
