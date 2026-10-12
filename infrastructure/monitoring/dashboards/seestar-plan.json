@@ -427,7 +427,7 @@
     },
     {
       "type": "row",
-      "title": "星空の天気予報（Open-Meteo）",
+      "title": "星空の天気予報（Open-Meteo、7Timer!）",
       "id": 9,
       "collapsed": false,
       "gridPos": {
@@ -1154,8 +1154,18 @@
             "uid": "prometheus"
           },
           "expr": "max(seestar_weather_forecast_up)",
-          "legendFormat": "取得",
+          "legendFormat": "Open-Meteo",
           "refId": "A",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_astro_forecast_up)",
+          "legendFormat": "7Timer!",
+          "refId": "B",
           "range": true
         }
       ],
@@ -1167,7 +1177,7 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "失敗（前回の予報を表示）",
+                  "text": "失敗（前回の予報）",
                   "color": "orange",
                   "index": 0
                 },
@@ -1206,7 +1216,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "textMode": "value",
+        "textMode": "value_and_name",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -1233,8 +1243,18 @@
             "uid": "prometheus"
           },
           "expr": "max(seestar_weather_forecast_fetch_timestamp_seconds) * 1000",
-          "legendFormat": "時刻",
+          "legendFormat": "Open-Meteo",
           "refId": "A",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_astro_forecast_fetch_timestamp_seconds) * 1000",
+          "legendFormat": "7Timer!",
+          "refId": "B",
           "range": true
         }
       ],
@@ -1269,28 +1289,426 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "シーイング",
+      "id": 20,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "7Timer! の段階の代表値。SeeStar S50 の画素は約 2.4 秒角なので、2 秒角より良ければ写りはほぼ変わらない",
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_seeing_arcseconds)",
+          "legendFormat": "シーイング",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "arcsec",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 2.5
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
         "textMode": "value",
         "wideLayout": true,
         "showPercentChange": false
       }
     },
     {
+      "type": "stat",
+      "title": "透明度",
+      "id": 21,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "7Timer! の段階（1 が最良、8 が最悪）。淡い星雲・銀河の写りに効く",
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 4,
+        "y": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(seestar_weather_transparency_index)",
+          "legendFormat": "透明度",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 1,
+                "to": 2,
+                "result": {
+                  "text": "とても良い",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 3,
+                "to": 4,
+                "result": {
+                  "text": "良い",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 5,
+                "to": 6,
+                "result": {
+                  "text": "ふつう",
+                  "color": "orange",
+                  "index": 2
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 7,
+                "to": 8,
+                "result": {
+                  "text": "悪い",
+                  "color": "red",
+                  "index": 3
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 7
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "今夜のシーイング（3 時間ごと）",
+      "id": 22,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "今夜の暗い時間にかかる 3 時間ごとの予報",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (slot, hour) (seestar_weather_tonight_seeing_arcseconds)",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "slot"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "slot": true
+            },
+            "renameByName": {
+              "hour": "時刻",
+              "Value": "今夜のシーイング（3 時間ごと）"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "arcsec",
+          "min": 0,
+          "max": 3,
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 2.5
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "時刻",
+        "orientation": "vertical",
+        "barWidth": 0.8,
+        "showValue": "auto",
+        "stacking": "none",
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "xTickLabelRotation": 0
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "今夜の透明度（3 時間ごと）",
+      "id": 23,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "1 が最良、8 が最悪",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (slot, hour) (seestar_weather_tonight_transparency_index)",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "slot"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "slot": true
+            },
+            "renameByName": {
+              "hour": "時刻",
+              "Value": "今夜の透明度（3 時間ごと）"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 8,
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 7
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "時刻",
+        "orientation": "vertical",
+        "barWidth": 0.8,
+        "showValue": "auto",
+        "stacking": "none",
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "xTickLabelRotation": 0
+      }
+    },
+    {
       "type": "row",
       "title": "月",
-      "id": 20,
+      "id": 24,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 26
       },
       "panels": []
     },
     {
       "type": "stat",
       "title": "月相",
-      "id": 21,
+      "id": 25,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1300,7 +1718,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 20
+        "y": 27
       },
       "targets": [
         {
@@ -1453,7 +1871,7 @@
     {
       "type": "gauge",
       "title": "輝面比",
-      "id": 22,
+      "id": 26,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1463,7 +1881,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 20
+        "y": 27
       },
       "targets": [
         {
@@ -1522,7 +1940,7 @@
     {
       "type": "stat",
       "title": "月齢",
-      "id": 23,
+      "id": 27,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1532,7 +1950,7 @@
         "h": 4,
         "w": 3,
         "x": 8,
-        "y": 20
+        "y": 27
       },
       "targets": [
         {
@@ -1586,7 +2004,7 @@
     {
       "type": "stat",
       "title": "月の高度",
-      "id": 24,
+      "id": 28,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1596,7 +2014,7 @@
         "h": 4,
         "w": 3,
         "x": 11,
-        "y": 20
+        "y": 27
       },
       "targets": [
         {
@@ -1654,7 +2072,7 @@
     {
       "type": "stat",
       "title": "次の月の出・月の入り",
-      "id": 25,
+      "id": 29,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1664,7 +2082,7 @@
         "h": 4,
         "w": 5,
         "x": 14,
-        "y": 20
+        "y": 27
       },
       "targets": [
         {
@@ -1727,7 +2145,7 @@
     {
       "type": "stat",
       "title": "次の新月・満月",
-      "id": 26,
+      "id": 30,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1737,7 +2155,7 @@
         "h": 4,
         "w": 5,
         "x": 19,
-        "y": 20
+        "y": 27
       },
       "targets": [
         {
@@ -1800,20 +2218,20 @@
     {
       "type": "row",
       "title": "置き場所ごとの今夜の窓",
-      "id": 27,
+      "id": 31,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 31
       },
       "panels": []
     },
     {
       "type": "table",
       "title": "北の長辺（ガラス際・中央）",
-      "id": 28,
+      "id": 32,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1823,7 +2241,7 @@
         "h": 14,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 32
       },
       "targets": [
         {
@@ -2192,7 +2610,7 @@
     {
       "type": "table",
       "title": "東の短辺",
-      "id": 29,
+      "id": 33,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2202,7 +2620,7 @@
         "h": 14,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 32
       },
       "targets": [
         {
@@ -2571,20 +2989,20 @@
     {
       "type": "row",
       "title": "高度と方位",
-      "id": 30,
+      "id": 34,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 46
       },
       "panels": []
     },
     {
       "type": "timeseries",
       "title": "高度",
-      "id": 31,
+      "id": 35,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2594,7 +3012,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 47
       },
       "targets": [
         {
@@ -2791,7 +3209,7 @@
     {
       "type": "timeseries",
       "title": "方位",
-      "id": 32,
+      "id": 36,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2801,7 +3219,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 50
+        "y": 57
       },
       "targets": [
         {
@@ -2907,7 +3325,7 @@
     {
       "type": "timeseries",
       "title": "月との離角",
-      "id": 33,
+      "id": 37,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2917,7 +3335,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 57
       },
       "targets": [
         {
@@ -2981,20 +3399,20 @@
     {
       "type": "row",
       "title": "撮れた時間帯",
-      "id": 34,
+      "id": 38,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 59
+        "y": 66
       },
       "panels": []
     },
     {
       "type": "state-timeline",
       "title": "北の長辺",
-      "id": 35,
+      "id": 39,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -3004,7 +3422,7 @@
         "h": 12,
         "w": 12,
         "x": 0,
-        "y": 60
+        "y": 67
       },
       "targets": [
         {
@@ -3111,7 +3529,7 @@
     {
       "type": "state-timeline",
       "title": "東の短辺",
-      "id": 36,
+      "id": 40,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -3121,7 +3539,7 @@
         "h": 12,
         "w": 12,
         "x": 12,
-        "y": 60
+        "y": 67
       },
       "targets": [
         {
@@ -3232,6 +3650,12 @@
     {
       "title": "Open-Meteo",
       "url": "https://open-meteo.com/",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "7Timer!",
+      "url": "https://www.7timer.info/",
       "type": "link",
       "targetBlank": true
     }
