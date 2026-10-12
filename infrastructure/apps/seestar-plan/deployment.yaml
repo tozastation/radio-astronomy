@@ -1,3 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seestar-plan-site
+  namespace: default
+  labels:
+    app: seestar-plan
+data:
+  # 場所を測り直したら、この値を差し替えて Pod を作り直す。
+  site.json: |
+    {
+      "latitude_deg": 35.6895,
+      "longitude_deg": 139.6917,
+      "windows": [
+        {"key": "north", "name": "北の長辺", "az_from_deg": 270, "az_to_deg": 90, "floor_deg": 10, "ceiling_deg": 85},
+        {"key": "east", "name": "東の短辺", "az_from_deg": 45, "az_to_deg": 180, "floor_deg": 20, "ceiling_deg": 85}
+      ]
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,29 +35,44 @@ spec:
         app: seestar-plan
     spec:
       containers:
-        - name: plan
-          image: localhost:5000/seestar-plan:v0.1.0
+        - name: exporter
+          image: localhost:5000/seestar-plan:v0.2.0
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 30089
-              name: http
+            - containerPort: 9101
+              name: metrics
           env:
             - name: PORT
-              value: "30089"
-            - name: OBSERVER_LATITUDE
-              value: "35.6895"
-            - name: OBSERVER_LONGITUDE
-              value: "139.6917"
-            - name: ALT_RIDGE_DEG
-              value: "10"
-            - name: ALT_MAX_DEG
-              value: "85"
+              value: "9101"
+            - name: SEESTAR_SITE_FILE
+              value: /etc/seestar-plan/site.json
+          volumeMounts:
+            - name: site
+              mountPath: /etc/seestar-plan
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9101
+            initialDelaySeconds: 5
+            periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 30089
+              port: 9101
             initialDelaySeconds: 3
             periodSeconds: 10
+      volumes:
+        - name: site
+          configMap:
+            name: seestar-plan-site
 ---
 apiVersion: v1
 kind: Service
@@ -48,11 +82,9 @@ metadata:
   labels:
     app: seestar-plan
 spec:
-  type: NodePort
   selector:
     app: seestar-plan
   ports:
-    - name: http
-      port: 30089
-      targetPort: 30089
-      nodePort: 30089
+    - name: metrics
+      port: 9101
+      targetPort: 9101
