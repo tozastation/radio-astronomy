@@ -22,3 +22,6 @@ venv/
 .idea/
 .vscode/
 *.swp
+
+# 観測地の実座標（seestar-plan の場所の ConfigMap の元）
+apps/seestar-plan/site.local.json

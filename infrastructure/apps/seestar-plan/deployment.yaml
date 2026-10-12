@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seestar-plan
+  namespace: default
+  labels:
+    app: seestar-plan
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seestar-plan
+  template:
+    metadata:
+      labels:
+        app: seestar-plan
+    spec:
+      containers:
+        - name: exporter
+          image: localhost:5000/seestar-plan:v0.5.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9101
+              name: metrics
+          env:
+            - name: PORT
+              value: "9101"
+            - name: SEESTAR_SITE_FILE
+              value: /etc/seestar-plan/site.json
+          volumeMounts:
+            - name: site
+              mountPath: /etc/seestar-plan
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9101
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9101
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: site
+          configMap:
+            name: seestar-plan-site
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seestar-plan
+  namespace: default
+  labels:
+    app: seestar-plan
+spec:
+  selector:
+    app: seestar-plan
+  ports:
+    - name: metrics
+      port: 9101
+      targetPort: 9101
