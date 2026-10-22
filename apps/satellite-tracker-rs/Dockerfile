@@ -3,7 +3,22 @@
 # ==============================================================================
 FROM rust:bookworm AS builder
 
+# RTL-SDR Blog V4 公式ドライバのビルド依存
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake \
+    libusb-1.0-0-dev \
+    pkg-config \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /workspace
+
+# RTL-SDR Blog V4 公式ドライバ (R828D対応) のクローンとビルド
+RUN git clone --depth 1 https://github.com/rtlsdrblog/rtl-sdr-blog.git /workspace/rtl-sdr-blog \
+    && cd /workspace/rtl-sdr-blog \
+    && mkdir build && cd build \
+    && cmake ../ -DINSTALL_UDEV_RULES=ON -DDETACH_KERNEL_DRIVER=ON \
+    && make -j$(nproc)
 
 # ワークスペース定義とクレートのコピー
 COPY Cargo.toml Cargo.lock ./
@@ -22,11 +37,16 @@ FROM debian:bookworm-slim
 # RTL-SDR v4 実機アクセス用ライブラリおよび CA 証明書
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    librtlsdr0 \
+    libusb-1.0-0 \
     usbutils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# RTL-SDR Blog V4 公式ドライバ・バイナリの配置
+COPY --from=builder /workspace/rtl-sdr-blog/build/src/rtl_sdr /usr/local/bin/rtl_sdr
+COPY --from=builder /workspace/rtl-sdr-blog/build/src/librtlsdr.so* /usr/local/lib/
+RUN ldconfig
 
 # ビルド済みバイナリの配置
 COPY --from=builder /workspace/target/release/satellite-tracker-rs /usr/local/bin/satellite-tracker-rs
