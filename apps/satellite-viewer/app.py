@@ -9,6 +9,7 @@ import json
 import urllib.parse
 import threading
 import asyncio
+import time
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import boto3
@@ -445,6 +446,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 0.8rem;
       font-family: monospace;
     }
+    .scroll-loader {
+      text-align: center;
+      padding: 24px;
+      color: var(--accent);
+      font-size: 0.9rem;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .scroll-loader.active {
+      display: flex;
+    }
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(56, 189, 248, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -453,7 +478,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <h1>🛰️ 衛星電波観測ビューア</h1>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
-    <button class="btn-refresh" onclick="location.reload()">🔄 更新</button>
+    <button class="btn-refresh" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
   </header>
 
   <!-- Filter & Search Toolbar -->
@@ -469,15 +494,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <input type="checkbox" id="hasPacketsToggle" onchange="applyFilters()">
         <span>📡 パケット/データ検出ありのみ絞り込み</span>
       </label>
-      <span class="matched-count" id="matchedCount">表示中: 0 件</span>
+      <span class="matched-count" id="matchedCount">読み込み中...</span>
     </div>
   </div>
 
   <div id="noMatchState" class="no-match-state">条件に一致する観測データがありません。</div>
 
-  <main id="cardsContainer">
-    __CONTENT__
-  </main>
+  <main id="cardsContainer"></main>
+  <div id="scrollSentinel" style="height: 20px; margin: 10px 0;"></div>
+  <div id="scrollLoader" class="scroll-loader">
+    <div class="spinner"></div>
+    <span>観測データを読み込み中...</span>
+  </div>
 
   <!-- Image Modal -->
   <div id="imageModal" class="modal" onclick="closeImageModal(event)">
@@ -530,7 +558,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const text = await res.text();
         try {
-          // JSON なら綺麗にインデント
           const parsed = JSON.parse(text);
           content.textContent = JSON.stringify(parsed, null, 2);
         } catch {
@@ -550,83 +577,406 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       });
     }
 
-    // --- フィルタ & 集計ロジック ---
+    // --- 無限スクロール & 動的ロード ロジック ---
+    let currentPage = 1;
     let currentCategory = 'all';
+    let isLoading = false;
+    let hasMore = true;
+
+    async function loadPasses(page = 1, reset = false) {
+      if (isLoading) return;
+      if (!reset && !hasMore) return;
+      isLoading = true;
+
+      const loader = document.getElementById('scrollLoader');
+      if (loader) loader.classList.add('active');
+
+      const toggle = document.getElementById('hasPacketsToggle');
+      const hasPacketsOnly = toggle ? toggle.checked : false;
+
+      const url = `/api/passes?page=${page}&limit=12&category=${encodeURIComponent(currentCategory)}&has_data=${hasPacketsOnly ? 'true' : 'false'}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        const container = document.getElementById('cardsContainer');
+        if (reset) {
+          container.innerHTML = data.cards_html;
+          currentPage = 1;
+        } else {
+          container.insertAdjacentHTML('beforeend', data.cards_html);
+          currentPage = page;
+        }
+
+        hasMore = data.has_more;
+
+        if (data.counts) {
+          if (document.getElementById('count-all')) document.getElementById('count-all').textContent = data.counts.all || 0;
+          if (document.getElementById('count-spacestation')) document.getElementById('count-spacestation').textContent = data.counts.spacestation || 0;
+          if (document.getElementById('count-weathersatellite')) document.getElementById('count-weathersatellite').textContent = data.counts.weathersatellite || 0;
+          if (document.getElementById('count-cubesat')) document.getElementById('count-cubesat').textContent = data.counts.cubesat || 0;
+        }
+
+        const matchedEl = document.getElementById('matchedCount');
+        if (matchedEl) {
+          const renderedCount = container.querySelectorAll('.card').length;
+          matchedEl.textContent = `表示中: ${renderedCount} / ${data.total_matched} 件 (全 ${data.counts ? data.counts.all : 0} 件)`;
+        }
+
+        const noMatchEl = document.getElementById('noMatchState');
+        if (noMatchEl) {
+          noMatchEl.style.display = (data.total_matched === 0) ? 'block' : 'none';
+        }
+      } catch (err) {
+        console.error('Error loading passes:', err);
+      } finally {
+        isLoading = false;
+        if (loader) loader.classList.remove('active');
+      }
+    }
 
     function setCategoryFilter(category, btnElement) {
       currentCategory = category;
       document.querySelectorAll('.filter-chips .chip').forEach(el => el.classList.remove('active'));
       if (btnElement) btnElement.classList.add('active');
-      applyFilters();
+      loadPasses(1, true);
     }
 
     function applyFilters() {
-      const toggle = document.getElementById('hasPacketsToggle');
-      const hasPacketsOnly = toggle ? toggle.checked : false;
-      const cards = document.querySelectorAll('.card');
-      let matchedCount = 0;
-
-      cards.forEach(card => {
-        const satType = (card.getAttribute('data-satellite-type') || '').toLowerCase();
-        const packetsCount = parseInt(card.getAttribute('data-packets-count') || '0', 10);
-        const hasData = card.getAttribute('data-has-data') === 'true';
-
-        // 1. カテゴリフィルタ
-        const categoryMatch = (currentCategory === 'all') || (satType === currentCategory.toLowerCase());
-
-        // 3. パケット/データ検出ありフィルタ
-        let packetMatch = true;
-        if (hasPacketsOnly) {
-          packetMatch = (packetsCount > 0) || hasData;
-        }
-
-        if (categoryMatch && packetMatch) {
-          card.style.display = 'block';
-          matchedCount++;
-        } else {
-          card.style.display = 'none';
-        }
-      });
-
-      const matchedCountEl = document.getElementById('matchedCount');
-      if (matchedCountEl) {
-        matchedCountEl.textContent = '表示中: ' + matchedCount + ' / ' + cards.length + ' 件';
-      }
-
-      const noMatchEl = document.getElementById('noMatchState');
-      if (noMatchEl) {
-        noMatchEl.style.display = (matchedCount === 0 && cards.length > 0) ? 'block' : 'none';
-      }
+      loadPasses(1, true);
     }
 
-    function initFilterCounts() {
-      const cards = document.querySelectorAll('.card');
-      const counts = { all: cards.length, spacestation: 0, weathersatellite: 0, cubesat: 0 };
+    function setupInfiniteScroll() {
+      const sentinel = document.getElementById('scrollSentinel');
+      if (!sentinel) return;
 
-      cards.forEach(card => {
-        const satType = (card.getAttribute('data-satellite-type') || '').toLowerCase();
-        if (counts[satType] !== undefined) {
-          counts[satType]++;
-        }
-      });
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && !isLoading && hasMore) {
+            loadPasses(currentPage + 1, false);
+          }
+        });
+      }, { rootMargin: '400px' });
 
-      const elAll = document.getElementById('count-all');
-      if (elAll) elAll.textContent = counts.all;
-      const elSpace = document.getElementById('count-spacestation');
-      if (elSpace) elSpace.textContent = counts.spacestation;
-      const elWeather = document.getElementById('count-weathersatellite');
-      if (elWeather) elWeather.textContent = counts.weathersatellite;
-      const elCube = document.getElementById('count-cubesat');
-      if (elCube) elCube.textContent = counts.cubesat;
-
-      applyFilters();
+      observer.observe(sentinel);
     }
 
-    window.addEventListener('DOMContentLoaded', initFilterCounts);
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPasses(1, true);
+      setupInfiniteScroll();
+    });
   </script>
 </body>
 </html>
 """
+
+
+def get_satellite_type(p: dict) -> str:
+    summary = p.get("summary") or {}
+    sat_type = summary.get("satellite_type")
+    if sat_type:
+        return sat_type
+
+    sat_upper = (p.get("satellite") or "").upper()
+    if "ISS" in sat_upper:
+        return "SpaceStation"
+    elif "METEOR" in sat_upper:
+        return "WeatherSatellite"
+    elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+        return "CubeSat"
+    return "GenericSatellite"
+
+
+def resolve_card_metadata(p: dict):
+    summary = p.get("summary") or {}
+    sat = p.get("satellite", "")
+    sat_upper = sat.upper()
+
+    sat_type = get_satellite_type(p)
+    signal_type = summary.get("signal_type")
+    freq_label = summary.get("frequency_label")
+    icon = summary.get("display_icon")
+    summary_text = summary.get("summary_text", "")
+
+    if not signal_type or not freq_label or not icon:
+        if sat_type == "SpaceStation":
+            signal_type = signal_type or "APRS / AX.25 (1200bps AFSK)"
+            freq_label = freq_label or "145.825 MHz"
+            icon = icon or "🚀"
+        elif sat_type == "WeatherSatellite":
+            signal_type = signal_type or "LRPT (QPSK 72kbps)"
+            freq_label = freq_label or "137.900 MHz"
+            icon = icon or "🛰️"
+        elif sat_type == "CubeSat":
+            signal_type = signal_type or "BPSK (1200bps Telemetry)"
+            freq_label = freq_label or "145.935 MHz"
+            icon = icon or "📻"
+        else:
+            signal_type = signal_type or "Audio / RF Spectrum"
+            freq_label = freq_label or "-"
+            icon = icon or "📡"
+
+    return sat_type, signal_type, freq_label, icon, summary_text
+
+
+def render_card_html(p: dict) -> str:
+    spectrogram_html = ""
+    if "spectrogram.png" in p.get("files", {}):
+        img_url = f"/view?key={urllib.parse.quote(p['files']['spectrogram.png'])}"
+        spectrogram_html = f"""
+        <div class="spectrogram-container">
+          <img class="spectrogram-img" loading="lazy" src="{img_url}" alt="Spectrogram" onclick="openImageModal('{img_url}')">
+          <span class="spectrogram-hint">🔍 スペクトログラム拡大</span>
+        </div>
+        """
+
+    decoded_images_html = ""
+    for fname, fkey in p.get("files", {}).items():
+        if fname != "spectrogram.png" and any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg")):
+            decoded_img_url = f"/view?key={urllib.parse.quote(fkey)}"
+            decoded_images_html += f"""
+            <div class="spectrogram-container" style="margin-top: 8px;">
+              <div style="padding: 4px 8px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: var(--accent); font-weight: bold; text-align: left;">
+                🛰️ 復調気象画像: {fname}
+              </div>
+              <img class="spectrogram-img" loading="lazy" src="{decoded_img_url}" alt="{fname}" onclick="openImageModal('{decoded_img_url}')">
+              <span class="spectrogram-hint">🔍 気象画像タップで拡大</span>
+            </div>
+            """
+
+    summary = p.get("summary") or {}
+    status = summary.get("status", "completed")
+    packets_count = summary.get("packets_count", 0)
+    sat = p.get("satellite", "")
+    sat_upper = sat.upper()
+
+    sat_type, signal_type, freq_label, icon, summary_text = resolve_card_metadata(p)
+
+    summary_box_html = ""
+    if summary_text:
+        summary_box_html = f"""
+        <div class="summary-box">
+          <span>{icon}</span>
+          <span>{summary_text}</span>
+        </div>
+        """
+
+    summary_accordion = ""
+    if summary:
+        pretty_summary = json.dumps(summary, indent=2, ensure_ascii=False)
+        summary_accordion = f"""
+        <details class="data-accordion">
+          <summary>📊 解析サマリ (summary.json) の中身を見る</summary>
+          <div class="accordion-content">
+            <pre class="code-block"><code>{pretty_summary}</code></pre>
+          </div>
+        </details>
+        """
+
+    packets_accordion = ""
+    packets_data = p.get("packets") or {}
+    packet_items = packets_data.get("packets", [])
+    if packet_items:
+        pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
+        accordion_title = f"📡 受信パケット ({len(packet_items)} 件) の中身を見る"
+        if "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+            accordion_title = f"📻 受信テレメトリ ({len(packet_items)} 件) の中身を見る"
+        packets_accordion = f"""
+        <details class="data-accordion">
+          <summary>{accordion_title}</summary>
+          <div class="accordion-content">
+            <pre class="code-block"><code>{pretty_packets}</code></pre>
+          </div>
+        </details>
+        """
+    elif "ISS" in sat_upper:
+        packets_accordion = f"""
+        <details class="data-accordion">
+          <summary>📡 APRS 受信パケット (0 件)</summary>
+          <div class="accordion-content">
+            <pre class="code-block"><code>パケットは検出されませんでした (0 packets)</code></pre>
+          </div>
+        </details>
+        """
+    elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
+        packets_accordion = f"""
+        <details class="data-accordion">
+          <summary>📻 BPSK テレメトリフレーム (0 件)</summary>
+          <div class="accordion-content">
+            <pre class="code-block"><code>テレメトリフレームは検出されませんでした (0 frames)</code></pre>
+          </div>
+        </details>
+        """
+
+    file_rows = []
+    for fname, fkey in p.get("files", {}).items():
+        dl_url = f"/download?key={urllib.parse.quote(fkey)}"
+
+        if fname.endswith(".png"):
+            view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">👁️ 表示</button>"""
+        elif fname.endswith(".json") or fname.endswith(".txt"):
+            view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">👁️ 中身を見る</button>"""
+        else:
+            view_btn = ""
+
+        file_row = f"""
+        <div class="file-row">
+          <span class="file-name">📄 {fname}</span>
+          <div class="file-actions">
+            {view_btn}
+            <a class="action-btn btn-download" href="{dl_url}">📥 保存</a>
+          </div>
+        </div>
+        """
+        file_rows.append(file_row)
+
+    files_grid_html = "".join(file_rows)
+    badge_class = f"badge-{sat_type.lower()}"
+    has_data_val = "true" if (packets_count > 0 or sat_type in ["WeatherSatellite", "CubeSat"]) else "false"
+
+    return f"""
+    <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}">
+      <div class="card-header">
+        <div class="sat-header-left">
+          <div class="sat-name">{icon} {p.get('satellite', '')}</div>
+          <div class="sat-badges">
+            <span class="badge-tag {badge_class}">{sat_type}</span>
+            <span class="badge-tag badge-freq">{freq_label}</span>
+            <span class="badge-tag badge-signal">{signal_type}</span>
+          </div>
+          <div class="pass-id">{p.get('pass_id', '')}</div>
+        </div>
+        <span class="badge-status">{status}</span>
+      </div>
+      <div class="card-body">
+        {spectrogram_html}
+        {decoded_images_html}
+        {summary_box_html}
+        <div class="meta-grid">
+          <div class="meta-item">
+            <span class="meta-label">観測・処理時刻</span>
+            <span class="meta-val">{p.get('last_modified', '')}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">受信信号 / パケット</span>
+            <span class="meta-val">{packets_count} 件検出</span>
+          </div>
+        </div>
+        {summary_accordion}
+        {packets_accordion}
+        <div class="files-section">
+          <div class="files-title">ファイル一覧 (中身プレビュー ＆ ダウンロード)</div>
+          <div class="files-grid">
+            {files_grid_html}
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+
+
+class PassDataCache:
+    def __init__(self, s3_client, s3_bucket: str, ttl_seconds: float = 10.0):
+        self.s3_client = s3_client
+        self.s3_bucket = s3_bucket
+        self.ttl_seconds = ttl_seconds
+        self.last_sync_time = 0.0
+        self._passes = {}
+        self._file_mtimes = {}
+        self._lock = threading.Lock()
+
+    def get_all_passes(self):
+        now = time.time()
+        if self._passes and (now - self.last_sync_time < self.ttl_seconds):
+            return sorted(
+                self._passes.values(),
+                key=lambda x: x.get("last_modified_dt", datetime.min.replace(tzinfo=timezone.utc)),
+                reverse=True
+            )
+
+        with self._lock:
+            now = time.time()
+            if self._passes and (now - self.last_sync_time < self.ttl_seconds):
+                return sorted(
+                    self._passes.values(),
+                    key=lambda x: x.get("last_modified_dt", datetime.min.replace(tzinfo=timezone.utc)),
+                    reverse=True
+                )
+
+            paginator = self.s3_client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(Bucket=self.s3_bucket, Prefix="results/")
+
+            active_pass_ids = set()
+            new_file_mtimes = {}
+
+            for page in pages:
+                for item in page.get("Contents", []):
+                    key = item["Key"]
+                    mtime = item["LastModified"]
+                    new_file_mtimes[key] = mtime
+
+                    parts = key.split("/")
+                    if len(parts) >= 4:
+                        sat = parts[1]
+                        pass_id = parts[2]
+                        filename = "/".join(parts[3:])
+                        active_pass_ids.add(pass_id)
+
+                        if pass_id not in self._passes:
+                            self._passes[pass_id] = {
+                                "satellite": sat,
+                                "pass_id": pass_id,
+                                "last_modified": mtime.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                                "last_modified_dt": mtime,
+                                "files": {},
+                                "summary": None,
+                                "packets": None,
+                            }
+                        else:
+                            if mtime > self._passes[pass_id]["last_modified_dt"]:
+                                self._passes[pass_id]["last_modified_dt"] = mtime
+                                self._passes[pass_id]["last_modified"] = mtime.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+                        self._passes[pass_id]["files"][filename] = key
+
+            for pass_id in active_pass_ids:
+                pdata = self._passes[pass_id]
+                if "summary.json" in pdata["files"]:
+                    skey = pdata["files"]["summary.json"]
+                    current_mtime = new_file_mtimes.get(skey)
+                    if pdata["summary"] is None or self._file_mtimes.get(skey) != current_mtime:
+                        try:
+                            s_obj = self.s3_client.get_object(Bucket=self.s3_bucket, Key=skey)
+                            pdata["summary"] = json.loads(s_obj["Body"].read().decode("utf-8"))
+                        except Exception:
+                            pass
+
+                if "packets.json" in pdata["files"]:
+                    pkey = pdata["files"]["packets.json"]
+                    current_mtime = new_file_mtimes.get(pkey)
+                    if pdata["packets"] is None or self._file_mtimes.get(pkey) != current_mtime:
+                        try:
+                            pk_obj = self.s3_client.get_object(Bucket=self.s3_bucket, Key=pkey)
+                            pdata["packets"] = json.loads(pk_obj["Body"].read().decode("utf-8"))
+                        except Exception:
+                            pass
+
+            self._file_mtimes = new_file_mtimes
+            for stale_id in list(self._passes.keys()):
+                if stale_id not in active_pass_ids:
+                    del self._passes[stale_id]
+
+            self.last_sync_time = time.time()
+
+            return sorted(
+                self._passes.values(),
+                key=lambda x: x.get("last_modified_dt", datetime.min.replace(tzinfo=timezone.utc)),
+                reverse=True
+            )
+
+
+pass_cache = PassDataCache(s3_client, S3_BUCKET)
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -645,6 +995,62 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
+            return
+
+        if path == "/api/passes":
+            try:
+                page = max(1, int(query.get("page", ["1"])[0]))
+            except ValueError:
+                page = 1
+            try:
+                limit = max(1, min(100, int(query.get("limit", ["12"])[0])))
+            except ValueError:
+                limit = 12
+            category = query.get("category", ["all"])[0]
+            has_data_param = query.get("has_data", ["false"])[0].lower() in ["true", "1", "yes"]
+
+            all_passes = pass_cache.get_all_passes()
+
+            counts = {"all": 0, "spacestation": 0, "weathersatellite": 0, "cubesat": 0}
+            for p in all_passes:
+                st = get_satellite_type(p).lower()
+                counts["all"] += 1
+                if st in counts:
+                    counts[st] += 1
+
+            matched_passes = []
+            for p in all_passes:
+                st = get_satellite_type(p)
+                if category != "all" and st.lower() != category.lower():
+                    continue
+                if has_data_param:
+                    summary = p.get("summary") or {}
+                    packets_count = summary.get("packets_count", 0)
+                    if packets_count == 0 and st not in ["WeatherSatellite", "CubeSat"]:
+                        continue
+                matched_passes.append(p)
+
+            total_matched = len(matched_passes)
+            start_idx = (page - 1) * limit
+            end_idx = start_idx + limit
+            page_items = matched_passes[start_idx:end_idx]
+            has_more = end_idx < total_matched
+
+            cards_html = "".join(render_card_html(p) for p in page_items)
+
+            body = json.dumps({
+                "cards_html": cards_html,
+                "has_more": has_more,
+                "total_matched": total_matched,
+                "counts": counts
+            }).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if path == "/api/pending-tasks":
@@ -762,255 +1168,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def render_dashboard(self):
         try:
-            # S3 内の results/ プレフィックスを走査
-            paginator = s3_client.get_paginator("list_objects_v2")
-            pages = paginator.paginate(Bucket=S3_BUCKET, Prefix="results/")
-            
-            passes = {}
-            for page in pages:
-                for item in page.get("Contents", []):
-                    key = item["Key"]
-                    parts = key.split("/")
-                    # results/<satellite>/<pass_id>/<file>
-                    if len(parts) >= 4:
-                        sat = parts[1]
-                        pass_id = parts[2]
-                        filename = "/".join(parts[3:])
-                        
-                        if pass_id not in passes:
-                            passes[pass_id] = {
-                                "satellite": sat,
-                                "pass_id": pass_id,
-                                "last_modified": item["LastModified"].strftime("%Y-%m-%d %H:%M:%S UTC"),
-                                "last_modified_dt": item["LastModified"],
-                                "files": {},
-                                "summary": None,
-                                "packets": None
-                            }
-                        else:
-                            if item["LastModified"] > passes[pass_id]["last_modified_dt"]:
-                                passes[pass_id]["last_modified_dt"] = item["LastModified"]
-                                passes[pass_id]["last_modified"] = item["LastModified"].strftime("%Y-%m-%d %H:%M:%S UTC")
-                        passes[pass_id]["files"][filename] = key
-
-            # 各パスの summary.json と packets.json を読み込み
-            for pass_id, pdata in passes.items():
-                if "summary.json" in pdata["files"]:
-                    try:
-                        s_obj = s3_client.get_object(Bucket=S3_BUCKET, Key=pdata["files"]["summary.json"])
-                        pdata["summary"] = json.loads(s_obj["Body"].read().decode("utf-8"))
-                    except Exception:
-                        pass
-                if "packets.json" in pdata["files"]:
-                    try:
-                        pk_obj = s3_client.get_object(Bucket=S3_BUCKET, Key=pdata["files"]["packets.json"])
-                        pdata["packets"] = json.loads(pk_obj["Body"].read().decode("utf-8"))
-                    except Exception:
-                        pass
-
-            # 最新の観測日時順（タイムスタンプ降順）にソート
-            sorted_passes = sorted(
-                passes.values(),
-                key=lambda x: x.get("last_modified_dt", datetime.min.replace(tzinfo=timezone.utc)),
-                reverse=True
-            )
-
-            cards_html = []
-            for p in sorted_passes:
-                spectrogram_html = ""
-                if "spectrogram.png" in p["files"]:
-                    img_url = f"/view?key={urllib.parse.quote(p['files']['spectrogram.png'])}"
-                    spectrogram_html = f"""
-                    <div class="spectrogram-container">
-                      <img class="spectrogram-img" src="{img_url}" alt="Spectrogram" onclick="openImageModal('{img_url}')">
-                      <span class="spectrogram-hint">🔍 スペクトログラム拡大</span>
-                    </div>
-                    """
-
-                decoded_images_html = ""
-                for fname, fkey in p["files"].items():
-                    if fname != "spectrogram.png" and any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg")):
-                        decoded_img_url = f"/view?key={urllib.parse.quote(fkey)}"
-                        decoded_images_html += f"""
-                        <div class="spectrogram-container" style="margin-top: 8px;">
-                          <div style="padding: 4px 8px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: var(--accent); font-weight: bold; text-align: left;">
-                            🛰️ 復調気象画像: {fname}
-                          </div>
-                          <img class="spectrogram-img" src="{decoded_img_url}" alt="{fname}" onclick="openImageModal('{decoded_img_url}')">
-                          <span class="spectrogram-hint">🔍 気象画像タップで拡大</span>
-                        </div>
-                        """
-
-                summary = p.get("summary") or {}
-                status = summary.get("status", "completed")
-                packets_count = summary.get("packets_count", 0)
-                sat = p['satellite']
-                sat_upper = sat.upper()
-
-                # メタデータのフォールバック解決
-                sat_type = summary.get("satellite_type")
-                signal_type = summary.get("signal_type")
-                freq_label = summary.get("frequency_label")
-                icon = summary.get("display_icon")
-                summary_text = summary.get("summary_text", "")
-
-                if not sat_type:
-                    if "ISS" in sat_upper:
-                        sat_type = "SpaceStation"
-                        signal_type = "APRS / AX.25 (1200bps AFSK)"
-                        freq_label = "145.825 MHz"
-                        icon = "🚀"
-                    elif "METEOR" in sat_upper:
-                        sat_type = "WeatherSatellite"
-                        signal_type = "LRPT (QPSK 72kbps)"
-                        freq_label = "137.900 MHz"
-                        icon = "🛰️"
-                    elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
-                        sat_type = "CubeSat"
-                        signal_type = "BPSK (1200bps Telemetry)"
-                        freq_label = "145.935 MHz"
-                        icon = "📻"
-                    else:
-                        sat_type = "GenericSatellite"
-                        signal_type = "Audio / RF Spectrum"
-                        freq_label = "-"
-                        icon = "📡"
-
-                summary_box_html = ""
-                if summary_text:
-                    summary_box_html = f"""
-                    <div class="summary-box">
-                      <span>{icon}</span>
-                      <span>{summary_text}</span>
-                    </div>
-                    """
-
-                # summary.json インラインアコーディオン
-                summary_accordion = ""
-                if summary:
-                    pretty_summary = json.dumps(summary, indent=2, ensure_ascii=False)
-                    summary_accordion = f"""
-                    <details class="data-accordion">
-                      <summary>📊 解析サマリ (summary.json) の中身を見る</summary>
-                      <div class="accordion-content">
-                        <pre class="code-block"><code>{pretty_summary}</code></pre>
-                      </div>
-                    </details>
-                    """
-
-                # packets.json インラインアコーディオン
-                packets_accordion = ""
-                packets_data = p.get("packets") or {}
-                packet_items = packets_data.get("packets", [])
-                if packet_items:
-                    pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
-                    accordion_title = f"📡 受信パケット ({len(packet_items)} 件) の中身を見る"
-                    if "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
-                        accordion_title = f"📻 受信テレメトリ ({len(packet_items)} 件) の中身を見る"
-                    packets_accordion = f"""
-                    <details class="data-accordion">
-                      <summary>{accordion_title}</summary>
-                      <div class="accordion-content">
-                        <pre class="code-block"><code>{pretty_packets}</code></pre>
-                      </div>
-                    </details>
-                    """
-                elif "ISS" in sat_upper:
-                    packets_accordion = f"""
-                    <details class="data-accordion">
-                      <summary>📡 APRS 受信パケット (0 件)</summary>
-                      <div class="accordion-content">
-                        <pre class="code-block"><code>パケットは検出されませんでした (0 packets)</code></pre>
-                      </div>
-                    </details>
-                    """
-                elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
-                    packets_accordion = f"""
-                    <details class="data-accordion">
-                      <summary>📻 BPSK テレメトリフレーム (0 件)</summary>
-                      <div class="accordion-content">
-                        <pre class="code-block"><code>テレメトリフレームは検出されませんでした (0 frames)</code></pre>
-                      </div>
-                    </details>
-                    """
-
-                # 各ファイルの「👁️ 表示」＆「📥 保存」ボタン一覧
-                file_rows = []
-                for fname, fkey in p["files"].items():
-                    dl_url = f"/download?key={urllib.parse.quote(fkey)}"
-                    
-                    if fname.endswith(".png"):
-                        view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">👁️ 表示</button>"""
-                    elif fname.endswith(".json") or fname.endswith(".txt"):
-                        view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">👁️ 中身を見る</button>"""
-                    else:
-                        view_btn = ""
-
-                    file_row = f"""
-                    <div class="file-row">
-                      <span class="file-name">📄 {fname}</span>
-                      <div class="file-actions">
-                        {view_btn}
-                        <a class="action-btn btn-download" href="{dl_url}">📥 保存</a>
-                      </div>
-                    </div>
-                    """
-                    file_rows.append(file_row)
-
-                files_grid_html = "".join(file_rows)
-
-                badge_class = f"badge-{sat_type.lower()}"
-                has_data_val = "true" if (packets_count > 0 or sat_type in ["WeatherSatellite", "CubeSat"]) else "false"
-
-                card = f"""
-                <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}">
-                  <div class="card-header">
-                    <div class="sat-header-left">
-                      <div class="sat-name">{icon} {p['satellite']}</div>
-                      <div class="sat-badges">
-                        <span class="badge-tag {badge_class}">{sat_type}</span>
-                        <span class="badge-tag badge-freq">{freq_label}</span>
-                        <span class="badge-tag badge-signal">{signal_type}</span>
-                      </div>
-                      <div class="pass-id">{p['pass_id']}</div>
-                    </div>
-                    <span class="badge-status">{status}</span>
-                  </div>
-                  <div class="card-body">
-                    {spectrogram_html}
-                    {decoded_images_html}
-                    {summary_box_html}
-                    <div class="meta-grid">
-                      <div class="meta-item">
-                        <span class="meta-label">観測・処理時刻</span>
-                        <span class="meta-val">{p['last_modified']}</span>
-                      </div>
-                      <div class="meta-item">
-                        <span class="meta-label">受信信号 / パケット</span>
-                        <span class="meta-val">{packets_count} 件検出</span>
-                      </div>
-                    </div>
-                    {summary_accordion}
-                    {packets_accordion}
-                    <div class="files-section">
-                      <div class="files-title">ファイル一覧 (中身プレビュー ＆ ダウンロード)</div>
-                      <div class="files-grid">
-                        {files_grid_html}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                """
-                cards_html.append(card)
-
-            content = "".join(cards_html) if cards_html else '<div class="empty-state">まだ観測結果がありません。</div>'
-            body = HTML_TEMPLATE.replace("__BUCKET__", S3_BUCKET).replace("__CONTENT__", content)
-
+            body = HTML_TEMPLATE.replace("__BUCKET__", S3_BUCKET)
+            encoded = body.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body.encode("utf-8"))))
+            self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
-            self.wfile.write(body.encode("utf-8"))
+            self.wfile.write(encoded)
         except Exception as e:
             self.send_error(500, f"Dashboard render error: {e}")
 
