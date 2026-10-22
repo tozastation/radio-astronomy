@@ -45,6 +45,7 @@ WORKDIR /app
 
 # RTL-SDR Blog V4 公式ドライバ・バイナリの配置
 COPY --from=builder /workspace/rtl-sdr-blog/build/src/rtl_sdr /usr/local/bin/rtl_sdr
+COPY --from=builder /workspace/rtl-sdr-blog/build/src/rtl_fm /usr/local/bin/rtl_fm
 COPY --from=builder /workspace/rtl-sdr-blog/build/src/librtlsdr.so* /usr/local/lib/
 RUN ldconfig
 

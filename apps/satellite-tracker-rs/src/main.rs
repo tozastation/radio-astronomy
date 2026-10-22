@@ -4,13 +4,87 @@ use log::{info, warn};
 use satellite_tracker_rs::dsp::DspProcessor;
 use satellite_tracker_rs::metrics::MetricsExporter;
 use satellite_tracker_rs::orbit::OrbitPredictor;
+use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header};
 use satellite_tracker_rs::s3::S3Uploader;
 use satellite_tracker_rs::sdr::SdrCollector;
 use satellite_tracker_rs::spooler::AudioSpooler;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 use tokio::signal;
+
+/// 稼働中の外部 SDR 録音プロセス
+enum ActiveProcess {
+    Raw {
+        child: tokio::process::Child,
+        path: PathBuf,
+    },
+    Fm {
+        child: tokio::process::Child,
+        path: PathBuf,
+        writer_task: tokio::task::JoinHandle<std::io::Result<u64>>,
+    },
+}
+
+/// 録音プロセスの優雅な終了と S3 アップロード
+async fn stop_and_upload_active_process(
+    active: Option<ActiveProcess>,
+    sat_name: &str,
+    uploader: &S3Uploader,
+) {
+    match active {
+        Some(ActiveProcess::Raw { mut child, path }) => {
+            info!("Stopping RAW recording process for {}", sat_name);
+            if let Some(pid) = child.id() {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGINT);
+                }
+            }
+            let _ = child.wait().await;
+            if path.exists() {
+                let s3_key = format!(
+                    "raw/{}/{}",
+                    sat_name,
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                let _ = uploader.upload_and_cleanup(&path, &s3_key).await;
+            }
+        }
+        Some(ActiveProcess::Fm {
+            mut child,
+            path,
+            writer_task,
+        }) => {
+            info!("Stopping FM recording process for {}", sat_name);
+            if let Some(pid) = child.id() {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGINT);
+                }
+            }
+            let _ = child.wait().await;
+            match writer_task.await {
+                Ok(Ok(data_bytes)) => {
+                    if path.exists() {
+                        if let Ok(mut f) = tokio::fs::OpenOptions::new().write(true).open(&path).await {
+                            let _ = f.write_all(&create_wav_header(48_000, data_bytes as u32)).await;
+                            let _ = f.flush().await;
+                        }
+                        let s3_key = format!(
+                            "raw/{}/{}",
+                            sat_name,
+                            path.file_name().unwrap().to_string_lossy()
+                        );
+                        let _ = uploader.upload_and_cleanup(&path, &s3_key).await;
+                    }
+                }
+                Ok(Err(e)) => warn!("FM streaming writer task error for {}: {}", sat_name, e),
+                Err(e) => warn!("FM streaming writer join error for {}: {}", sat_name, e),
+            }
+        }
+        None => {}
+    }
+}
 
 /// 対象衛星の静的初期定義 (CelesTrak 等の外部通信不通時も自律稼働するフォールバック)
 struct TargetSatellite {
@@ -104,7 +178,7 @@ async fn main() -> Result<()> {
     let mut ticker = tokio::time::interval(Duration::from_secs(update_interval_sec));
     let mut active_satellite: Option<String> = None;
     let mut pass_in_progress = false;
-    let mut active_raw_process: Option<(tokio::process::Child, PathBuf)> = None;
+    let mut active_process: Option<ActiveProcess> = None;
 
     info!("Entering autonomous edge tracking loop (power-saving enabled)...");
     let _ = uploader.sync_pending_spool(&spool_dir).await;
@@ -153,16 +227,8 @@ async fn main() -> Result<()> {
                     if !pass_in_progress || active_satellite.as_deref() != Some(chosen_sat.name) {
                         if pass_in_progress {
                             if let Some(prev_sat) = active_satellite.take() {
-                                if let Some((mut child, raw_path)) = active_raw_process.take() {
-                                    info!("Stopping RAW recording process for {}", prev_sat);
-                                    if let Some(pid) = child.id() {
-                                        unsafe { libc::kill(pid as i32, libc::SIGINT); }
-                                    }
-                                    let _ = child.wait().await;
-                                    if raw_path.exists() {
-                                        let s3_key = format!("raw/{}/{}", prev_sat, raw_path.file_name().unwrap().to_string_lossy());
-                                        let _ = uploader.upload_and_cleanup(&raw_path, &s3_key).await;
-                                    }
+                                if active_process.is_some() {
+                                    stop_and_upload_active_process(active_process.take(), &prev_sat, &uploader).await;
                                 } else if let Ok(Some(wav_path)) = spooler.finish_pass() {
                                     let s3_key = format!("raw/{}/{}", prev_sat, wav_path.file_name().unwrap().to_string_lossy());
                                     let _ = uploader.upload_and_cleanup(&wav_path, &s3_key).await;
@@ -187,18 +253,13 @@ async fn main() -> Result<()> {
                                 "Starting rtl_sdr RAW I/Q recording (240 kSPS) for {} -> {:?}",
                                 chosen_sat.name, raw_path
                             );
+                            let args = build_rtl_sdr_args(chosen_sat.freq_hz, 240_000, 45.0, &raw_path);
                             match tokio::process::Command::new("rtl_sdr")
-                                .arg("-f")
-                                .arg(format!("{:.0}", chosen_sat.freq_hz))
-                                .arg("-s")
-                                .arg("240000")
-                                .arg("-g")
-                                .arg("45.0")
-                                .arg(&raw_path)
+                                .args(&args)
                                 .spawn()
                             {
                                 Ok(child) => {
-                                    active_raw_process = Some((child, raw_path));
+                                    active_process = Some(ActiveProcess::Raw { child, path: raw_path });
                                 }
                                 Err(e) => {
                                     warn!(
@@ -208,7 +269,52 @@ async fn main() -> Result<()> {
                                     let _ = spooler.start_pass(chosen_sat.name, &pass_id);
                                 }
                             }
+                        } else if !mock_sdr {
+                            // ISS またはその他音声衛星の実電波受信 (rtl_fm による 48kSPS NFM 復調)
+                            let wav_filename = format!("{}_{}.wav", chosen_sat.name, pass_id);
+                            let wav_path = spool_dir.join(&wav_filename);
+                            info!(
+                                "Starting rtl_fm real RF recording (48 kSPS) for {} -> {:?}",
+                                chosen_sat.name, wav_path
+                            );
+
+                            match tokio::fs::File::create(&wav_path).await {
+                                Ok(mut file) => {
+                                    if let Err(e) = file.write_all(&create_wav_header(48_000, 0)).await {
+                                        warn!("Failed to write initial WAV header for {}: {}", chosen_sat.name, e);
+                                    }
+                                    let args = build_rtl_fm_args(chosen_sat.freq_hz, 48_000, 45.0);
+                                    match tokio::process::Command::new("rtl_fm")
+                                        .args(&args)
+                                        .stdout(std::process::Stdio::piped())
+                                        .stderr(std::process::Stdio::null())
+                                        .spawn()
+                                    {
+                                        Ok(mut child) => {
+                                            let mut stdout = child.stdout.take().expect("Failed to open rtl_fm stdout");
+                                            let writer_task = tokio::spawn(async move {
+                                                let copied = tokio::io::copy(&mut stdout, &mut file).await?;
+                                                file.flush().await?;
+                                                Ok(copied)
+                                            });
+                                            active_process = Some(ActiveProcess::Fm { child, path: wav_path, writer_task });
+                                        }
+                                        Err(e) => {
+                                            warn!(
+                                                "Failed to spawn rtl_fm command for {}: {}. Falling back to audio spooler.",
+                                                chosen_sat.name, e
+                                            );
+                                            let _ = spooler.start_pass(chosen_sat.name, &pass_id);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to create WAV file for {}: {}. Falling back to audio spooler.", chosen_sat.name, e);
+                                    let _ = spooler.start_pass(chosen_sat.name, &pass_id);
+                                }
+                            }
                         } else {
+                            // MOCK_SDR=true モード: 合成音声スプール
                             if let Err(e) = sdr.warmup(chosen_sat.freq_hz) {
                                 warn!("SDR warmup failed: {}", e);
                             }
@@ -226,15 +332,14 @@ async fn main() -> Result<()> {
                         chosen_pos.doppler_shift_hz,
                     );
 
-                    // Meteor 追尾中かつ RAW プロセスが稼働している場合は音声スプールをバイパス
-                    if active_raw_process.is_none() {
-                        // 1. 衛星通過実時間と同期した 48kHz PCM 音声の連続スプール（デューティ比 100% 確保）
+                    // 外部録音プロセス（rtl_sdr, rtl_fm）が未稼働の場合（MOCK_SDR=true 時）のみモック音声を生成
+                    if active_process.is_none() {
                         let is_aprs = chosen_sat.name.contains("ISS");
                         let pcm_duration = update_interval_sec as f64;
                         let continuous_pcm = sdr.generate_mock_audio(pcm_duration, is_aprs);
                         let _ = spooler.write_frames(&continuous_pcm);
 
-                        // 2. RF メトリクス用のリアルタイム FFT 解析（2048 サンプルで十分な高分解能）
+                        // RF メトリクス用のリアルタイム FFT 解析
                         match sdr.read_samples(2048) {
                             Ok(iq_samples) => {
                                 let spec = DspProcessor::measure_spectrum(&iq_samples, 2_400_000.0, chosen_sat.freq_hz, 2048);
@@ -250,16 +355,8 @@ async fn main() -> Result<()> {
                     if pass_in_progress {
                         if let Some(finished_sat) = active_satellite.take() {
                             info!("LOS completed: {}", finished_sat);
-                            if let Some((mut child, raw_path)) = active_raw_process.take() {
-                                info!("Stopping RAW recording process for {}", finished_sat);
-                                if let Some(pid) = child.id() {
-                                    unsafe { libc::kill(pid as i32, libc::SIGINT); }
-                                }
-                                let _ = child.wait().await;
-                                if raw_path.exists() {
-                                    let s3_key = format!("raw/{}/{}", finished_sat, raw_path.file_name().unwrap().to_string_lossy());
-                                    let _ = uploader.upload_and_cleanup(&raw_path, &s3_key).await;
-                                }
+                            if active_process.is_some() {
+                                stop_and_upload_active_process(active_process.take(), &finished_sat, &uploader).await;
                             } else if let Ok(Some(wav_path)) = spooler.finish_pass() {
                                 let s3_key = format!("raw/{}/{}", finished_sat, wav_path.file_name().unwrap().to_string_lossy());
                                 let _ = uploader.upload_and_cleanup(&wav_path, &s3_key).await;
@@ -283,11 +380,10 @@ async fn main() -> Result<()> {
         }
     }
 
-    if let Some((mut child, _)) = active_raw_process.take() {
-        if let Some(pid) = child.id() {
-            unsafe { libc::kill(pid as i32, libc::SIGINT); }
+    if active_process.is_some() {
+        if let Some(sat_name) = active_satellite.as_deref() {
+            stop_and_upload_active_process(active_process.take(), sat_name, &uploader).await;
         }
-        let _ = child.wait().await;
     }
 
     if let Err(e) = sdr.standby() {
