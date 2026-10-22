@@ -105,7 +105,7 @@ const DEFAULT_TARGETS: &[TargetSatellite] = &[
         name: "METEOR-M2 3",
         line1: "1 57166U 23091A   26247.84598514 -.00000034  00000+0  40546-5 0  9996",
         line2: "2 57166  98.6012 301.1650 0002937 309.2560  50.8358 14.24051969165850",
-        freq_hz: 137_100_000.0,
+        freq_hz: 137_900_000.0,
     },
     TargetSatellite {
         name: "METEOR-M2 4",

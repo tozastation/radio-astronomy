@@ -28,7 +28,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tracker
-          image: localhost:5000/satellite-tracker-rs:v1.4.0
+          image: localhost:5000/satellite-tracker-rs:v1.4.1
           imagePullPolicy: Always
           command: ["/bin/sh", "-c", "satellite-tracker-rs 2>&1 | tee -a /tmp/spool/tracker.log"]
           ports:

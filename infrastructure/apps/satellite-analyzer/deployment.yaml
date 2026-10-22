@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: analyzer
-          image: localhost:5000/satellite-analyzer-worker:v1.5.0
+          image: localhost:5000/satellite-analyzer-worker:v1.5.1
           imagePullPolicy: Always
           env:
             - name: MODE
