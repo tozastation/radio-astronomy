@@ -63,9 +63,11 @@ impl OrbitPredictor {
         }
 
         if self.balcony_facing == "NORTH" {
-            // 北向きベランダ: 方位角 270°〜360° または 0°〜90° (西〜北〜東)
+            // 北向きベランダ: 方位角 250°〜360° または 0°〜110° (西〜北〜東 + 東西側面TCAマージン20°)
+            // 北東・北西から昇って真東(90°)・真西(270°)付近で最接近(TCA)を迎える極軌道パスが
+            // ピーク仰角の瞬間に途中切断されるのを防ぐ。南側(110°〜250°)の建物遮蔽域は除外。
             let az = azimuth_deg.rem_euclid(360.0);
-            (270.0..=360.0).contains(&az) || (0.0..=90.0).contains(&az)
+            (250.0..=360.0).contains(&az) || (0.0..=110.0).contains(&az)
         } else {
             // 全天開放 (ALL 等)
             true
@@ -295,6 +297,38 @@ fn calculate_topo_pos_and_range(
     Ok((el_deg, az_deg, range))
 }
 
+/// 3行フォーマットのTLEカタログテキストをパースし、SGP4構文検証を通過した衛星のみ NORAD ID をキーに格納
+pub fn parse_tle_catalog(
+    text: &str,
+) -> std::collections::HashMap<u32, (String, String, String)> {
+    let mut map = std::collections::HashMap::new();
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut i = 0;
+    while i + 2 < lines.len() {
+        if lines[i + 1].starts_with("1 ") && lines[i + 2].starts_with("2 ") {
+            let sat_name = lines[i].to_string();
+            let line1 = lines[i + 1].to_string();
+            let line2 = lines[i + 2].to_string();
+            if line2.len() >= 7 {
+                if let Ok(norad_id) = line2[2..7].trim().parse::<u32>() {
+                    if Elements::from_tle(Some(sat_name.clone()), line1.as_bytes(), line2.as_bytes()).is_ok() {
+                        map.insert(norad_id, (sat_name, line1, line2));
+                    }
+                }
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    map
+}
+
 /// グリニッジ平均恒星時 (GMST) 角 [rad] (IAU 1982 公式)
 fn calculate_gmst(t: DateTime<Utc>) -> f64 {
     let ts = t.timestamp() as f64;
@@ -304,4 +338,39 @@ fn calculate_gmst(t: DateTime<Utc>) -> f64 {
     let gmst_deg = 280.46061837 + 360.98564736629 * d;
     let gmst_deg_norm = gmst_deg.rem_euclid(360.0);
     gmst_deg_norm.to_radians()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_north_balcony_azimuth_margin_includes_east_west_tca() {
+        let predictor = OrbitPredictor::new(35.6895, 139.6917, 30.0, "NORTH", 10.0);
+        // 北正面は可視
+        assert!(predictor.is_in_view(30.0, 0.0));
+        // 北東から昇り真東 (90°) を少し越えて TCA (Az=97.1°, El=44.4°) に達する METEOR 降交点パスが切断されないこと
+        assert!(predictor.is_in_view(44.4, 97.1));
+        // 西側も Az=255° までマージン内で可視であること
+        assert!(predictor.is_in_view(35.0, 255.0));
+        // 南側 (鉄筋コンクリート壁方向: 110° < Az < 250°) は不可視であること
+        assert!(!predictor.is_in_view(60.0, 165.0));
+        assert!(!predictor.is_in_view(45.0, 180.0));
+    }
+
+    #[test]
+    fn test_parse_tle_catalog_extracts_valid_tles_by_norad_id() {
+        let sample = "\
+METEOR-M2 3
+1 57166U 23091A   26296.25648911 -.00000011  00000+0  13974-4 0  9991
+2 57166  98.5934 348.5131 0004559 145.3247 214.8230 14.24054780172745
+METEOR-M2 4
+1 59051U 24039A   26296.27566674  .00000005  00000+0  21993-4 0  9998
+2 59051  98.7198 254.0636 0007418 151.3257 208.8330 14.22441005137473
+";
+        let catalog = parse_tle_catalog(sample);
+        assert_eq!(catalog.len(), 2);
+        assert!(catalog.contains_key(&57166));
+        assert!(catalog.contains_key(&59051));
+    }
 }

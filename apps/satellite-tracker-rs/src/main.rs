@@ -3,7 +3,7 @@ use chrono::Utc;
 use log::{info, warn};
 use satellite_tracker_rs::dsp::DspProcessor;
 use satellite_tracker_rs::metrics::MetricsExporter;
-use satellite_tracker_rs::orbit::OrbitPredictor;
+use satellite_tracker_rs::orbit::{parse_tle_catalog, OrbitPredictor};
 use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header};
 use satellite_tracker_rs::s3::S3Uploader;
 use satellite_tracker_rs::sdr::SdrCollector;
@@ -86,40 +86,101 @@ async fn stop_and_upload_active_process(
     }
 }
 
-/// 対象衛星の静的初期定義 (CelesTrak 等の外部通信不通時も自律稼働するフォールバック)
+/// 対象衛星の初期定義 (CelesTrak 等の外部通信不通時も自律稼働するフォールバック)
 struct TargetSatellite {
     name: &'static str,
+    norad_id: u32,
     line1: &'static str,
     line2: &'static str,
+    freq_hz: f64,
+}
+
+#[derive(Clone)]
+struct RuntimeTarget {
+    name: &'static str,
+    norad_id: u32,
+    line1: String,
+    line2: String,
     freq_hz: f64,
 }
 
 const DEFAULT_TARGETS: &[TargetSatellite] = &[
     TargetSatellite {
         name: "ISS (ZARYA)",
-        line1: "1 25544U 98067A   26248.17592762  .00003558  00000-0  72743-4 0  9999",
-        line2: "2 25544  51.6310 264.2007 0005041 108.5564 251.5973 15.48992921584153",
+        norad_id: 25544,
+        line1: "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996",
+        line2: "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
         freq_hz: 145_825_000.0,
     },
     TargetSatellite {
         name: "METEOR-M2 3",
-        line1: "1 57166U 23091A   26247.84598514 -.00000034  00000+0  40546-5 0  9996",
-        line2: "2 57166  98.6012 301.1650 0002937 309.2560  50.8358 14.24051969165850",
+        norad_id: 57166,
+        line1: "1 57166U 23091A   26296.25648911 -.00000011  00000+0  13974-4 0  9991",
+        line2: "2 57166  98.5934 348.5131 0004559 145.3247 214.8230 14.24054780172745",
         freq_hz: 137_900_000.0,
     },
     TargetSatellite {
         name: "METEOR-M2 4",
-        line1: "1 59051U 24039A   26248.16204753  .00000001  00000+0  20236-4 0  9995",
-        line2: "2 59051  98.7095 206.4842 0006129 304.9729  55.0873 14.22436604130631",
+        norad_id: 59051,
+        line1: "1 59051U 24039A   26296.27566674  .00000005  00000+0  21993-4 0  9998",
+        line2: "2 59051  98.7198 254.0636 0007418 151.3257 208.8330 14.22441005137473",
         freq_hz: 137_900_000.0,
     },
     TargetSatellite {
         name: "FUNCUBE-1 (AO-73)",
-        line1: "1 39444U 13066AE  26247.90903049  .00003511  00000-0  21472-3 0  9994",
-        line2: "2 39444  97.8363 221.1119 0033645 293.7219  66.0482 15.10481180691699",
+        norad_id: 39444,
+        line1: "1 39444U 13066AE  26294.20736285  .00008239  00000+0  48957-3 0  9993",
+        line2: "2 39444  97.8439 268.5385 0036409 132.3370 228.0953 15.10994851698683",
         freq_hz: 145_935_000.0,
     },
 ];
+
+/// ローカル TLE キャッシュファイルが存在すれば優先読込し、不在時は DEFAULT_TARGETS にフォールバック
+fn load_runtime_targets() -> Vec<RuntimeTarget> {
+    let mut candidates = Vec::new();
+    if let Ok(env_path) = std::env::var("TLE_FILE_PATH") {
+        candidates.push(PathBuf::from(env_path));
+    }
+    candidates.push(PathBuf::from("/etc/satellite-tracker/tles.txt"));
+    candidates.push(PathBuf::from("apps/ground-station/data/cache/tles.txt"));
+    candidates.push(PathBuf::from("data/cache/tles.txt"));
+
+    let mut catalog = std::collections::HashMap::new();
+    for path in candidates {
+        if path.exists() {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                let parsed = parse_tle_catalog(&text);
+                if !parsed.is_empty() {
+                    catalog = parsed;
+                    break;
+                }
+            }
+        }
+    }
+
+    DEFAULT_TARGETS
+        .iter()
+        .map(|t| {
+            if let Some((_, l1, l2)) = catalog.get(&t.norad_id) {
+                RuntimeTarget {
+                    name: t.name,
+                    norad_id: t.norad_id,
+                    line1: l1.clone(),
+                    line2: l2.clone(),
+                    freq_hz: t.freq_hz,
+                }
+            } else {
+                RuntimeTarget {
+                    name: t.name,
+                    norad_id: t.norad_id,
+                    line1: t.line1.to_string(),
+                    line2: t.line2.to_string(),
+                    freq_hz: t.freq_hz,
+                }
+            }
+        })
+        .collect()
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -194,15 +255,17 @@ async fn main() -> Result<()> {
                 let mut visible_candidates = Vec::new();
                 let mut earliest_next_aos_sec = f64::MAX;
 
-                for sat in DEFAULT_TARGETS {
-                    match predictor.calculate_position(sat.name, sat.line1, sat.line2, sat.freq_hz, now_utc) {
+                let runtime_targets = load_runtime_targets();
+                for sat in &runtime_targets {
+                    let _ = sat.norad_id;
+                    match predictor.calculate_position(sat.name, &sat.line1, &sat.line2, sat.freq_hz, now_utc) {
                         Ok(pos) => {
                             if predictor.is_in_view(pos.elevation_deg, pos.azimuth_deg) {
                                 visible_candidates.push((sat, pos));
                             } else {
                                 exporter.set_tracking_status(sat.name, false);
                                 // 次回パス予測
-                                if let Ok(Some(next_pass)) = predictor.get_next_pass(sat.name, sat.line1, sat.line2, sat.freq_hz, now_utc, 12.0, 30) {
+                                if let Ok(Some(next_pass)) = predictor.get_next_pass(sat.name, &sat.line1, &sat.line2, sat.freq_hz, now_utc, 12.0, 30) {
                                     let aos_ts = next_pass.aos_time.timestamp() as f64;
                                     exporter.set_next_pass(sat.name, aos_ts);
                                     let diff_sec = aos_ts - now_utc.timestamp() as f64;
