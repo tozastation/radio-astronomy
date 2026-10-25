@@ -45,7 +45,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>🛰️ 衛星電波観測ダッシュボード (Garage S3)</title>
   <style>
     :root {
@@ -66,7 +66,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       padding: 16px;
-      padding-bottom: 60px;
+      padding-bottom: max(60px, env(safe-area-inset-bottom, 60px));
+      -webkit-font-smoothing: antialiased;
     }
     header {
       display: flex;
@@ -75,6 +76,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       margin-bottom: 20px;
       padding-bottom: 12px;
       border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .header-title-block {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
     h1 {
       font-size: 1.25rem;
@@ -100,8 +113,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-radius: 6px;
       font-size: 0.85rem;
       cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
     }
     .btn-refresh:active { background: var(--border); }
+    .btn-backup {
+      background: #059669;
+      color: white;
+      border-color: #34d399;
+    }
+    .btn-backup:active { background: #047857; }
+    .btn-passes {
+      background: #0284c7;
+      color: white;
+      border-color: #38bdf8;
+    }
+    .btn-passes:active { background: #0369a1; }
+    .btn-reload {
+      background: var(--card-bg);
+      color: var(--text);
+      border-color: var(--border);
+    }
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -115,12 +148,51 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: rgba(255, 255, 255, 0.03);
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       border-bottom: 1px solid var(--border);
+      gap: 12px;
     }
-    .sat-name { font-weight: 700; font-size: 1.1rem; color: #38bdf8; }
-    .sat-header-left { display: flex; flex-direction: column; gap: 4px; }
+    .sat-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .sat-name { font-weight: 700; font-size: 1.1rem; color: #38bdf8; word-break: break-word; }
     .sat-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .pass-id {
+      font-family: monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      word-break: break-all;
+      margin-top: 2px;
+    }
+    .sat-header-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .btn-replay {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: white;
+      border: 1px solid #38bdf8;
+      font-weight: bold;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      touch-action: manipulation;
+    }
+    .btn-replay:hover {
+      background: linear-gradient(135deg, #0369a1, #0284c7);
+    }
     .badge-tag {
       font-size: 0.7rem;
       padding: 2px 6px;
@@ -255,9 +327,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      padding: 8px 12px;
+      padding: 8px 10px;
       border-radius: 8px;
       font-size: 0.8rem;
+      gap: 8px;
     }
     .file-name {
       font-family: monospace;
@@ -266,13 +339,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      min-width: 0;
+      flex: 1 1 auto;
     }
     .file-actions {
       display: flex;
       gap: 6px;
+      flex-shrink: 0;
     }
     .action-btn {
-      padding: 5px 10px;
+      padding: 5px 8px;
       border-radius: 6px;
       font-size: 0.75rem;
       font-weight: 600;
@@ -282,6 +358,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       gap: 4px;
       border: none;
+      white-space: nowrap;
+      touch-action: manipulation;
     }
     .btn-view {
       background: #0284c7;
@@ -412,6 +490,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       cursor: pointer;
       transition: all 0.2s ease;
       user-select: none;
+      touch-action: manipulation;
     }
     .chip:hover {
       background: rgba(255, 255, 255, 0.08);
@@ -497,6 +576,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       gap: 12px;
     }
+    .radar-canvas {
+      width: 100%;
+      max-width: 440px;
+      aspect-ratio: 1 / 1;
+      background: #080e1a;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+      display: block;
+      margin: 0 auto;
+    }
     .radar-legend {
       display: flex;
       flex-wrap: wrap;
@@ -581,22 +671,64 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       gap: 6px;
     }
-    .clipper-row {
+    .clipper-controls {
       display: flex;
-      align-items: center;
+      flex-direction: column;
       gap: 8px;
       margin-bottom: 8px;
-      flex-wrap: wrap;
-      font-size: 0.82rem;
     }
-    .clipper-row input[type="number"] {
+    .clipper-inputs-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .clipper-input-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .clipper-input-group input[type="number"] {
       background: #0b1120;
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 4px 8px;
+      padding: 4px 6px;
       border-radius: 4px;
-      width: 60px;
+      width: 50px;
       font-family: monospace;
+      flex: 1;
+    }
+    .btn-auto-window {
+      background: #0891b2;
+      color: white;
+      font-weight: bold;
+      width: 100%;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #06b6d4;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .btn-auto-window:hover {
+      background: #0e7490;
+    }
+    .btn-generate-gif {
+      background: linear-gradient(135deg, #059669, #047857);
+      color: white;
+      font-weight: bold;
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-generate-gif:active {
+      filter: brightness(0.9);
     }
     .btn-sm {
       background: #334155;
@@ -622,18 +754,157 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       width: 0%;
       transition: width 0.1s linear;
     }
+
+    /* Backup & Restore Layout */
+    .backup-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+    .restore-input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Responsive Mobile Optimizations (< 640px) */
+    @media (max-width: 640px) {
+      body {
+        padding: 10px;
+        padding-bottom: max(60px, env(safe-area-inset-bottom, 60px));
+      }
+      header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .header-title-block {
+        justify-content: space-between;
+      }
+      h1 {
+        font-size: 1.15rem;
+      }
+      .header-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        width: 100%;
+      }
+      .header-actions .btn-refresh {
+        padding: 8px 4px;
+        font-size: 0.74rem;
+        text-align: center;
+        white-space: normal;
+        line-height: 1.25;
+        min-height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .toolbar-section {
+        padding: 12px;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .filter-chips {
+        gap: 6px;
+      }
+      .chip {
+        padding: 6px 11px;
+        font-size: 0.78rem;
+      }
+      .filter-options {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .matched-count {
+        font-size: 0.75rem;
+      }
+      .card-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 12px;
+      }
+      .sat-name {
+        font-size: 1.02rem;
+      }
+      .sat-header-right {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding-top: 6px;
+        border-top: 1px dashed rgba(255, 255, 255, 0.08);
+      }
+      .sat-header-right .btn-replay {
+        flex: 1;
+        padding: 8px 12px;
+        font-size: 0.82rem;
+      }
+      .card-body {
+        padding: 12px;
+        gap: 12px;
+      }
+      .modal {
+        padding: 8px;
+      }
+      .modal-box {
+        max-height: 94vh;
+        border-radius: 10px;
+      }
+      .modal-header {
+        padding: 10px 12px;
+      }
+      .modal-title {
+        font-size: 0.88rem;
+      }
+      .modal-body {
+        padding: 10px;
+      }
+      .modal-footer {
+        padding: 8px 12px;
+      }
+      .radar-canvas {
+        max-width: 290px;
+      }
+      .radar-wrapper {
+        gap: 8px;
+      }
+      .radar-legend {
+        font-size: 0.72rem;
+        gap: 6px;
+      }
+      .telemetry-grid {
+        gap: 6px;
+        font-size: 0.8rem;
+      }
+      .telemetry-val {
+        font-size: 0.85rem;
+      }
+      .clipper-inputs-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
-    <div>
+    <div class="header-title-block">
       <h1>🛰️ 衛星電波観測ビューア</h1>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
-    <div style="display: flex; gap: 8px;">
-      <button class="btn-refresh" onclick="openBackupModal()" style="background:#059669; color:white; border-color:#34d399;">📦 バックアップ ＆ 復元</button>
-      <button class="btn-refresh" onclick="openFuturePassesModal()" style="background:#0284c7; color:white; border-color:#38bdf8;">📅 通過予測 (24h)</button>
-      <button class="btn-refresh" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
+    <div class="header-actions">
+      <button class="btn-refresh btn-backup" onclick="openBackupModal()">📦 バックアップ ＆ 復元</button>
+      <button class="btn-refresh btn-passes" onclick="openFuturePassesModal()">📅 通過予測 (24h)</button>
+      <button class="btn-refresh btn-reload" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
     </div>
   </header>
 
@@ -723,7 +994,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div style="font-weight: bold; color: var(--accent); margin-bottom: 6px;">📊 Garage S3 ストレージ統計</div>
           <div id="backupStatsLoading">ストレージ情報を取得中...</div>
           <div id="backupStatsContent" style="display: none;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; color: #cbd5e1;">
+            <div class="backup-stats-grid">
               <div>総オブジェクト数: <strong id="statTotalCount" style="color:white;">-</strong> 件</div>
               <div>総ストレージ容量: <strong id="statTotalSize" style="color:white;">-</strong></div>
               <div>成果物 (results/): <span id="statResultsCount" style="color:#38bdf8;">-</span> 件</div>
@@ -753,9 +1024,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             Google Drive 等から取得したバックアップ <code>.tar</code> ファイルを選択すると、Garage S3 へ全データを展開・復元します。<br>
             ※ 数十GB 以上の巨大バックアップ時は、ブラウザタイムアウトを防ぐため同梱の CLI ツール（<code>scripts/restore_backup.py</code>）のご利用を推奨します。
           </p>
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px;">
-            <input type="file" id="restoreFileInput" accept=".tar,.tar.gz" style="color: #94a3b8; font-size: 0.85rem;">
-            <button id="btnExecuteRestore" class="action-btn" style="background: #f59e0b; color: white; padding: 6px 14px; font-weight: bold; border-radius: 6px; cursor: pointer;" onclick="executeRestore()">復元実行</button>
+          <div class="restore-input-row">
+            <input type="file" id="restoreFileInput" accept=".tar,.tar.gz" style="color: #94a3b8; font-size: 0.85rem; max-width: 100%;">
+            <button id="btnExecuteRestore" class="action-btn" style="background: #f59e0b; color: white; padding: 6px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; white-space: nowrap;" onclick="executeRestore()">復元実行</button>
           </div>
           <div id="restoreStatus" style="font-size: 0.82rem; color: #38bdf8; min-height: 18px;"></div>
         </div>
@@ -777,7 +1048,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="replay-layout">
           <!-- Left: Sky Dome Radar -->
           <div class="radar-wrapper">
-            <canvas id="radarCanvas" width="440" height="440" style="width:100%; max-width:440px; aspect-ratio:1/1; background:#080e1a; border-radius:12px; border:1px solid #334155; box-shadow:0 0 20px rgba(6,182,212,0.15); display:block; margin:0 auto;"></canvas>
+            <canvas id="radarCanvas" width="440" height="440" class="radar-canvas"></canvas>
             <div class="radar-legend">
               <div class="legend-item"><div class="legend-color" style="background:#06b6d4;"></div><span>開口窓 (Az 250°~110°, El 25°~60°)</span></div>
               <div class="legend-item"><div class="legend-color" style="background:rgba(15,23,42,0.85); border:1px solid #ef4444;"></div><span>南側建物遮蔽</span></div>
@@ -856,16 +1127,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <div class="clipper-title">
                 <span>🎥 GIF 切り出し ＆ ダウンロード</span>
               </div>
-              <div class="clipper-row">
-                <span>開始:</span>
-                <input type="number" id="trimStart" min="0" value="0">
-                <button class="btn-sm" onclick="setTrimStartToCurrent()">現位置</button>
-                <span>〜 終了:</span>
-                <input type="number" id="trimEnd" min="0" value="406">
-                <button class="btn-sm" onclick="setTrimEndToCurrent()">現位置</button>
-                <button class="btn-sm" onclick="autoSelectSkyWindowTrim()" style="background:#0891b2; color:white; font-weight:bold; margin-left:auto;">🎯 開口窓区間を自動設定</button>
+              <div class="clipper-controls">
+                <div class="clipper-inputs-grid">
+                  <div class="clipper-input-group">
+                    <span>開始:</span>
+                    <input type="number" id="trimStart" min="0" value="0">
+                    <button class="btn-sm" onclick="setTrimStartToCurrent()">現位置</button>
+                  </div>
+                  <div class="clipper-input-group">
+                    <span>終了:</span>
+                    <input type="number" id="trimEnd" min="0" value="406">
+                    <button class="btn-sm" onclick="setTrimEndToCurrent()">現位置</button>
+                  </div>
+                </div>
+                <button class="btn-auto-window" onclick="autoSelectSkyWindowTrim()">🎯 開口窓区間を自動設定</button>
               </div>
-              <button id="btnGenerateGif" class="btn-sm" style="background:linear-gradient(135deg, #059669, #047857); color:white; font-weight:bold; width:100%; padding:8px; border-radius:6px; font-size:0.88rem; cursor:pointer;" onclick="generateAndDownloadGif()">🎬 GIF を生成してダウンロード</button>
+              <button id="btnGenerateGif" class="btn-generate-gif" onclick="generateAndDownloadGif()">🎬 GIF を生成してダウンロード</button>
               <div id="gifProgressContainer" class="progress-bar-container">
                 <div id="gifProgressBar" class="progress-bar-fill"></div>
               </div>
@@ -2068,8 +2345,8 @@ def render_card_html(p: dict) -> str:
           </div>
           <div class="pass-id">{p.get('pass_id', '')}</div>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button class="btn-sm" style="background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: 1px solid #38bdf8; font-weight: bold; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openReplayModal('{p.get('pass_id', '')}')">🛰️ 天球リプレイ</button>
+        <div class="sat-header-right">
+          <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">🛰️ 天球リプレイ</button>
           <span class="badge-status">{status}</span>
         </div>
       </div>

@@ -10,6 +10,7 @@ import json
 import io
 
 from app import (
+    HTML_TEMPLATE,
     PassDataCache,
     render_card_html,
     get_satellite_type,
@@ -62,6 +63,28 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("spectrogram.png", card_html)
         self.assertIn("openReplayModal", card_html)
         self.assertIn("天球リプレイ", card_html)
+
+    def test_mobile_responsive_template_and_card(self):
+        # 1. Viewport & media queries
+        self.assertIn("viewport-fit=cover", HTML_TEMPLATE)
+        self.assertIn("@media (max-width: 640px)", HTML_TEMPLATE)
+        self.assertIn("radar-canvas", HTML_TEMPLATE)
+        self.assertIn("header-actions", HTML_TEMPLATE)
+        self.assertIn("clipper-controls", HTML_TEMPLATE)
+
+        # 2. Card header responsive classes
+        p = {
+            "satellite": "ISS (ZARYA)",
+            "pass_id": "ISS_20261025_120000",
+            "last_modified": "2026-10-25 12:00:00 UTC",
+            "files": {},
+            "summary": {"status": "completed", "packets_count": 5},
+            "packets": None,
+        }
+        card_html = render_card_html(p)
+        self.assertIn("sat-header-left", card_html)
+        self.assertIn("sat-header-right", card_html)
+        self.assertIn("btn-replay", card_html)
 
     def test_pass_data_cache_avoids_repeated_s3_calls(self):
         # 1回目の list_objects_v2 レスポンス
