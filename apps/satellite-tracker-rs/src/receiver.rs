@@ -69,3 +69,9 @@ pub fn build_rtl_sdr_args(freq_hz: f64, sample_rate: u32, gain: f64, output_path
         output_path.to_string_lossy().to_string(),
     ]
 }
+
+/// 衛星種別に応じて生 IQ ベースバンド (rtl_sdr 240kSPS) で録音すべきかを判定
+pub fn is_raw_iq_target(sat_name: &str) -> bool {
+    let name_upper = sat_name.to_uppercase();
+    name_upper.contains("METEOR") || name_upper.contains("FUNCUBE") || name_upper.contains("AO-73")
+}

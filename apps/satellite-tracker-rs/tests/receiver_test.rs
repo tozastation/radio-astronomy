@@ -1,4 +1,4 @@
-use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header};
+use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header, is_raw_iq_target};
 use std::path::Path;
 
 #[test]
@@ -65,4 +65,14 @@ fn test_build_rtl_sdr_args() {
             "/tmp/spool/METEOR_pass.raw"
         ]
     );
+}
+
+#[test]
+fn test_is_raw_iq_target() {
+    assert!(is_raw_iq_target("METEOR-M2 3"));
+    assert!(is_raw_iq_target("METEOR-M2 4"));
+    assert!(is_raw_iq_target("FUNCUBE-1 (AO-73)"));
+    assert!(is_raw_iq_target("AO-73"));
+    assert!(!is_raw_iq_target("ISS (ZARYA)"));
+    assert!(!is_raw_iq_target("NOAA 15"));
 }

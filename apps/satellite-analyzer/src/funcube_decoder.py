@@ -30,6 +30,61 @@ class FUNcubeDecoder:
         self.binary_path = candidate
         self.has_binary = shutil.which(self.binary_path) is not None
 
+    def decode(self, file_path: str, sample_rate: int = 240000) -> List[FUNcubeFrame]:
+        """WAV または生 IQ (.raw/.u8) ファイルから FUNcube-1 (AO-73) の BPSK テレメトリフレームをデコードする"""
+        if not self.has_binary:
+            logger.warning(
+                f"gr_satellites command ('{self.binary_path}') not found. Skipping FUNcube decoding for {file_path}."
+            )
+            return []
+
+        if not os.path.exists(file_path) or os.path.getsize(file_path) < 1024:
+            return []
+
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in (".raw", ".u8", ".cu8"):
+            return self.decode_raw(file_path, sample_rate=sample_rate)
+        else:
+            return self.decode_wav(file_path)
+
+    def decode_raw(self, raw_path: str, sample_rate: int = 240000) -> List[FUNcubeFrame]:
+        """生 IQ (cu8: uint8) ファイルを cs16 (int16) に変換し、gr_satellites で復調する"""
+        import numpy as np
+        import tempfile
+
+        if not self.has_binary:
+            logger.warning(
+                f"gr_satellites command ('{self.binary_path}') not found. Skipping FUNcube decoding for {raw_path}."
+            )
+            return []
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".cs16", delete=True) as tmp_file:
+                chunk_size = 1024 * 1024  # 1MB ずつストリーミング変換
+                with open(raw_path, "rb") as f_in, open(tmp_file.name, "wb") as f_out:
+                    while chunk := f_in.read(chunk_size):
+                        u8 = np.frombuffer(chunk, dtype=np.uint8)
+                        cs16 = ((u8.astype(np.int16) - 128) * 256).astype(np.int16)
+                        f_out.write(cs16.tobytes())
+
+                cmd = [
+                    self.binary_path,
+                    "AO-73",
+                    "--rawint16", tmp_file.name,
+                    "--iq",
+                    "--samp_rate", str(sample_rate),
+                ]
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                return self.parse_output(result.stdout)
+        except Exception as e:
+            logger.error(f"Error running gr_satellites on raw IQ {raw_path}: {e}")
+            return []
+
     def decode_wav(self, wav_path: str) -> List[FUNcubeFrame]:
         """WAV ファイルから FUNcube-1 (AO-73) の BPSK テレメトリフレームをデコードする"""
         if not self.has_binary:
@@ -37,6 +92,10 @@ class FUNcubeDecoder:
                 f"gr_satellites command ('{self.binary_path}') not found. Skipping FUNcube decoding for {wav_path}."
             )
             return []
+
+        ext = os.path.splitext(wav_path)[1].lower()
+        if ext in (".raw", ".u8", ".cu8"):
+            return self.decode_raw(wav_path)
 
         try:
             cmd = [

@@ -108,7 +108,7 @@ async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[st
         summary_text = res.summary_text
     elif category == "cubesat_telemetry":
         decoder = FUNcubeDecoder()
-        frames = decoder.decode_wav(wav_path)
+        frames = decoder.decode(wav_path)
         packets_count = len(frames)
         packets = [f.to_dict() for f in frames]
         if packets_count > 0:
@@ -238,7 +238,7 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
                 s3.upload_file(img, bucket, f"{prefix}/{img_name}")
         elif category == "cubesat_telemetry":
             decoder = FUNcubeDecoder()
-            frames = decoder.decode_wav(local_wav)
+            frames = decoder.decode(local_wav)
             packets_count = len(frames)
             packets = [f.to_dict() for f in frames]
             if packets_count > 0:

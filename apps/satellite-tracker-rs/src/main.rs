@@ -4,7 +4,7 @@ use log::{info, warn};
 use satellite_tracker_rs::dsp::DspProcessor;
 use satellite_tracker_rs::metrics::MetricsExporter;
 use satellite_tracker_rs::orbit::{parse_tle_catalog, OrbitPredictor};
-use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header};
+use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header, is_raw_iq_target};
 use satellite_tracker_rs::s3::S3Uploader;
 use satellite_tracker_rs::sdr::SdrCollector;
 use satellite_tracker_rs::spooler::AudioSpooler;
@@ -309,7 +309,7 @@ async fn main() -> Result<()> {
                         active_satellite = Some(chosen_sat.name.to_string());
                         let pass_id = now_utc.format("%Y%m%d_%H%M%S").to_string();
 
-                        if chosen_sat.name.contains("METEOR") {
+                        if is_raw_iq_target(chosen_sat.name) {
                             let raw_filename = format!("{}_{}.raw", chosen_sat.name, pass_id);
                             let raw_path = spool_dir.join(&raw_filename);
                             info!(
