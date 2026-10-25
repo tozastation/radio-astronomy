@@ -62,11 +62,10 @@ def classify_satellite(satellite: str) -> Dict[str, str]:
             "display_icon": "🚀",
         }
     elif "METEOR" in sat_upper:
-        freq = "137.100 MHz" if ("M2 3" in sat_upper or "M2-3" in sat_upper) else "137.900 MHz"
         return {
             "satellite_type": "WeatherSatellite",
             "signal_type": "LRPT (QPSK 72kbps)",
-            "frequency_label": freq,
+            "frequency_label": "137.900 MHz",
             "category": "weather_lrpt",
             "display_icon": "🛰️",
         }

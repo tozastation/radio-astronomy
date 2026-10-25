@@ -28,7 +28,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tracker
-          image: localhost:5000/satellite-tracker-rs:v1.2.1
+          image: localhost:5000/satellite-tracker-rs:v1.4.2
           imagePullPolicy: Always
           command: ["/bin/sh", "-c", "satellite-tracker-rs 2>&1 | tee -a /tmp/spool/tracker.log"]
           ports:
@@ -79,7 +79,7 @@ spec:
               memory: 64Mi
             limits:
               cpu: 500m
-              memory: 384Mi
+              memory: 768Mi
           volumeMounts:
             - name: dev-bus-usb
               mountPath: /dev/bus/usb

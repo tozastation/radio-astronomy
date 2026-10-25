@@ -1,0 +1,31 @@
+{
+  "satellite": "METEOR-M2 3",
+  "satellite_type": "WeatherSatellite",
+  "signal_type": "LRPT (QPSK 72kbps)",
+  "frequency_label": "137.900 MHz",
+  "display_icon": "🛰️",
+  "packets_count": 11,
+  "packets": [
+    {
+      "satellite": "METEOR-M2",
+      "pipeline": "meteor_m2-x_lrpt",
+      "status": "success",
+      "images": [
+        "MSU-MR-1.png",
+        "MSU-MR-2.png",
+        "MSU-MR-4.png",
+        "msu_mr_3.9_um_Shortwave_IR_(Uncalibrated).png",
+        "msu_mr_3.9_um_Shortwave_IR_(Uncalibrated)_corrected.png",
+        "msu_mr_3.9_um_Shortwave_IR_(Uncalibrated)_corrected_map.png",
+        "msu_mr_3.9_um_Shortwave_IR_(Uncalibrated)_map.png",
+        "msu_mr_rgb_AVHRR_221_False_Color.png",
+        "msu_mr_rgb_AVHRR_221_False_Color_corrected.png",
+        "msu_mr_rgb_MSU-MR_124_False_Color.png",
+        "msu_mr_rgb_MSU-MR_124_False_Color_corrected.png"
+      ],
+      "cadu_count": 1,
+      "summary_text": "METEOR-M2 LRPT (meteor_m2-x_lrpt) 気象画像復調成功 (11 枚の画像を生成)"
+    }
+  ],
+  "summary_text": "METEOR-M2 LRPT (meteor_m2-x_lrpt) 気象画像復調成功 (11 枚の画像を生成)"
+}

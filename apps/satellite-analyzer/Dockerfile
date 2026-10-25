@@ -26,6 +26,7 @@ RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 COPY src/ ./src/
 COPY assets/satdump_tles.txt /root/.config/satdump/satdump_tles.txt
+RUN sed -i 's/"value": "1 day"/"value": "Never"/g' /usr/share/satdump/satdump_cfg.json
 
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
