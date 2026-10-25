@@ -11,6 +11,7 @@ import urllib.parse
 import threading
 import asyncio
 import time
+import tarfile
 from dataclasses import asdict
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -630,6 +631,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
     <div style="display: flex; gap: 8px;">
+      <button class="btn-refresh" onclick="openBackupModal()" style="background:#059669; color:white; border-color:#34d399;">📦 バックアップ ＆ 復元</button>
       <button class="btn-refresh" onclick="openFuturePassesModal()" style="background:#0284c7; color:white; border-color:#38bdf8;">📅 通過予測 (24h)</button>
       <button class="btn-refresh" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
     </div>
@@ -705,6 +707,61 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
       <div class="modal-footer">
         <button class="copy-btn" onclick="closeFuturePassesModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup & Restore Modal -->
+  <div id="backupModal" class="modal" onclick="closeBackupModal(event)">
+    <div class="modal-box" style="max-width: 640px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">📦 S3 フルバックアップ ＆ ディザスタリカバリ</span>
+        <button class="modal-close" onclick="closeBackupModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 16px; font-size: 0.9rem; line-height: 1.6;">
+        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+          <div style="font-weight: bold; color: var(--accent); margin-bottom: 6px;">📊 Garage S3 ストレージ統計</div>
+          <div id="backupStatsLoading">ストレージ情報を取得中...</div>
+          <div id="backupStatsContent" style="display: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; color: #cbd5e1;">
+              <div>総オブジェクト数: <strong id="statTotalCount" style="color:white;">-</strong> 件</div>
+              <div>総ストレージ容量: <strong id="statTotalSize" style="color:white;">-</strong></div>
+              <div>成果物 (results/): <span id="statResultsCount" style="color:#38bdf8;">-</span> 件</div>
+              <div>生データ (archive/): <span id="statArchiveCount" style="color:#a78bfa;">-</span> 件</div>
+              <div>ゴールデンRAW (golden/): <span id="statGoldenCount" style="color:#f59e0b;">-</span> 件</div>
+              <div>一時受取 (raw/): <span id="statRawCount" style="color:#94a3b8;">-</span> 件</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h4 style="margin: 0 0 8px 0; color: #38bdf8;">📥 1. フルバックアップのダウンロード</h4>
+          <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px 0;">
+            Garage S3 内の全成果物（画像・JSON・スペクトログラム）および生 IQ / WAV 音声を単一の <code>.tar</code> アーカイブとしてストリーミング配信します。<br>
+            ダウンロード完了後、Google Drive 等の安全な外部クラウドストレージへ手動で保管してください。
+          </p>
+          <a id="btnDownloadBackup" href="/api/backup/download" class="action-btn" style="display: inline-block; background: #059669; color: white; padding: 8px 16px; font-weight: bold; text-decoration: none; border-radius: 6px; cursor: pointer;">
+            💾 フルバックアップ (.tar) をダウンロード
+          </a>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid #334155; margin: 20px 0;">
+
+        <div>
+          <h4 style="margin: 0 0 8px 0; color: #f59e0b;">📤 2. バックアップからの復元（リストア）</h4>
+          <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px 0;">
+            Google Drive 等から取得したバックアップ <code>.tar</code> ファイルを選択すると、Garage S3 へ全データを展開・復元します。<br>
+            ※ 数十GB 以上の巨大バックアップ時は、ブラウザタイムアウトを防ぐため同梱の CLI ツール（<code>scripts/restore_backup.py</code>）のご利用を推奨します。
+          </p>
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px;">
+            <input type="file" id="restoreFileInput" accept=".tar,.tar.gz" style="color: #94a3b8; font-size: 0.85rem;">
+            <button id="btnExecuteRestore" class="action-btn" style="background: #f59e0b; color: white; padding: 6px 14px; font-weight: bold; border-radius: 6px; cursor: pointer;" onclick="executeRestore()">復元実行</button>
+          </div>
+          <div id="restoreStatus" style="font-size: 0.82rem; color: #38bdf8; min-height: 18px;"></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 12px 16px; border-top: 1px solid #334155; text-align: right;">
+        <button class="copy-btn" onclick="closeBackupModal()">閉じる</button>
       </div>
     </div>
   </div>
@@ -865,6 +922,73 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       navigator.clipboard.writeText(text).then(() => {
         alert('クリップボードにコピーしました！');
       });
+    }
+
+    // --- バックアップ ＆ リストア モーダル ロジック ---
+    function openBackupModal() {
+      document.getElementById('backupModal').classList.add('active');
+      loadBackupStats();
+    }
+    function closeBackupModal(e) {
+      if (!e || e.target.id === 'backupModal' || e.target.classList.contains('modal-close') || e.target.classList.contains('copy-btn')) {
+        document.getElementById('backupModal').classList.remove('active');
+      }
+    }
+    async function loadBackupStats() {
+      const loading = document.getElementById('backupStatsLoading');
+      const content = document.getElementById('backupStatsContent');
+      try {
+        const res = await fetch('/api/backup/stats');
+        const data = await res.json();
+        document.getElementById('statTotalCount').textContent = data.total_count;
+        document.getElementById('statTotalSize').textContent = (data.total_bytes / (1024*1024)).toFixed(1) + ' MB';
+        document.getElementById('statResultsCount').textContent = data.results_count;
+        document.getElementById('statArchiveCount').textContent = data.archive_count;
+        document.getElementById('statGoldenCount').textContent = data.golden_count;
+        document.getElementById('statRawCount').textContent = data.raw_count;
+        loading.style.display = 'none';
+        content.style.display = 'block';
+      } catch (e) {
+        loading.textContent = '統計取得エラー: ' + e;
+      }
+    }
+    async function executeRestore() {
+      const fileInput = document.getElementById('restoreFileInput');
+      const statusDiv = document.getElementById('restoreStatus');
+      const btn = document.getElementById('btnExecuteRestore');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert('復元対象の .tar ファイルを選択してください。');
+        return;
+      }
+      const file = fileInput.files[0];
+      if (!confirm(`ファイル "${file.name}" (${(file.size / (1024*1024)).toFixed(1)} MB) から Garage S3 への復元を開始しますか？`)) {
+        return;
+      }
+      btn.disabled = true;
+      statusDiv.textContent = '復元中: S3 へオブジェクトをストリーミング展開しています...';
+      try {
+        const res = await fetch('/api/backup/restore', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-tar'
+          },
+          body: file
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+          statusDiv.style.color = '#10b981';
+          statusDiv.textContent = `復元完了: ${data.restored_count} 件のオブジェクトを展開しました。`;
+          loadBackupStats();
+          loadPasses(1, true);
+        } else {
+          throw new Error(data.error || 'リストア失敗');
+        }
+      } catch (err) {
+        statusDiv.style.color = '#ef4444';
+        statusDiv.textContent = '復元エラー: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // --- 今後の通過予測モーダル ロジック ---
@@ -1693,6 +1817,82 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24) -> dict:
     }
 
 
+def generate_s3_backup_stream(s3_client, bucket: str, prefixes=("results/", "archive/", "golden/", "raw/")):
+    """
+    Garage S3 の対象プレフィックス配下にある全オブジェクトを、
+    ディスク一時ファイルを作らず 512 バイトブロック単位の Tar ストリームとして順次イールドする。
+    """
+    paginator = s3_client.get_paginator("list_objects_v2")
+    seen_keys = set()
+
+    for prefix in prefixes:
+        try:
+            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+            for page in pages:
+                for item in page.get("Contents", []):
+                    key = item["Key"]
+                    if key in seen_keys or key.endswith("/"):
+                        continue
+                    seen_keys.add(key)
+                    size = item["Size"]
+                    mtime = item.get("LastModified")
+                    mtime_ts = int(mtime.timestamp()) if hasattr(mtime, "timestamp") else int(time.time())
+
+                    ti = tarfile.TarInfo(name=key)
+                    ti.size = size
+                    ti.mtime = mtime_ts
+                    ti.mode = 0o644
+                    yield ti.tobuf()
+
+                    if size > 0:
+                        obj = s3_client.get_object(Bucket=bucket, Key=key)
+                        body = obj["Body"]
+                        while chunk := body.read(65536):
+                            yield chunk
+
+                        pad = (512 - (size % 512)) % 512
+                        if pad > 0:
+                            yield b"\x00" * pad
+        except Exception as e:
+            print(f"Error streaming prefix {prefix} in backup: {e}", flush=True)
+
+    yield b"\x00" * 1024
+
+
+def get_s3_backup_stats(s3_client, bucket: str) -> dict:
+    paginator = s3_client.get_paginator("list_objects_v2")
+    stats = {
+        "status": "ok",
+        "total_count": 0,
+        "total_bytes": 0,
+        "results_count": 0,
+        "archive_count": 0,
+        "golden_count": 0,
+        "raw_count": 0,
+    }
+    for prefix in ("results/", "archive/", "golden/", "raw/"):
+        try:
+            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+            for page in pages:
+                for item in page.get("Contents", []):
+                    key = item["Key"]
+                    if key.endswith("/"):
+                        continue
+                    stats["total_count"] += 1
+                    stats["total_bytes"] += item["Size"]
+                    if key.startswith("results/"):
+                        stats["results_count"] += 1
+                    elif key.startswith("archive/"):
+                        stats["archive_count"] += 1
+                    elif key.startswith("golden/"):
+                        stats["golden_count"] += 1
+                    elif key.startswith("raw/"):
+                        stats["raw_count"] += 1
+        except Exception as e:
+            print(f"Error counting stats for {prefix}: {e}", flush=True)
+    return stats
+
+
 def get_satellite_type(p: dict) -> str:
     summary = p.get("summary") or {}
     sat_type = summary.get("satellite_type")
@@ -2139,6 +2339,36 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/api/backup/stats":
+            stats = get_s3_backup_stats(s3_client, S3_BUCKET)
+            body = json.dumps(stats).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/backup/download":
+            ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            filename = f"radio_astronomy_backup_{ts_str}.tar"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+
+            try:
+                for chunk in generate_s3_backup_stream(s3_client, S3_BUCKET):
+                    self.wfile.write(chunk)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as e:
+                print(f"Error streaming backup: {e}", flush=True)
+            return
+
         if path == "/metrics":
             pending_count = 0
             try:
@@ -2229,6 +2459,74 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/" or path == "/index.html":
             self.render_dashboard()
+            return
+
+        self.send_error(404, "Not Found")
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/backup/restore":
+            content_length = int(self.headers.get("Content-Length", 0))
+            if content_length <= 0:
+                self.send_error(400, "Empty restore payload")
+                return
+
+            restored_count = 0
+            restored_bytes = 0
+            try:
+                class LimitedReader:
+                    def __init__(self, rfile, limit):
+                        self.rfile = rfile
+                        self.limit = limit
+                        self.read_so_far = 0
+
+                    def read(self, size=-1):
+                        if self.read_so_far >= self.limit:
+                            return b""
+                        if size < 0:
+                            to_read = self.limit - self.read_so_far
+                        else:
+                            to_read = min(size, self.limit - self.read_so_far)
+                        chunk = self.rfile.read(to_read)
+                        self.read_so_far += len(chunk)
+                        return chunk
+
+                limited_stream = LimitedReader(self.rfile, content_length)
+                with tarfile.open(fileobj=limited_stream, mode="r|*") as tf:
+                    for member in tf:
+                        if not member.isfile():
+                            continue
+                        name = member.name.lstrip("/")
+                        if ".." in name or not any(name.startswith(p) for p in ("results/", "archive/", "golden/", "raw/")):
+                            continue
+                        f = tf.extractfile(member)
+                        if f:
+                            s3_client.upload_fileobj(f, Bucket=S3_BUCKET, Key=name)
+                            restored_count += 1
+                            restored_bytes += member.size
+
+                pass_cache.last_sync_time = 0.0
+
+                body = json.dumps({
+                    "status": "ok",
+                    "restored_count": restored_count,
+                    "restored_bytes": restored_bytes
+                }).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                print(f"Error during restore: {e}", flush=True)
+                err_body = json.dumps({"status": "error", "error": str(e)}).encode("utf-8")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err_body)))
+                self.end_headers()
+                self.wfile.write(err_body)
             return
 
         self.send_error(404, "Not Found")

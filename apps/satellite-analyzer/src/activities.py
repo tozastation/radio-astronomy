@@ -10,7 +10,7 @@ from aprs_decoder import APRSDecoder
 from funcube_decoder import FUNcubeDecoder
 from meteor_decoder import MeteorDecoder
 from spectrogram_generator import SpectrogramGenerator
-from retention import archive_and_rotate_raw_recording
+from retention import archive_and_rotate_raw_recording, preserve_golden_raw_recording
 
 logger = logging.getLogger(__name__)
 
@@ -297,8 +297,17 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         # 5. 元 raw ファイルの archive 退避と世代・容量ローテーション
         archive_key = None
         if not keep_raw:
-            max_versions = int(os.getenv("RAW_RETENTION_MAX_VERSIONS", "3"))
-            max_bytes = int(os.getenv("RAW_RETENTION_MAX_BYTES", str(1024 * 1024 * 1024)))
+            # 成功パス（気象画像復調またはテレメトリ・パケット検出成功）の生データは golden/ 永久保護領域へ退避
+            if packets_count > 0:
+                preserve_golden_raw_recording(
+                    s3_client=s3,
+                    bucket=bucket,
+                    source_s3_key=s3_key,
+                    satellite=satellite,
+                )
+
+            max_versions = int(os.getenv("RAW_RETENTION_MAX_VERSIONS", "200"))
+            max_bytes = int(os.getenv("RAW_RETENTION_MAX_BYTES", str(34896609280)))  # 32.5 GiB
             archive_key = archive_and_rotate_raw_recording(
                 s3_client=s3,
                 bucket=bucket,

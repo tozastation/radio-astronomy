@@ -16,6 +16,8 @@ from app import (
     parse_pass_id,
     generate_trajectory_data,
     generate_future_passes_data,
+    generate_s3_backup_stream,
+    get_s3_backup_stats,
 )
 
 
@@ -196,7 +198,58 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("quantize", content)
         self.assertIn("applyPalette", content)
 
+    def test_get_s3_backup_stats(self):
+        mock_s3 = MagicMock()
+        mock_paginator = MagicMock()
+        mock_s3.get_paginator.return_value = mock_paginator
 
+        def fake_paginate(Bucket, Prefix):
+            if Prefix == "results/":
+                return [{"Contents": [{"Key": "results/p1/summary.json", "Size": 100}]}]
+            elif Prefix == "golden/":
+                return [{"Contents": [{"Key": "golden/p1/sample.raw", "Size": 500}]}]
+            return [{"Contents": []}]
+
+        mock_paginator.paginate.side_effect = fake_paginate
+
+        stats = get_s3_backup_stats(mock_s3, "test-bucket")
+        self.assertEqual(stats["total_count"], 2)
+        self.assertEqual(stats["total_bytes"], 600)
+        self.assertEqual(stats["results_count"], 1)
+        self.assertEqual(stats["golden_count"], 1)
+
+    def test_generate_s3_backup_stream_and_tar_integrity(self):
+        import tarfile
+        mock_s3 = MagicMock()
+        mock_paginator = MagicMock()
+        mock_s3.get_paginator.return_value = mock_paginator
+
+        content_sample = b"hello satellite backup stream!"
+        def fake_paginate(Bucket, Prefix):
+            if Prefix == "results/":
+                return [{"Contents": [{"Key": "results/test/sample.txt", "Size": len(content_sample), "LastModified": datetime.now(timezone.utc)}]}]
+            return [{"Contents": []}]
+
+        mock_paginator.paginate.side_effect = fake_paginate
+
+        mock_s3.get_object.return_value = {
+            "Body": io.BytesIO(content_sample)
+        }
+
+        stream_chunks = list(generate_s3_backup_stream(mock_s3, "test-bucket"))
+        tar_bytes = b"".join(stream_chunks)
+
+        self.assertGreater(len(tar_bytes), 1024)
+
+        # Verify reading tar archive with standard tarfile
+        tar_stream = io.BytesIO(tar_bytes)
+        with tarfile.open(fileobj=tar_stream, mode="r:") as tf:
+            members = tf.getmembers()
+            self.assertEqual(len(members), 1)
+            self.assertEqual(members[0].name, "results/test/sample.txt")
+            self.assertEqual(members[0].size, len(content_sample))
+            extracted_data = tf.extractfile(members[0]).read()
+            self.assertEqual(extracted_data, content_sample)
 
 
 if __name__ == "__main__":

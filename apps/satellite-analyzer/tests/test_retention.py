@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone, timedelta
-from retention import archive_and_rotate_raw_recording, rotate_satellite_archive
+from retention import archive_and_rotate_raw_recording, rotate_satellite_archive, preserve_golden_raw_recording
 
 
 class FakeS3Client:
@@ -116,3 +116,20 @@ def test_rotate_size_limit():
     assert "archive/AO-73/pass_2.wav" in deleted
     assert "archive/AO-73/pass_3.wav" in s3.objects
     assert len(s3.objects) == 1
+
+
+def test_preserve_golden_raw_recording():
+    s3 = FakeS3Client()
+    s3.put_object("satellite-recordings", "raw/METEOR/pass_golden.raw", b"golden_raw_iq_bytes")
+
+    golden_key = preserve_golden_raw_recording(
+        s3_client=s3,
+        bucket="satellite-recordings",
+        source_s3_key="raw/METEOR/pass_golden.raw",
+        satellite="METEOR",
+    )
+
+    assert golden_key == "golden/METEOR/pass_golden.raw"
+    assert "golden/METEOR/pass_golden.raw" in s3.objects
+    assert s3.objects["golden/METEOR/pass_golden.raw"]["Body"] == b"golden_raw_iq_bytes"
+

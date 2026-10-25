@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: analyzer
-          image: localhost:5000/satellite-analyzer-worker:v1.5.4
+          image: localhost:5000/satellite-analyzer-worker:v1.5.5
           imagePullPolicy: Always
           env:
             - name: MODE
@@ -42,6 +42,10 @@ spec:
                   name: garage-satellite-credentials
                   key: secret_key
                   optional: true
+            - name: RAW_RETENTION_MAX_VERSIONS
+              value: "200"
+            - name: RAW_RETENTION_MAX_BYTES
+              value: "34896609280"
           resources:
             requests:
               cpu: 100m

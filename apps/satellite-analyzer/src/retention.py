@@ -5,6 +5,32 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 
+def preserve_golden_raw_recording(
+    s3_client,
+    bucket: str,
+    source_s3_key: str,
+    satellite: str,
+) -> Optional[str]:
+    """
+    気象画像やテレメトリの復調に成功した貴重な生データ（RAW/WAV）を、
+    ローテーション対象外の永久保護領域 golden/{satellite}/{filename} へコピー退避する。
+    """
+    filename = os.path.basename(source_s3_key)
+    golden_key = f"golden/{satellite}/{filename}"
+
+    try:
+        logger.info(f"Preserving golden raw recording: s3://{bucket}/{source_s3_key} to s3://{bucket}/{golden_key}...")
+        s3_client.copy_object(
+            Bucket=bucket,
+            CopySource={"Bucket": bucket, "Key": source_s3_key},
+            Key=golden_key,
+        )
+        return golden_key
+    except Exception as e:
+        logger.error(f"Failed to preserve golden raw recording {source_s3_key}: {e}")
+        return None
+
+
 def archive_and_rotate_raw_recording(
     s3_client,
     bucket: str,
