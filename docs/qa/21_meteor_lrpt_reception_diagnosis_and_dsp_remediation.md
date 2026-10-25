@@ -300,5 +300,20 @@ $$y[n] = x[n] - x[n-1] + \alpha y[n-1], \qquad H(z) = \frac{1 - z^{-1}}{1 - \alp
    - 計 11 枚の有効画像を出力。
 3. **空プレースホルダ画像の自動除外**:
    - パイプライン内でデータ不足時に生成される 262 バイト等の空画像が Web ビューアや統計を汚染しないよう、[`apps/satellite-analyzer/src/meteor_decoder.py`](file:///home/tozastation/ghq/github.com/tozastation/radio-astronomy/apps/satellite-analyzer/src/meteor_decoder.py) に `os.path.getsize(img) > 1024`（1KB 超）の検証フィルタを導入。
-4. **S3 ストレージと Web ビューアへの統合**:
+4. **S3 ストレージと Web ビューアへの統合およびローカル永久保存**:
    - Garage S3 の `results/METEOR-M2 3/METEOR-M2 3_20261025_005344/` に 11 枚の気象画像と `packets.json`、`summary.json` を公開。Web ビューア（NodePort 30088）にて即座に地球画像の閲覧が可能となった。
+   - 当観測所初となる歴史的復調画像として、全ファイル（画像 11 枚・スペクトログラム・パケット JSON）をローカルディレクトリ [`docs/images/meteor_first_decode_20261025/`](../images/meteor_first_decode_20261025/) に永久保存した。
+
+#### 実測復調画像サンプル
+
+- **可視光チャンネル（Ch 1: 0.5〜0.7 $\mu\text{m}$）**:
+  ![MSU-MR-1 可視光雲画像](../images/meteor_first_decode_20261025/MSU-MR-1.png)
+  *（積雲や巻雲のうねり、微細な筋状テクスチャ、海洋と陸地の反射コントラストが鮮明に写る）*
+
+- **疑似カラー合成画像（Ch 1-2-4 False Color Corrected）**:
+  ![MSU-MR 疑似カラー合成画像](../images/meteor_first_decode_20261025/msu_mr_rgb_MSU-MR_124_False_Color_corrected.png)
+  *（海洋の深い青、陸地の黄緑、上空に漂う雲の白・シアン色がマルチスペクトル合成により分離描画されている）*
+
+> [!NOTE]
+> **画像が「横に極端に細長い帯（アスペクト比 約 50:1）」である理由**:
+> 気象衛星の MSU-MR 放射計は、回転鏡による「**ラインスキャナ（複写機方式）**」です。横軸（X軸: $1,568\text{ px}$）は回転鏡が東西方向を一気にスキャンするため常に地平線間（幅 約 $2,800\text{ km}$）を捉えますが、縦軸（Y軸: 約 $20 \sim 30\text{ px}$）は衛星の前進速度（約 $6.5\text{ km/s}$）によって進むため、電波ロックが維持された時間（約 $10 \sim 15\text{ 秒}$）分の南北幅（約 $40\text{ km}$）のみが描画されます。全パス（約 $300\text{ 秒}$）を安定ロックできるようになれば、縦が $1,000\text{ 行}$ 以上に伸びて日本列島全体を覆う巨大な四角い衛星写真となります。
