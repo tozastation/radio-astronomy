@@ -6,7 +6,7 @@ Unit tests for SGP4 Orbit Calculator and Balcony Sky Window determination.
 import unittest
 from datetime import datetime, timezone
 
-from orbit_calculator import OrbitCalculator, TrajectoryPoint
+from orbit_calculator import OrbitCalculator, TrajectoryPoint, FuturePass, load_tle_for_satellite
 
 
 class TestOrbitCalculator(unittest.TestCase):
@@ -73,6 +73,34 @@ class TestOrbitCalculator(unittest.TestCase):
         # AOS 時点 (t=0) は仰角 10.1° のため手すり下限 (25°) 未満で in_window が False
         self.assertFalse(points[0].in_window)
         self.assertLess(points[0].el, 15.0)
+
+    def test_load_tle_for_satellite(self):
+        """サテライト名から TLE 2行を取得できるか検証"""
+        tle = load_tle_for_satellite("METEOR-M2 3")
+        self.assertIsNotNone(tle)
+        self.assertTrue(tle[0].startswith("1 57166U"))
+        self.assertTrue(tle[1].startswith("2 57166"))
+
+        # 存在しない衛星の場合は None
+        self.assertIsNone(load_tle_for_satellite("NON_EXISTENT_SAT_9999"))
+
+    def test_find_future_passes(self):
+        """指定時刻から24時間以内の将来パスが計算され、スカイウィンドウ滞在情報が含まれること"""
+        start_utc = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
+        passes = self.calc.find_future_passes(
+            targets=[("METEOR-M2 3", self.meteor_tle_l1, self.meteor_tle_l2)],
+            start_time=start_utc,
+            horizon_hours=24,
+            step_seconds=30
+        )
+        self.assertGreater(len(passes), 0)
+        p0 = passes[0]
+        self.assertIsInstance(p0, FuturePass)
+        self.assertEqual(p0.satellite, "METEOR-M2 3")
+        self.assertGreater(p0.max_elevation, 10.0)
+        self.assertTrue(hasattr(p0, "quality_score"))
+        self.assertTrue(hasattr(p0, "window_duration_seconds"))
+
 
 
 if __name__ == "__main__":

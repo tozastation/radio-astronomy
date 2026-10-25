@@ -5,16 +5,20 @@ Ultra-lightweight web dashboard for mobile and desktop browsing.
 """
 
 import os
+import re
 import json
 import urllib.parse
 import threading
 import asyncio
 import time
+from dataclasses import asdict
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import boto3
 from botocore.client import Config
 from temporalio.client import Client
+
+from orbit_calculator import OrbitCalculator, load_tle_for_satellite, DEFAULT_TARGET_TLES
 
 S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", "http://garage-s3.storage.svc.cluster.local:3900")
 S3_BUCKET = os.environ.get("S3_BUCKET", "satellite-recordings")
@@ -672,6 +676,133 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+def parse_pass_id(pass_id: str):
+    """
+    pass_id から衛星名と開始日時 (UTC) を抽出。
+    例: 'METEOR-M2 3_20261025_005344' -> ('METEOR-M2 3', datetime(2026, 10, 25, 0, 53, 44, tzinfo=timezone.utc))
+    例: '20261025_005344' -> (None, datetime(2026, 10, 25, 0, 53, 44, tzinfo=timezone.utc))
+    """
+    match = re.search(r"(\d{8}_\d{6})", pass_id)
+    if not match:
+        return None, None
+
+    dt_str = match.group(1)
+    try:
+        dt = datetime.strptime(dt_str, "%Y%m%d_%H%M%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None, None
+
+    prefix = pass_id[:match.start()].rstrip("_")
+    sat_name = prefix if prefix else None
+    return sat_name, dt
+
+
+def generate_trajectory_data(pass_id: str, cache) -> dict:
+    """
+    指定された pass_id の軌道時系列データ (Az, El, Range, in_window, has_image) と
+    復調画像一覧を生成。
+    """
+    pdata = cache._passes.get(pass_id) or {}
+    satellite = pdata.get("satellite")
+    parsed_sat, parsed_dt = parse_pass_id(pass_id)
+
+    if not satellite:
+        satellite = parsed_sat
+
+    if not satellite:
+        return None
+
+    start_time = parsed_dt
+    if not start_time:
+        start_time = pdata.get("last_modified_dt") or datetime.now(timezone.utc)
+
+    summary = pdata.get("summary") or {}
+    duration = summary.get("duration_seconds", 406.0)
+    try:
+        duration_sec = int(float(duration))
+    except (ValueError, TypeError):
+        duration_sec = 406
+
+    tle = load_tle_for_satellite(satellite)
+    if not tle:
+        return None
+
+    calc = OrbitCalculator()
+    points = calc.calculate_trajectory(
+        tle_line1=tle[0],
+        tle_line2=tle[1],
+        start_time=start_time,
+        duration_seconds=duration_sec,
+        step_seconds=1
+    )
+
+    # 復調画像の抽出
+    files = pdata.get("files") or {}
+    images = []
+    for fname, key in files.items():
+        if fname.lower().endswith(".png") and "spectrogram" not in fname.lower():
+            images.append({
+                "name": os.path.basename(fname),
+                "url": f"/view?key={urllib.parse.quote(key, safe='/:')}"
+            })
+
+    # packets 内の画像リストもフォールバック確認
+    if not images and pdata.get("packets"):
+        pkts = pdata.get("packets", {}).get("packets", [])
+        for pkt in pkts:
+            for img_name in pkt.get("images", []):
+                images.append({
+                    "name": img_name,
+                    "url": f"/view?key=results/{urllib.parse.quote(satellite)}/{urllib.parse.quote(pass_id)}/{urllib.parse.quote(img_name)}"
+                })
+
+    has_decoded_images = len(images) > 0
+    # 画像が存在する場合、スカイウィンドウ内かつピーク付近のポイントに has_image = True を付与
+    point_dicts = []
+    for pt in points:
+        pt_dict = asdict(pt)
+        if has_decoded_images and pt.in_window:
+            pt_dict["has_image"] = True
+        point_dicts.append(pt_dict)
+
+    return {
+        "pass_id": pass_id,
+        "satellite": satellite,
+        "total_seconds": duration_sec,
+        "points": point_dicts,
+        "images": images,
+    }
+
+
+def generate_future_passes_data(now_dt=None, horizon_hours: int = 24) -> dict:
+    """
+    今後 horizon_hours 時間における北向きベランダスカイウィンドウ通過予測リストを生成。
+    """
+    if now_dt is None:
+        now_dt = datetime.now(timezone.utc)
+    elif now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+    targets = []
+    for sat_name in DEFAULT_TARGET_TLES.keys():
+        tle = load_tle_for_satellite(sat_name)
+        if tle:
+            targets.append((sat_name, tle[0], tle[1]))
+
+    calc = OrbitCalculator()
+    future_passes = calc.find_future_passes(
+        targets=targets,
+        start_time=now_dt,
+        horizon_hours=horizon_hours,
+        step_seconds=30
+    )
+
+    return {
+        "generated_at": now_dt.isoformat(),
+        "passes": [asdict(p) for p in future_passes]
+    }
+
+
 def get_satellite_type(p: dict) -> str:
     summary = p.get("summary") or {}
     sat_type = summary.get("satellite_type")
@@ -1068,6 +1199,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path.startswith("/api/passes/") and path.endswith("/trajectory"):
+            pass_id = urllib.parse.unquote(path[len("/api/passes/"):-len("/trajectory")])
+            data = generate_trajectory_data(pass_id, pass_cache)
+            if not data:
+                self.send_error(404, f"Trajectory data or TLE not found for pass {pass_id}")
+                return
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/future-passes":
+            data = generate_future_passes_data()
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=60")
             self.end_headers()
             self.wfile.write(body)
             return

@@ -4,11 +4,79 @@ SGP4 Orbit Calculator and Balcony Sky Window determination.
 Computes Azimuth, Elevation, Range, and Sky Window visibility.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone, timedelta
 import math
-from typing import List, Optional, Tuple
+import os
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict
 from sgp4.api import Satrec, WGS72
+
+
+DEFAULT_TARGET_TLES: Dict[str, Tuple[str, str]] = {
+    "METEOR-M2 3": (
+        "1 57166U 23091A   26296.25648911 -.00000011  00000+0  13974-4 0  9991",
+        "2 57166  98.5934 348.5131 0004559 145.3247 214.8230 14.24054780172745",
+    ),
+    "METEOR-M2 4": (
+        "1 59051U 24039A   26296.27566674  .00000005  00000+0  21993-4 0  9998",
+        "2 59051  98.7198 254.0636 0007418 151.3257 208.8330 14.22441005137473",
+    ),
+    "ISS (ZARYA)": (
+        "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996",
+        "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
+    ),
+    "FUNCUBE-1 (AO-73)": (
+        "1 39444U 13066AE  26294.20736285  .00008239  00000+0  48957-3 0  9993",
+        "2 39444  97.8439 268.5385 0036409 132.3370 228.0953 15.10994851698683",
+    ),
+}
+
+
+def load_tle_for_satellite(satellite_name: str, tle_path: Optional[str] = None) -> Optional[Tuple[str, str]]:
+    """
+    指定された衛星名に対応する TLE 2行を取得。
+    ローカルファイル、環境変数、または組み込みの DEFAULT_TARGET_TLES から検索。
+    """
+    candidates = []
+    if tle_path:
+        candidates.append(Path(tle_path))
+    env_path = os.getenv("TLE_FILE_PATH")
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.extend([
+        Path("/root/.config/satdump/satdump_tles.txt"),
+        Path("apps/satellite-analyzer/assets/satdump_tles.txt"),
+        Path("/assets/satdump_tles.txt"),
+        Path("assets/satdump_tles.txt"),
+        Path("satdump_tles.txt"),
+    ])
+
+    norm_target = satellite_name.strip().upper()
+    for cand in candidates:
+        try:
+            if cand.is_file():
+                with open(cand, "r", encoding="utf-8", errors="replace") as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                    idx = 0
+                    while idx < len(lines):
+                        cur = lines[idx].upper()
+                        if cur == norm_target or cur.startswith(norm_target):
+                            if idx + 2 < len(lines):
+                                l1 = lines[idx + 1]
+                                l2 = lines[idx + 2]
+                                if l1.startswith("1 ") and l2.startswith("2 "):
+                                    return (l1, l2)
+                        idx += 1
+        except OSError:
+            pass
+
+    # デフォルト辞書から検索
+    for name, tles in DEFAULT_TARGET_TLES.items():
+        if name.upper() == norm_target or norm_target in name.upper() or name.upper() in norm_target:
+            return tles
+
+    return None
 
 
 @dataclass
@@ -20,6 +88,19 @@ class TrajectoryPoint:
     range_km: float       # 観測者からの斜距離（km）
     in_window: bool       # 北向きベランダのスカイウィンドウ内か
     has_image: bool = False  # 復調画像が存在する区間か
+
+
+@dataclass
+class FuturePass:
+    satellite: str
+    aos_time: str
+    tca_time: str
+    los_time: str
+    max_elevation: float
+    max_elevation_azimuth: float
+    window_duration_seconds: int
+    quality_score: str
+
 
 
 class OrbitCalculator:
@@ -113,6 +194,118 @@ class OrbitCalculator:
             )
 
         return points
+
+    def find_future_passes(
+        self,
+        targets: List[Tuple[str, str, str]],  # (name, tle1, tle2)
+        start_time: datetime,
+        horizon_hours: int = 24,
+        step_seconds: int = 30
+    ) -> List[FuturePass]:
+        """
+        向こう horizon_hours 時間における各衛星のパスを予測し、
+        スカイウィンドウ通過諸元および品質スコアを計算。
+        """
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+
+        all_passes: List[FuturePass] = []
+        total_steps = int(horizon_hours * 3600 / step_seconds)
+
+        for name, l1, l2 in targets:
+            try:
+                satrec = Satrec.twoline2rv(l1.strip(), l2.strip(), WGS72)
+            except Exception:
+                continue
+
+            in_pass = False
+            pass_start_dt: Optional[datetime] = None
+            max_el = -90.0
+            max_el_az = 0.0
+            tca_dt: Optional[datetime] = None
+            window_duration = 0
+
+            for step in range(total_steps + 1):
+                cur_dt = start_time + timedelta(seconds=step * step_seconds)
+                jd, fr = self._datetime_to_jd(cur_dt)
+                err, r_teme, _ = satrec.sgp4(jd, fr)
+                if err != 0:
+                    continue
+
+                gmst = self._calc_gmst_rad(jd, fr)
+                r_ecef = self._teme_to_ecef(r_teme, gmst)
+                az_deg, el_deg, _ = self._ecef_to_az_el_range(r_ecef, self.obs_ecef_km)
+                in_win = self.is_in_sky_window(az_deg, el_deg)
+
+                if el_deg >= 5.0:
+                    if not in_pass:
+                        in_pass = True
+                        pass_start_dt = cur_dt
+                        max_el = el_deg
+                        max_el_az = az_deg
+                        tca_dt = cur_dt
+                        window_duration = step_seconds if in_win else 0
+                    else:
+                        if el_deg > max_el:
+                            max_el = el_deg
+                            max_el_az = az_deg
+                            tca_dt = cur_dt
+                        if in_win:
+                            window_duration += step_seconds
+                else:
+                    if in_pass:
+                        # パス終了
+                        if max_el >= 10.0 and pass_start_dt and tca_dt:
+                            quality = self._evaluate_quality(max_el, max_el_az, window_duration)
+                            all_passes.append(
+                                FuturePass(
+                                    satellite=name,
+                                    aos_time=pass_start_dt.isoformat(),
+                                    tca_time=tca_dt.isoformat(),
+                                    los_time=cur_dt.isoformat(),
+                                    max_elevation=round(max_el, 1),
+                                    max_elevation_azimuth=round(max_el_az, 1),
+                                    window_duration_seconds=window_duration,
+                                    quality_score=quality
+                                )
+                            )
+                        in_pass = False
+                        pass_start_dt = None
+                        max_el = -90.0
+                        tca_dt = None
+                        window_duration = 0
+
+            # 境界でパス中の場合
+            if in_pass and max_el >= 10.0 and pass_start_dt and tca_dt:
+                cur_dt = start_time + timedelta(seconds=total_steps * step_seconds)
+                quality = self._evaluate_quality(max_el, max_el_az, window_duration)
+                all_passes.append(
+                    FuturePass(
+                        satellite=name,
+                        aos_time=pass_start_dt.isoformat(),
+                        tca_time=tca_dt.isoformat(),
+                        los_time=cur_dt.isoformat(),
+                        max_elevation=round(max_el, 1),
+                        max_elevation_azimuth=round(max_el_az, 1),
+                        window_duration_seconds=window_duration,
+                        quality_score=quality
+                    )
+                )
+
+        all_passes.sort(key=lambda p: p.aos_time)
+        return all_passes
+
+    @staticmethod
+    def _evaluate_quality(max_el: float, max_el_az: float, window_dur: int) -> str:
+        if window_dur >= 60 and max_el >= 35.0:
+            return "EXCELLENT (スカイウィンドウ直撃)"
+        elif window_dur > 0:
+            return "GOOD (スカイウィンドウ通過)"
+        elif max_el >= 20.0 and (max_el_az >= 250.0 or max_el_az <= 110.0):
+            return "FAIR (ベランダ視野内)"
+        else:
+            return "MARGINAL (建物遮蔽)"
+
 
     def _geodetic_to_ecef(self, lat_rad: float, lon_rad: float, alt_m: float) -> Tuple[float, float, float]:
         """測地緯度・経度・標高から ECEF [km] を算出"""
