@@ -131,6 +131,7 @@ class MeteorDecoder:
                         pipe_out_dir,
                         "--samplerate", str(samplerate),
                         "--baseband_format", baseband_format,
+                        "--dc_block", "true",
                     ]
                 logger.info(f"Running SatDump ({idx + 1}/{len(candidate_pipelines)}): {' '.join(cmd)}")
                 subprocess.run(
@@ -142,7 +143,9 @@ class MeteorDecoder:
 
                 images = []
                 for ext in ("*.png", "*.jpg", "*.jpeg", "*.bmp"):
-                    images.extend(glob.glob(os.path.join(pipe_out_dir, "**", ext), recursive=True))
+                    for candidate_img in glob.glob(os.path.join(pipe_out_dir, "**", ext), recursive=True):
+                        if os.path.exists(candidate_img) and os.path.getsize(candidate_img) > 1024:
+                            images.append(candidate_img)
 
                 cadu_files = glob.glob(os.path.join(pipe_out_dir, "**", "*.cadu"), recursive=True)
                 non_empty_cadus = [c for c in cadu_files if os.path.exists(c) and os.path.getsize(c) > 0]

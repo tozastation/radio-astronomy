@@ -68,7 +68,7 @@ def test_meteor_decoder_falls_back_between_72k_and_80k(tmp_path, monkeypatch):
         if pipeline_name == "meteor_m2-x_lrpt_80k":
             img_path = os.path.join(target_out_dir, "lrpt_msu_mr.png")
             with open(img_path, "wb") as f:
-                f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+                f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 2048)
 
         class DummyCompletedProcess:
             returncode = 0
@@ -85,4 +85,42 @@ def test_meteor_decoder_falls_back_between_72k_and_80k(tmp_path, monkeypatch):
     assert res.status == "success"
     assert res.pipeline == "meteor_m2-x_lrpt_80k"
     assert len(res.images) == 1
+
+
+def test_meteor_decoder_enables_dc_block_and_filters_empty_images(tmp_path, monkeypatch):
+    """RTL-SDR cu8 の DC オフセット除去 (--dc_block true) と 1KB 以下の空プレースホルダ画像除外の検証"""
+    raw_file = tmp_path / "pass.raw"
+    raw_file.write_bytes(b"\x7f\x7f" * 2048)
+    out_dir = tmp_path / "out"
+
+    recorded_cmds = []
+
+    def fake_run(cmd, capture_output, text, timeout):
+        recorded_cmds.append(cmd)
+        target_out_dir = cmd[4]
+        os.makedirs(target_out_dir, exist_ok=True)
+        # 262 バイトの空プレースホルダ画像と 4KB の有効画像を作成
+        with open(os.path.join(target_out_dir, "empty_mcir.png"), "wb") as f:
+            f.write(b"\x89PNG" + b"\x00" * 258)
+        with open(os.path.join(target_out_dir, "MSU-MR-1.png"), "wb") as f:
+            f.write(b"\x89PNG" + b"\x00" * 4096)
+
+        class DummyCompletedProcess:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return DummyCompletedProcess()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    decoder = MeteorDecoder(binary_path="python3")
+    res = decoder.decode_baseband(str(raw_file), str(out_dir))
+
+    assert "--dc_block" in recorded_cmds[0]
+    dc_idx = recorded_cmds[0].index("--dc_block")
+    assert recorded_cmds[0][dc_idx + 1] == "true"
+    assert res.status == "success"
+    assert len(res.images) == 1
+    assert res.images[0].endswith("MSU-MR-1.png")
+
 
