@@ -474,6 +474,153 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+
+    /* Replay Modal & Radar Styles */
+    .modal-box-large {
+      max-width: 980px;
+      width: 95vw;
+    }
+    .replay-layout {
+      display: grid;
+      grid-template-columns: 440px 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 860px) {
+      .replay-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    .radar-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .radar-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.78rem;
+      justify-content: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+    .telemetry-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+    .telemetry-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .telemetry-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .telemetry-val {
+      font-weight: 700;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 0.95rem;
+    }
+    .spectrogram-wrapper {
+      position: relative;
+      cursor: crosshair;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .spectrogram-wrapper img {
+      width: 100%;
+      display: block;
+      height: auto;
+    }
+    .spectrogram-cursor {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+      pointer-events: none;
+      left: 0%;
+      transition: left 0.05s linear;
+    }
+    .clipper-card {
+      background: rgba(6, 182, 212, 0.05);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .clipper-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .clipper-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+    }
+    .clipper-row input[type="number"] {
+      background: #0b1120;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 4px;
+      width: 60px;
+      font-family: monospace;
+    }
+    .btn-sm {
+      background: #334155;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .btn-sm:hover { background: #475569; }
+    .progress-bar-container {
+      margin-top: 8px;
+      background: #0b1120;
+      border-radius: 4px;
+      overflow: hidden;
+      height: 8px;
+      display: none;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #10b981;
+      width: 0%;
+      transition: width 0.1s linear;
+    }
   </style>
 </head>
 <body>
@@ -482,7 +629,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <h1>🛰️ 衛星電波観測ビューア</h1>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
-    <button class="btn-refresh" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn-refresh" onclick="openFuturePassesModal()" style="background:#0284c7; color:white; border-color:#38bdf8;">📅 通過予測 (24h)</button>
+      <button class="btn-refresh" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
+    </div>
   </header>
 
   <!-- Filter & Search Toolbar -->
@@ -538,6 +688,142 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Future Passes Modal -->
+  <div id="futurePassesModal" class="modal" onclick="closeFuturePassesModal(event)">
+    <div class="modal-box modal-box-large" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">📅 今後の北向きベランダ通過予測 (24時間)</span>
+        <button class="modal-close" onclick="closeFuturePassesModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:rgba(6,182,212,0.1); border:1px solid rgba(6,182,212,0.3); border-radius:8px; padding:10px 14px; font-size:0.83rem; margin-bottom:14px; color:#e2e8f0;">
+          💡 <strong>ベランダ観測可能ウィンドウ</strong>: 方位角 250°〜110°（西〜北〜東）、仰角 25°〜60°（手すり下限〜上階庇上限）。南側建物遮蔽を避け、この開口窓を通過するパスを SGP4 により高精度予測しています。
+        </div>
+        <div id="futurePassesList">
+          <div style="text-align:center; padding:20px; color:#94a3b8;">読み込み中...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="copy-btn" onclick="closeFuturePassesModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Satellite Pass Replay & GIF Clipper Modal -->
+  <div id="replayModal" class="modal" onclick="closeReplayModal(event)">
+    <div class="modal-box modal-box-large" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title" id="replayModalTitle">🛰️ 天球観測リプレイ ＆ GIF 切り出し</span>
+        <button class="modal-close" onclick="closeReplayModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="replay-layout">
+          <!-- Left: Sky Dome Radar -->
+          <div class="radar-wrapper">
+            <canvas id="radarCanvas" width="440" height="440" style="width:100%; max-width:440px; aspect-ratio:1/1; background:#080e1a; border-radius:12px; border:1px solid #334155; box-shadow:0 0 20px rgba(6,182,212,0.15); display:block; margin:0 auto;"></canvas>
+            <div class="radar-legend">
+              <div class="legend-item"><div class="legend-color" style="background:#06b6d4;"></div><span>開口窓 (Az 250°~110°, El 25°~60°)</span></div>
+              <div class="legend-item"><div class="legend-color" style="background:rgba(15,23,42,0.85); border:1px solid #ef4444;"></div><span>南側建物遮蔽</span></div>
+              <div class="legend-item"><div class="legend-color" style="background:#34d399; border-radius:50%;"></div><span>衛星位置</span></div>
+            </div>
+          </div>
+
+          <!-- Right: Telemetry, Replay Controls, Decoded Image & GIF Clipper -->
+          <div>
+            <!-- Status Badge & Telemetry -->
+            <div class="telemetry-card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span id="repSatLabel" style="font-weight:bold; color:#38bdf8; font-size:1.05rem;">🛰️ 観測パス</span>
+                <span id="windowStatusBadge" style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:bold; background:#1e293b; color:#94a3b8; border:1px solid #334155;">判定中...</span>
+              </div>
+              <div class="telemetry-grid">
+                <div class="telemetry-item">
+                  <span class="telemetry-label">経過時刻 / JST</span>
+                  <span class="telemetry-val" id="repTimeJst">--:--:--</span>
+                </div>
+                <div class="telemetry-item">
+                  <span class="telemetry-label">方位角 (Azimuth)</span>
+                  <span class="telemetry-val" id="repAz">--°</span>
+                </div>
+                <div class="telemetry-item">
+                  <span class="telemetry-label">仰角 (Elevation)</span>
+                  <span class="telemetry-val" id="repEl">--°</span>
+                </div>
+                <div class="telemetry-item">
+                  <span class="telemetry-label">スラント距離 (Range)</span>
+                  <span class="telemetry-val" id="repRange">-- km</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Decoded Cloud Image Preview (pops up during lock) -->
+            <div id="replayDecodedBox" style="display:none; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:8px 12px; margin-bottom:12px;">
+              <div style="font-size:0.75rem; font-weight:bold; color:#38bdf8; margin-bottom:4px; display:flex; justify-content:space-between;">
+                <span>🛰️ 復調気象画像 (CADU ロック)</span>
+                <span style="font-size:0.7rem; color:#94a3b8;">タップで拡大</span>
+              </div>
+              <img id="replayDecodedImg" src="" style="width:100%; max-height:140px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="openImageModal(this.src)">
+            </div>
+
+            <!-- Spectrogram with Synced Red Cursor -->
+            <div style="margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">
+                <span>📊 受信スペクトログラム (クリックでシーク)</span>
+                <span id="repCurrentTimeText">00:00 / 00:00</span>
+              </div>
+              <div id="replaySpectrogramContainer" class="spectrogram-wrapper" onclick="handleSpectrogramClick(event)">
+                <img id="replaySpectrogramImg" src="" alt="Pass Spectrogram">
+                <div id="spectrogramCursor" class="spectrogram-cursor"></div>
+              </div>
+            </div>
+
+            <!-- Timeline Scrubber & Speed Controls -->
+            <div style="margin-bottom:12px;">
+              <input type="range" id="replayScrubber" min="0" max="406" value="0" style="width:100%; accent-color:#38bdf8; cursor:pointer;" oninput="handleScrubberInput(this.value)">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                <div style="display:flex; gap:6px;">
+                  <button id="btnPlayPause" class="btn-sm" style="background:#0284c7; color:white; font-weight:bold; padding:4px 12px;" onclick="togglePlayPause()">▶️ 再生</button>
+                  <button class="btn-sm" onclick="restartPlayback()">⏮️ 最初から</button>
+                </div>
+                <div style="display:flex; gap:4px; align-items:center; font-size:0.8rem; color:#94a3b8;">
+                  <span>速度:</span>
+                  <button class="chip speed-chip active" onclick="setPlaySpeed(1, this)" style="padding:2px 8px; font-size:0.75rem;">1x</button>
+                  <button class="chip speed-chip" onclick="setPlaySpeed(2, this)" style="padding:2px 8px; font-size:0.75rem;">2x</button>
+                  <button class="chip speed-chip" onclick="setPlaySpeed(5, this)" style="padding:2px 8px; font-size:0.75rem;">5x</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- GIF Clipper Section -->
+            <div class="clipper-card">
+              <div class="clipper-title">
+                <span>🎥 GIF 切り出し ＆ ダウンロード</span>
+              </div>
+              <div class="clipper-row">
+                <span>開始:</span>
+                <input type="number" id="trimStart" min="0" value="0">
+                <button class="btn-sm" onclick="setTrimStartToCurrent()">現位置</button>
+                <span>〜 終了:</span>
+                <input type="number" id="trimEnd" min="0" value="406">
+                <button class="btn-sm" onclick="setTrimEndToCurrent()">現位置</button>
+                <button class="btn-sm" onclick="autoSelectSkyWindowTrim()" style="background:#0891b2; color:white; font-weight:bold; margin-left:auto;">🎯 開口窓区間を自動設定</button>
+              </div>
+              <button id="btnGenerateGif" class="btn-sm" style="background:linear-gradient(135deg, #059669, #047857); color:white; font-weight:bold; width:100%; padding:8px; border-radius:6px; font-size:0.88rem; cursor:pointer;" onclick="generateAndDownloadGif()">🎬 GIF を生成してダウンロード</button>
+              <div id="gifProgressContainer" class="progress-bar-container">
+                <div id="gifProgressBar" class="progress-bar-fill"></div>
+              </div>
+              <div id="gifProgressText" style="font-size:0.75rem; color:#94a3b8; text-align:center; margin-top:4px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="copy-btn" onclick="closeReplayModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/gifenc.js"></script>
   <script>
     function openImageModal(src) {
       document.getElementById('modalImg').src = src;
@@ -579,6 +865,610 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       navigator.clipboard.writeText(text).then(() => {
         alert('クリップボードにコピーしました！');
       });
+    }
+
+    // --- 今後の通過予測モーダル ロジック ---
+    function closeFuturePassesModal(e) {
+      if (!e || e.target.id === 'futurePassesModal' || e.target.classList.contains('modal-close') || e.target.classList.contains('copy-btn')) {
+        document.getElementById('futurePassesModal').classList.remove('active');
+      }
+    }
+
+    async function openFuturePassesModal() {
+      const modal = document.getElementById('futurePassesModal');
+      const listEl = document.getElementById('futurePassesList');
+      listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">📅 向こう 24 時間のパスを SGP4 計算中...</div>';
+      modal.classList.add('active');
+
+      try {
+        const res = await fetch('/api/future-passes');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        if (!data.passes || data.passes.length === 0) {
+          listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">向こう 24 時間にスカイウィンドウ通過予測はありません。</div>';
+          return;
+        }
+
+        let html = '';
+        data.passes.forEach(p => {
+          const aosJst = new Date(p.aos_time).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+          const tcaJst = new Date(p.tca_time).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' });
+          const isExcellent = p.quality_score.includes('EXCELLENT');
+          const isGood = p.quality_score.includes('GOOD');
+          const isFair = p.quality_score.includes('FAIR');
+          const badgeBg = isExcellent ? '#059669' : (isGood ? '#0284c7' : (isFair ? '#d97706' : '#475569'));
+
+          html += `
+            <div style="background:rgba(255,255,255,0.03); border:1px solid #334155; border-radius:8px; padding:12px; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-weight:bold; color:#38bdf8; font-size:1rem;">🛰️ ${p.satellite}</span>
+                <span style="background:${badgeBg}; color:white; font-size:0.75rem; padding:2px 8px; border-radius:999px; font-weight:bold;">${p.quality_score}</span>
+              </div>
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:6px; font-size:0.85rem; color:#cbd5e1;">
+                <div>AOS (出現): <strong style="color:white;">${aosJst}</strong></div>
+                <div>TCA (最大仰角): <strong style="color:white;">${p.max_elevation}°</strong> (Az ${p.max_elevation_azimuth}°)</div>
+                <div>開口窓滞在: <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong></div>
+              </div>
+            </div>
+          `;
+        });
+        listEl.innerHTML = html;
+      } catch (err) {
+        listEl.innerHTML = `<div style="color:#ef4444; padding:10px;">予測データ取得エラー: ${err.message}</div>`;
+      }
+    }
+
+    // --- 天球レーダー描画 ＆ 観測リプレイ ロジック ---
+    let replayData = null;
+    let replayCurrentSec = 0;
+    let isPlaying = false;
+    let playSpeed = 1;
+    let playAnimationId = null;
+    let lastPlayTimestamp = null;
+    let replayDecodedImgElement = null;
+
+    function formatMinSec(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function closeReplayModal(e) {
+      if (!e || e.target.id === 'replayModal' || e.target.classList.contains('modal-close') || e.target.classList.contains('copy-btn')) {
+        pausePlayback();
+        document.getElementById('replayModal').classList.remove('active');
+      }
+    }
+
+    async function openReplayModal(passId) {
+      const modal = document.getElementById('replayModal');
+      document.getElementById('replayModalTitle').textContent = `🛰️ 天球観測リプレイ ＆ GIF 切り出し - ${passId}`;
+      document.getElementById('repSatLabel').textContent = `🛰️ ${passId}`;
+      modal.classList.add('active');
+
+      // 状態リセット
+      pausePlayback();
+      replayCurrentSec = 0;
+      replayData = null;
+      document.getElementById('replayScrubber').value = 0;
+      document.getElementById('gifProgressContainer').style.display = 'none';
+      document.getElementById('gifProgressText').textContent = '';
+
+      try {
+        const res = await fetch(`/api/passes/${encodeURIComponent(passId)}/trajectory`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        replayData = await res.json();
+
+        document.getElementById('replayModalTitle').textContent = `🛰️ 天球観測リプレイ ＆ GIF 切り出し - ${replayData.satellite}`;
+        document.getElementById('repSatLabel').textContent = `🛰️ ${replayData.satellite} (${replayData.pass_id})`;
+        const totalSec = replayData.total_seconds || (replayData.points.length - 1);
+        const scrubber = document.getElementById('replayScrubber');
+        scrubber.min = 0;
+        scrubber.max = totalSec;
+        scrubber.value = 0;
+        document.getElementById('trimStart').value = 0;
+        document.getElementById('trimEnd').value = totalSec;
+
+        // スペクトログラム画像の読み込み
+        const specImg = document.getElementById('replaySpectrogramImg');
+        specImg.src = `/view?key=results/${encodeURIComponent(replayData.satellite)}/${encodeURIComponent(replayData.pass_id)}/spectrogram.png`;
+
+        // 復調画像の確認
+        const decodedBox = document.getElementById('replayDecodedBox');
+        const decodedImg = document.getElementById('replayDecodedImg');
+        if (replayData.images && replayData.images.length > 0) {
+          decodedImg.src = replayData.images[0].url;
+          replayDecodedImgElement = decodedImg;
+        } else {
+          decodedBox.style.display = 'none';
+          replayDecodedImgElement = null;
+        }
+
+        renderCurrentFrame();
+      } catch (err) {
+        alert('軌道データの読み込みに失敗しました: ' + err.message);
+        modal.classList.remove('active');
+      }
+    }
+
+    function drawRadar(ctx, width, height, currentPoint, trajectoryPoints) {
+      ctx.clearRect(0, 0, width, height);
+
+      const xc = width / 2;
+      const yc = height / 2;
+      const margin = 26;
+      const rMax = Math.min(xc, yc) - margin; // El = 0 deg
+
+      const getRadius = (el) => Math.max(0, rMax * (1 - el / 90.0));
+      const getXY = (az, el) => {
+        const r = getRadius(el);
+        const rad = az * Math.PI / 180.0;
+        return {
+          x: xc + r * Math.sin(rad),
+          y: yc - r * Math.cos(rad)
+        };
+      };
+
+      ctx.save();
+
+      // 1. レーダー背景外円 (地平線 El=0)
+      ctx.beginPath();
+      ctx.arc(xc, yc, rMax, 0, 2 * Math.PI);
+      ctx.fillStyle = '#080e1a';
+      ctx.fill();
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 2. 南側建物躯体遮蔽マスク (方位 110°〜250°)
+      // Canvas の円弧角度: 東が 0 度、北が -PI/2。
+      // 方位角 Az からの変換: (Az - 90) * PI / 180
+      const angle110 = (110 - 90) * Math.PI / 180.0;
+      const angle250 = (250 - 90) * Math.PI / 180.0;
+      ctx.beginPath();
+      ctx.moveTo(xc, yc);
+      ctx.arc(xc, yc, rMax, angle110, angle250, false);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
+      ctx.stroke();
+
+      // 3. 手すり遮蔽マスク (仰角 < 25°)
+      const rEl25 = getRadius(25);
+      ctx.beginPath();
+      ctx.arc(xc, yc, rMax, 0, 2 * Math.PI, false);
+      ctx.arc(xc, yc, rEl25, 0, 2 * Math.PI, true);
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.45)';
+      ctx.fill();
+
+      // 4. 上階庇遮蔽マスク (仰角 > 60°)
+      const rEl60 = getRadius(60);
+      ctx.beginPath();
+      ctx.arc(xc, yc, rEl60, 0, 2 * Math.PI, false);
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.65)';
+      ctx.fill();
+
+      // 5. 北向きベランダ開口窓 (スカイウィンドウ): 方位 250°〜110°, 仰角 25°〜60°
+      ctx.beginPath();
+      ctx.arc(xc, yc, rEl25, angle250, angle110, false);
+      ctx.arc(xc, yc, rEl60, angle110, angle250, true);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.22)';
+      ctx.fill();
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#06b6d4';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 6. 仰角同心円グリッド (30°, 60°)
+      [30, 60].forEach(el => {
+        const r = getRadius(el);
+        ctx.beginPath();
+        ctx.arc(xc, yc, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+        ctx.font = '10px monospace';
+        ctx.fillText(`${el}°`, xc + 4, yc - r + 10);
+      });
+
+      // 7. 方位角放射線 (N, E, S, W)
+      const cardinals = [
+        { label: '北 (N 0°)', az: 0 },
+        { label: '東 (E 90°)', az: 90 },
+        { label: '南 (S 180°)', az: 180 },
+        { label: '西 (W 270°)', az: 270 },
+      ];
+      cardinals.forEach(({ label, az }) => {
+        const pt = getXY(az, 0);
+        ctx.beginPath();
+        ctx.moveTo(xc, yc);
+        ctx.lineTo(pt.x, pt.y);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        const textPt = getXY(az, -7);
+        ctx.fillStyle = az === 0 ? '#38bdf8' : (az === 180 ? '#94a3b8' : '#e2e8f0');
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, textPt.x, textPt.y);
+      });
+
+      // 開口窓ラベル
+      const winCenterPt = getXY(0, 42.5);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('ベランダ開口窓', winCenterPt.x, winCenterPt.y - 6);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+      ctx.fillText('Az 250°~110° El 25°~60°', winCenterPt.x, winCenterPt.y + 7);
+
+      // 遮蔽ラベル
+      const southPt = getXY(180, 40);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('南側建物・躯体遮蔽', southPt.x, southPt.y);
+
+      // 8. 観測軌道パス
+      if (trajectoryPoints && trajectoryPoints.length > 1) {
+        for (let i = 0; i < trajectoryPoints.length - 1; i++) {
+          const p1 = trajectoryPoints[i];
+          const p2 = trajectoryPoints[i + 1];
+          const xy1 = getXY(p1.az, p1.el);
+          const xy2 = getXY(p2.az, p2.el);
+
+          ctx.beginPath();
+          ctx.moveTo(xy1.x, xy1.y);
+          ctx.lineTo(xy2.x, xy2.y);
+
+          if (p1.in_window && p2.in_window) {
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 6;
+          } else {
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+            ctx.lineWidth = 1.5;
+            ctx.shadowBlur = 0;
+          }
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // 9. 衛星現在位置マーカー
+      if (currentPoint) {
+        const curXY = getXY(currentPoint.az, currentPoint.el);
+
+        if (currentPoint.in_window) {
+          const pulseR = 12 + (Date.now() / 100 % 10);
+          ctx.beginPath();
+          ctx.arc(curXY.x, curXY.y, pulseR, 0, 2 * Math.PI);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.arc(curXY.x, curXY.y, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = currentPoint.in_window ? '#34d399' : '#fbbf24';
+        ctx.shadowColor = currentPoint.in_window ? '#34d399' : '#fbbf24';
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🛰️', curXY.x + 8, curXY.y - 8);
+
+        ctx.font = '10px monospace';
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(`Az ${currentPoint.az}° / El ${currentPoint.el}°`, curXY.x + 28, curXY.y - 8);
+      }
+
+      ctx.restore();
+    }
+
+    function renderCurrentFrame() {
+      if (!replayData || !replayData.points || replayData.points.length === 0) return;
+      const totalSec = replayData.total_seconds || (replayData.points.length - 1);
+      const secIdx = Math.max(0, Math.min(Math.floor(replayCurrentSec), replayData.points.length - 1));
+      const pt = replayData.points[secIdx];
+
+      // レーダー描画
+      const canvas = document.getElementById('radarCanvas');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        drawRadar(ctx, canvas.width, canvas.height, pt, replayData.points);
+      }
+
+      // スペクトログラムカーソル同期
+      const cursor = document.getElementById('spectrogramCursor');
+      if (cursor) {
+        const pct = totalSec > 0 ? (replayCurrentSec / totalSec) * 100 : 0;
+        cursor.style.left = `${pct}%`;
+      }
+
+      // テレメトリ数値更新
+      const curMinSec = formatMinSec(Math.floor(replayCurrentSec));
+      const totalMinSec = formatMinSec(totalSec);
+      document.getElementById('repCurrentTimeText').textContent = `${curMinSec} / ${totalMinSec} (t=${Math.floor(replayCurrentSec)}s)`;
+
+      if (pt.timestamp_utc) {
+        const jstStr = new Date(pt.timestamp_utc).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' });
+        document.getElementById('repTimeJst').textContent = jstStr;
+      } else {
+        document.getElementById('repTimeJst').textContent = `t=${pt.t}s`;
+      }
+
+      document.getElementById('repAz').textContent = `${pt.az}°`;
+      document.getElementById('repEl').textContent = `${pt.el}°`;
+      document.getElementById('repRange').textContent = `${pt.range_km} km`;
+
+      // スカイウィンドウ突入バッジ
+      const badge = document.getElementById('windowStatusBadge');
+      if (pt.in_window) {
+        badge.textContent = '✅ スカイウィンドウ突入中 (開口窓)';
+        badge.style.background = '#065f46';
+        badge.style.color = '#34d399';
+        badge.style.borderColor = '#10b981';
+      } else {
+        badge.textContent = '⛔ 建物・手すり遮蔽';
+        badge.style.background = '#1e293b';
+        badge.style.color = '#94a3b8';
+        badge.style.borderColor = '#334155';
+      }
+
+      // スクラバーバー同期
+      const scrubber = document.getElementById('replayScrubber');
+      if (scrubber && Math.abs(scrubber.value - replayCurrentSec) > 1) {
+        scrubber.value = Math.floor(replayCurrentSec);
+      }
+
+      // 復調画像ポップアップ
+      const decodedBox = document.getElementById('replayDecodedBox');
+      if (decodedBox && replayDecodedImgElement) {
+        if (pt.has_image) {
+          decodedBox.style.display = 'block';
+          decodedBox.style.borderColor = '#38bdf8';
+          decodedBox.style.boxShadow = '0 0 12px rgba(56, 189, 248, 0.4)';
+        } else {
+          decodedBox.style.display = 'none';
+          decodedBox.style.boxShadow = 'none';
+        }
+      }
+    }
+
+    function togglePlayPause() {
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        startPlayback();
+      }
+    }
+
+    function startPlayback() {
+      if (!replayData || !replayData.points) return;
+      const totalSec = replayData.total_seconds || (replayData.points.length - 1);
+      if (replayCurrentSec >= totalSec) {
+        replayCurrentSec = 0;
+      }
+      isPlaying = true;
+      document.getElementById('btnPlayPause').textContent = '⏸️ 一時停止';
+      lastPlayTimestamp = performance.now();
+      playAnimationId = requestAnimationFrame(playStep);
+    }
+
+    function pausePlayback() {
+      isPlaying = false;
+      if (playAnimationId) {
+        cancelAnimationFrame(playAnimationId);
+        playAnimationId = null;
+      }
+      const btn = document.getElementById('btnPlayPause');
+      if (btn) btn.textContent = '▶️ 再生';
+    }
+
+    function restartPlayback() {
+      replayCurrentSec = 0;
+      renderCurrentFrame();
+      if (!isPlaying) startPlayback();
+    }
+
+    function setPlaySpeed(speed, btnEl) {
+      playSpeed = speed;
+      document.querySelectorAll('.speed-chip').forEach(el => el.classList.remove('active'));
+      if (btnEl) btnEl.classList.add('active');
+    }
+
+    function playStep(now) {
+      if (!isPlaying || !replayData || !replayData.points) return;
+      const deltaSec = (now - lastPlayTimestamp) / 1000.0;
+      lastPlayTimestamp = now;
+
+      const totalSec = replayData.total_seconds || (replayData.points.length - 1);
+      replayCurrentSec += deltaSec * playSpeed;
+
+      if (replayCurrentSec >= totalSec) {
+        replayCurrentSec = totalSec;
+        renderCurrentFrame();
+        pausePlayback();
+        return;
+      }
+
+      renderCurrentFrame();
+      playAnimationId = requestAnimationFrame(playStep);
+    }
+
+    function handleScrubberInput(val) {
+      replayCurrentSec = parseInt(val, 10);
+      renderCurrentFrame();
+    }
+
+    function handleSpectrogramClick(e) {
+      if (!replayData || !replayData.points) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const pct = Math.max(0, Math.min(1, clickX / rect.width));
+      const totalSec = replayData.total_seconds || (replayData.points.length - 1);
+      replayCurrentSec = Math.round(pct * totalSec);
+      document.getElementById('replayScrubber').value = replayCurrentSec;
+      renderCurrentFrame();
+    }
+
+    function setTrimStartToCurrent() {
+      document.getElementById('trimStart').value = Math.floor(replayCurrentSec);
+    }
+
+    function setTrimEndToCurrent() {
+      document.getElementById('trimEnd').value = Math.floor(replayCurrentSec);
+    }
+
+    function autoSelectSkyWindowTrim() {
+      if (!replayData || !replayData.points) return;
+      const inWindowPoints = replayData.points.filter(p => p.in_window);
+      if (inWindowPoints.length === 0) {
+        alert('このパスにはスカイウィンドウ通過区間がありません。');
+        return;
+      }
+      const firstT = inWindowPoints[0].t;
+      const lastT = inWindowPoints[inWindowPoints.length - 1].t;
+      document.getElementById('trimStart').value = firstT;
+      document.getElementById('trimEnd').value = lastT;
+      replayCurrentSec = firstT;
+      renderCurrentFrame();
+    }
+
+    async function generateAndDownloadGif() {
+      if (!replayData || !replayData.points) return;
+      const gifencModule = window.gifenc || (typeof gifenc !== 'undefined' ? gifenc : null);
+      if (!gifencModule) {
+        alert('GIF エンコーダ (gifenc) が読み込まれていません。');
+        return;
+      }
+
+      const startSec = parseInt(document.getElementById('trimStart').value, 10) || 0;
+      const endSec = parseInt(document.getElementById('trimEnd').value, 10) || (replayData.points.length - 1);
+      const clampedStart = Math.max(0, Math.min(startSec, replayData.points.length - 1));
+      const clampedEnd = Math.max(clampedStart + 1, Math.min(endSec, replayData.points.length - 1));
+
+      const btn = document.getElementById('btnGenerateGif');
+      const progressBox = document.getElementById('gifProgressContainer');
+      const progressBar = document.getElementById('gifProgressBar');
+      const progressText = document.getElementById('gifProgressText');
+
+      btn.disabled = true;
+      progressBox.style.display = 'block';
+      progressBar.style.width = '0%';
+      progressText.textContent = 'GIF 初期化中...';
+
+      try {
+        const { GIFEncoder, quantize, applyPalette } = gifencModule;
+        const gif = GIFEncoder();
+
+        const gifCanvas = document.createElement('canvas');
+        const gw = 440;
+        const gh = 440;
+        gifCanvas.width = gw;
+        gifCanvas.height = gh;
+        const gctx = gifCanvas.getContext('2d');
+
+        const totalFrames = clampedEnd - clampedStart + 1;
+        let step = 1;
+        if (totalFrames > 120) step = 2; // 出力サイズ抑制
+
+        let frameCount = 0;
+        const expectedFrames = Math.ceil(totalFrames / step);
+
+        for (let sec = clampedStart; sec <= clampedEnd; sec += step) {
+          const pt = replayData.points[sec];
+          drawRadar(gctx, gw, gh, pt, replayData.points);
+
+          // 上部情報ヘッダー
+          gctx.save();
+          gctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+          gctx.fillRect(8, 8, gw - 16, 32);
+          gctx.strokeStyle = '#334155';
+          gctx.strokeRect(8, 8, gw - 16, 32);
+
+          gctx.fillStyle = '#38bdf8';
+          gctx.font = 'bold 11px sans-serif';
+          gctx.textAlign = 'left';
+          gctx.fillText(`🛰️ ${replayData.satellite} (t=${pt.t}s)`, 16, 28);
+
+          gctx.fillStyle = pt.in_window ? '#34d399' : '#fbbf24';
+          gctx.textAlign = 'right';
+          gctx.fillText(pt.in_window ? '✅ 開口窓突入' : '⛔ 建物遮蔽', gw - 16, 28);
+
+          // 下部テレメトリバー
+          gctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+          gctx.fillRect(8, gh - 40, gw - 16, 32);
+          gctx.strokeStyle = '#334155';
+          gctx.strokeRect(8, gh - 40, gw - 16, 32);
+
+          gctx.fillStyle = '#f8fafc';
+          gctx.font = '11px monospace';
+          gctx.textAlign = 'left';
+          gctx.fillText(`Az: ${pt.az}° | El: ${pt.el}° | Range: ${pt.range_km}km`, 16, gh - 20);
+
+          // 復調画像 PiP サムネイル
+          if (replayDecodedImgElement && replayDecodedImgElement.complete && replayDecodedImgElement.naturalWidth > 0 && pt.has_image) {
+            const thumbW = 64;
+            const thumbH = 64;
+            const tx = gw - thumbW - 12;
+            const ty = gh - thumbH - 46;
+            gctx.strokeStyle = '#38bdf8';
+            gctx.lineWidth = 1.5;
+            gctx.strokeRect(tx, ty, thumbW, thumbH);
+            gctx.drawImage(replayDecodedImgElement, tx, ty, thumbW, thumbH);
+          }
+
+          gctx.restore();
+
+          const imgData = gctx.getImageData(0, 0, gw, gh).data;
+          const palette = quantize(imgData, 256);
+          const index = applyPalette(imgData, palette);
+          gif.writeFrame(index, gw, gh, { palette, delay: step * 100 });
+
+          frameCount++;
+          const pct = Math.min(100, Math.round((frameCount / expectedFrames) * 100));
+          progressBar.style.width = pct + '%';
+          progressText.textContent = `${pct}% (${frameCount} / ${expectedFrames} フレーム処理中...)`;
+
+          await new Promise(r => setTimeout(r, 0));
+        }
+
+        gif.finish();
+        const bytes = gif.bytes();
+        const blob = new Blob([bytes], { type: 'image/gif' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${replayData.pass_id}_balcony_replay.gif`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        progressText.textContent = `✅ GIF 保存完了! (${Math.round(bytes.length / 1024)} KB)`;
+      } catch (err) {
+        console.error('GIF export error:', err);
+        alert('GIF 生成中にエラーが発生しました: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // --- 無限スクロール & 動的ロード ロジック ---
@@ -978,7 +1868,10 @@ def render_card_html(p: dict) -> str:
           </div>
           <div class="pass-id">{p.get('pass_id', '')}</div>
         </div>
-        <span class="badge-status">{status}</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="btn-sm" style="background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: 1px solid #38bdf8; font-weight: bold; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openReplayModal('{p.get('pass_id', '')}')">🛰️ 天球リプレイ</button>
+          <span class="badge-status">{status}</span>
+        </div>
       </div>
       <div class="card-body">
         {spectrogram_html}
@@ -1126,6 +2019,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
+            return
+
+        if path.startswith("/static/"):
+            rel_path = path[len("/static/"):]
+            local_file = os.path.join(os.path.dirname(__file__), "static", rel_path)
+            if os.path.isfile(local_file):
+                ctype = "application/javascript" if local_file.endswith(".js") else "application/octet-stream"
+                with open(local_file, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            self.send_error(404, "Static file not found")
             return
 
         if path == "/api/passes":

@@ -58,6 +58,8 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("pass_12345", card_html)
         self.assertIn("WeatherSatellite", card_html)
         self.assertIn("spectrogram.png", card_html)
+        self.assertIn("openReplayModal", card_html)
+        self.assertIn("天球リプレイ", card_html)
 
     def test_pass_data_cache_avoids_repeated_s3_calls(self):
         # 1回目の list_objects_v2 レスポンス
@@ -183,6 +185,17 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("max_elevation_azimuth", p)
         self.assertIn("window_duration_seconds", p)
         self.assertIn("quality_score", p)
+
+    def test_static_gifenc_file_exists_and_valid(self):
+        import os
+        static_path = os.path.join(os.path.dirname(__file__), "static", "gifenc.js")
+        self.assertTrue(os.path.isfile(static_path))
+        with open(static_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("GIFEncoder", content)
+        self.assertIn("quantize", content)
+        self.assertIn("applyPalette", content)
+
 
 
 
