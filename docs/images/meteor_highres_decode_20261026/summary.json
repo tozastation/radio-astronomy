@@ -1,0 +1,11 @@
+{
+  "satellite": "METEOR-M2 3",
+  "pass_id": "METEOR-M2 3_20261026_003009",
+  "satellite_type": "WeatherSatellite",
+  "signal_type": "LRPT (QPSK 72kbps)",
+  "frequency_label": "137.900 MHz",
+  "display_icon": "🛰️",
+  "packets_count": 31,
+  "summary_text": "METEOR-M2 LRPT (meteor_m2-x_lrpt) 気象画像復調成功 (31 枚の画像を生成)",
+  "status": "completed"
+}
