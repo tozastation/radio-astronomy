@@ -7,7 +7,7 @@
 ## 📑 カテゴリ別目次
 
 1. [📻 ハードウェア & 無線工学 (SDR/RF)](#1--ハードウェア--無線工学-sdrrf)
-   - [SDR](#sdr) / [Bias-T](#bias-t) / [LNA](#lna) / [BPF](#bpf) / [TCXO](#tcxo) / [MSPS](#msps)
+   - [SDR](#sdr) / [Bias-T](#bias-t) / [LNA](#lna) / [BPF](#bpf) / [TCXO](#tcxo) / [MSPS](#msps) / [実効開口面積 (Ae)](#effective-aperture)
 2. [🌌 天文学 & 宇宙物理 (Astro/Physics)](#2--天文学--宇宙物理-astrophysics)
    - [21cm線 (HI線)](#21cm) / [ドップラー効果](#doppler) / [LSR補正](#lsr) / [銀河回転曲線](#rotation-curve) / [放射計方程式](#radiometer) / [輝度温度](#brightness-temp)
 3. [📊 デジタル信号処理 (DSP & Math)](#3--デジタル信号処理-dsp--math)
@@ -50,6 +50,11 @@
 ### MSPS (Mega Samples Per Second / メガサンプル毎秒)
 - **概要**: 1秒間にADCが信号をサンプリング（標本化）する回数。
 - **例**: $2.4 \text{ MSPS} = \text{毎秒 240万回の複素サンプリング}$。複素IQ信号の場合、サンプリングレート＝受信可能な瞬時帯域幅（$2.4 \text{ MHz}$）になります。
+
+<a id="effective-aperture"></a>
+### 実効開口面積 (Effective Aperture / $A_e$)
+- **概要**: アンテナが空間を流れる電磁波エネルギー（電力束密度 $S\ [\text{W/m}^2]$）から、受信電力 $P_r\ [\text{W}]$ を掬い取る仮想的な網（開口面）の面積。アンテナの物理的太さではなく、波長 $\lambda$ と利得 $G$ から $A_e = \frac{\lambda^2}{4\pi} G$ で決まる。
+- **エンジニア目線**: 「空間に広げた仮想のパケットキャプチャ網」。細い針金のダイポールアンテナであっても、共振によって周囲の電磁場を漏斗状に吸い寄せるため、波長 2.2m の気象衛星電波に対してタタミ半畳分（約 $0.61\ \text{m}^2$）の巨大な受波面積を展開します。
 
 ---
 
