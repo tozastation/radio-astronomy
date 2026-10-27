@@ -105,6 +105,8 @@ class TestTelemetryMetrics(unittest.TestCase):
         self.assertIn("packet-preview-container", html_out)
         self.assertIn("RS0ISS", html_out)
         self.assertIn("Hello Tokyo Ground Station!", html_out)
+        self.assertIn("btn-grafana", html_out)
+        self.assertIn("openGrafanaPass", html_out)
 
     def test_render_card_html_fallback_unknown_satellite(self):
         from app import render_card_html

@@ -200,6 +200,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .btn-replay:hover {
       background: linear-gradient(135deg, #0369a1, #0284c7);
     }
+    .btn-grafana {
+      background: linear-gradient(135deg, #ea580c, #c2410c);
+      color: white;
+      border: 1px solid #fb923c;
+      font-weight: bold;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      touch-action: manipulation;
+      transition: all 0.15s ease;
+    }
+    .btn-grafana:hover {
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+    }
     .badge-tag {
       font-size: 0.7rem;
       padding: 2px 6px;
@@ -1097,10 +1118,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         padding-top: 6px;
         border-top: 1px dashed rgba(255, 255, 255, 0.08);
       }
-      .sat-header-right .btn-replay {
+      .sat-header-right .btn-replay,
+      .sat-header-right .btn-grafana {
         flex: 1;
-        padding: 8px 12px;
-        font-size: 0.82rem;
+        padding: 8px 8px;
+        font-size: 0.78rem;
       }
       .card-body {
         padding: 12px;
@@ -2303,6 +2325,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       observer.observe(sentinel);
     }
 
+    function openGrafanaPass(fromMs, toMs) {
+      const host = window.location.hostname || 'localhost';
+      const grafanaPort = '30080';
+      const url = `http://${host}:${grafanaPort}/d/satellite-radio-tracker?from=${fromMs}&to=${toMs}`;
+      window.open(url, '_blank');
+    }
+
     function toggleGeekTooltip(e, el) {
       e.stopPropagation();
       const tip = el.querySelector('.geek-tooltip');
@@ -2991,6 +3020,20 @@ def render_card_html(p: dict) -> str:
     telemetry_panel_html = render_telemetry_grid_html(metrics, packets_count, sat_type, p.get("last_modified", ""))
     packet_preview_html = render_packet_preview_html(packet_items, sat_type)
 
+    # Grafana タイムレンジの計算（パス開始・終了の前後180秒マージン付き、Epoch ms）
+    parsed_sat, pass_dt = parse_pass_id(p.get("pass_id", ""))
+    base_dt = pass_dt or p.get("last_modified_dt") or datetime.now(timezone.utc)
+    if hasattr(base_dt, "tzinfo") and base_dt.tzinfo is None:
+        base_dt = base_dt.replace(tzinfo=timezone.utc)
+    base_ts = int(base_dt.timestamp()) if hasattr(base_dt, "timestamp") else int(time.time())
+    dur_sec = 406
+    try:
+        dur_sec = int(float(summary.get("duration_seconds") or summary.get("recording_duration_sec") or 406.0))
+    except (ValueError, TypeError):
+        dur_sec = 406
+    from_ms = (base_ts - 180) * 1000
+    to_ms = (base_ts + dur_sec + 180) * 1000
+
     return f"""
     <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}">
       <div class="card-header">
@@ -3005,6 +3048,7 @@ def render_card_html(p: dict) -> str:
         </div>
         <div class="sat-header-right">
           <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">🛰️ 天球リプレイ</button>
+          <button class="btn-sm btn-grafana" onclick="openGrafanaPass({from_ms}, {to_ms})">📊 Grafana</button>
           <span class="badge-status">{status}</span>
         </div>
       </div>
