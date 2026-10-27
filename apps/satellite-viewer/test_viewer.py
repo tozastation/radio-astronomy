@@ -14,6 +14,7 @@ from app import (
     PassDataCache,
     render_card_html,
     get_satellite_type,
+    is_demod_successful,
     parse_pass_id,
     generate_trajectory_data,
     generate_future_passes_data,
@@ -346,6 +347,50 @@ class TestViewerOptimizations(unittest.TestCase):
             self.assertEqual(members[0].size, len(content_sample))
             extracted_data = tf.extractfile(members[0]).read()
             self.assertEqual(extracted_data, content_sample)
+
+    def test_is_demod_successful(self):
+        # 1. WeatherSatellite with images -> True
+        p_meteor_success = {
+            "satellite": "METEOR-M2 3",
+            "summary": {"status": "completed", "packets_count": 0},
+            "files": {"spectrogram.png": "path/spec.png", "MSU-MR-1.png": "path/img.png"}
+        }
+        self.assertTrue(is_demod_successful(p_meteor_success))
+
+        # 2. WeatherSatellite without images (only spectrogram) -> False
+        p_meteor_fail = {
+            "satellite": "METEOR-M2 3",
+            "summary": {"status": "completed", "packets_count": 0, "summary_text": "信号微弱"},
+            "files": {"spectrogram.png": "path/spec.png"}
+        }
+        self.assertFalse(is_demod_successful(p_meteor_fail))
+
+        # 3. CubeSat with packets -> True
+        p_cubesat_success = {
+            "satellite": "FUNCUBE-1 (AO-73)",
+            "summary": {"status": "completed", "packets_count": 3},
+            "files": {"spectrogram.png": "path/spec.png"}
+        }
+        self.assertTrue(is_demod_successful(p_cubesat_success))
+
+        # 4. CubeSat with 0 packets -> False
+        p_cubesat_fail = {
+            "satellite": "FUNCUBE-1 (AO-73)",
+            "summary": {"status": "completed", "packets_count": 0},
+            "files": {"spectrogram.png": "path/spec.png"}
+        }
+        self.assertFalse(is_demod_successful(p_cubesat_fail))
+
+        # 5. Card html data-has-data reflects is_demod_successful
+        card_html_success = render_card_html(p_meteor_success)
+        self.assertIn('data-has-data="true"', card_html_success)
+
+        card_html_fail = render_card_html(p_meteor_fail)
+        self.assertIn('data-has-data="false"', card_html_fail)
+
+    def test_html_template_has_demod_filter_button(self):
+        self.assertIn('id="btnDemodOnly"', HTML_TEMPLATE)
+        self.assertIn('id="count-demod-success"', HTML_TEMPLATE)
 
 
 if __name__ == "__main__":

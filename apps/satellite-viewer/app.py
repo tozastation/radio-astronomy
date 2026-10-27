@@ -776,6 +776,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-color: var(--accent);
       box-shadow: 0 0 10px var(--accent-glow);
     }
+    .chip.chip-toggle {
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.08);
+      margin-left: auto;
+    }
+    .chip.chip-toggle:hover {
+      background: rgba(16, 185, 129, 0.16);
+      color: #6ee7b7;
+    }
+    .chip.chip-toggle.active {
+      background: linear-gradient(135deg, #059669, #10b981);
+      color: #ffffff;
+      border-color: #34d399;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.45);
+    }
     .filter-options {
       display: flex;
       justify-content: space-between;
@@ -1190,12 +1206,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button class="chip" onclick="setCategoryFilter('SpaceStation', this)">🚀 ISS (<span id="count-spacestation">0</span>)</button>
       <button class="chip" onclick="setCategoryFilter('WeatherSatellite', this)">🛰️ METEOR (<span id="count-weathersatellite">0</span>)</button>
       <button class="chip" onclick="setCategoryFilter('CubeSat', this)">📻 FUNcube (<span id="count-cubesat">0</span>)</button>
+      <button class="chip chip-toggle" id="btnDemodOnly" onclick="toggleDemodFilter(this)">
+        ✨ 復調成功のみ (<span id="count-demod-success">0</span>)
+      </button>
     </div>
     <div class="filter-options">
-      <label class="toggle-label">
-        <input type="checkbox" id="hasPacketsToggle" onchange="applyFilters()">
-        <span>📡 パケット/データ検出ありのみ絞り込み</span>
-      </label>
       <span class="matched-count" id="matchedCount">読み込み中...</span>
     </div>
   </div>
@@ -2243,8 +2258,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     // --- 無限スクロール & 動的ロード ロジック ---
     let currentPage = 1;
     let currentCategory = 'all';
+    let isDemodOnly = false;
     let isLoading = false;
     let hasMore = true;
+
+    function toggleDemodFilter(btnElement) {
+      isDemodOnly = !isDemodOnly;
+      if (btnElement) {
+        btnElement.classList.toggle('active', isDemodOnly);
+      }
+      loadPasses(1, true);
+    }
 
     async function loadPasses(page = 1, reset = false) {
       if (isLoading) return;
@@ -2254,10 +2278,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const loader = document.getElementById('scrollLoader');
       if (loader) loader.classList.add('active');
 
-      const toggle = document.getElementById('hasPacketsToggle');
-      const hasPacketsOnly = toggle ? toggle.checked : false;
-
-      const url = `/api/passes?page=${page}&limit=12&category=${encodeURIComponent(currentCategory)}&has_data=${hasPacketsOnly ? 'true' : 'false'}`;
+      const url = `/api/passes?page=${page}&limit=12&category=${encodeURIComponent(currentCategory)}&demod_only=${isDemodOnly ? 'true' : 'false'}`;
       try {
         const res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -2279,6 +2300,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           if (document.getElementById('count-spacestation')) document.getElementById('count-spacestation').textContent = data.counts.spacestation || 0;
           if (document.getElementById('count-weathersatellite')) document.getElementById('count-weathersatellite').textContent = data.counts.weathersatellite || 0;
           if (document.getElementById('count-cubesat')) document.getElementById('count-cubesat').textContent = data.counts.cubesat || 0;
+          if (document.getElementById('count-demod-success')) document.getElementById('count-demod-success').textContent = data.counts.demod_success || 0;
         }
 
         const matchedEl = document.getElementById('matchedCount');
@@ -2584,6 +2606,33 @@ def get_satellite_type(p: dict) -> str:
     elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
         return "CubeSat"
     return "GenericSatellite"
+
+
+def is_demod_successful(p: dict) -> bool:
+    """
+    パスデータが復調に成功した（中身が見える成果が得られた）かを判定する。
+    - 気象衛星: スペクトログラム以外の復調気象画像（MSU-MR 等）が 1 枚以上生成されていること
+    - キューブサット / 宇宙ステーション / その他: デコードされたパケット数が 1 件以上あること
+    """
+    summary = p.get("summary") or {}
+    files = p.get("files") or {}
+    packets_count = summary.get("packets_count", 0)
+
+    # スペクトログラム以外の画像ファイル（気象写真等）が存在するか判定
+    file_keys = files.keys() if isinstance(files, dict) else files
+    has_decoded_images = any(
+        any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
+        and "spectrogram" not in fname.lower()
+        for fname in file_keys
+    )
+
+    if has_decoded_images:
+        return True
+
+    if packets_count > 0:
+        return True
+
+    return False
 
 
 def resolve_card_metadata(p: dict):
@@ -3013,7 +3062,7 @@ def render_card_html(p: dict) -> str:
 
     files_grid_html = "".join(file_rows)
     badge_class = f"badge-{sat_type.lower()}"
-    has_data_val = "true" if (packets_count > 0 or sat_type in ["WeatherSatellite", "CubeSat"]) else "false"
+    has_data_val = "true" if is_demod_successful(p) else "false"
 
     # 地上局テレメトリ諸元 & パケットプレビューの生成
     metrics = resolve_pass_telemetry_metrics(p)
@@ -3461,26 +3510,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 limit = 12
             category = query.get("category", ["all"])[0]
             has_data_param = query.get("has_data", ["false"])[0].lower() in ["true", "1", "yes"]
+            demod_only_param = query.get("demod_only", ["false"])[0].lower() in ["true", "1", "yes"]
+            filter_demod = has_data_param or demod_only_param
 
             all_passes = pass_cache.get_all_passes()
 
-            counts = {"all": 0, "spacestation": 0, "weathersatellite": 0, "cubesat": 0}
+            counts = {
+                "all": 0,
+                "spacestation": 0,
+                "weathersatellite": 0,
+                "cubesat": 0,
+                "demod_success": 0,
+            }
             for p in all_passes:
                 st = get_satellite_type(p).lower()
                 counts["all"] += 1
                 if st in counts:
                     counts[st] += 1
+                if is_demod_successful(p):
+                    counts["demod_success"] += 1
 
             matched_passes = []
             for p in all_passes:
                 st = get_satellite_type(p)
                 if category != "all" and st.lower() != category.lower():
                     continue
-                if has_data_param:
-                    summary = p.get("summary") or {}
-                    packets_count = summary.get("packets_count", 0)
-                    if packets_count == 0 and st not in ["WeatherSatellite", "CubeSat"]:
-                        continue
+                if filter_demod and not is_demod_successful(p):
+                    continue
                 matched_passes.append(p)
 
             total_matched = len(matched_passes)

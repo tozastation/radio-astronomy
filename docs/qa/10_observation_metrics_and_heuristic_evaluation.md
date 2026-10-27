@@ -142,7 +142,43 @@ cargo run --bin ground-station -- metrics --discord
 
 ---
 
-## 6. 一次情報リンク
+## 6. Web 観測ビューア（`satellite-viewer`）における復調成功フィルタ
+
+本ドキュメントの「中身が見える」判定基準は、Web 観測ダッシュボード（[`apps/satellite-viewer`](../../apps/satellite-viewer)）のフィルタリング機能としても直接統合されています。
+
+### 6.1 復調成功判定関数 `is_demod_successful`
+S3（Garage）に記録された数百件規模の観測パス情報（`summary.json` およびファイル一覧）から、真に「中身が見える」成果が得られたパスを以下の決定論的ルールで判定します：
+
+```python
+def is_demod_successful(p: dict) -> bool:
+    summary = p.get("summary") or {}
+    files = p.get("files") or {}
+    packets_count = summary.get("packets_count", 0)
+
+    # 1. 気象衛星: スペクトログラム以外の復調気象画像（MSU-MR 等）が 1 枚以上生成されているか
+    file_keys = files.keys() if isinstance(files, dict) else files
+    has_decoded_images = any(
+        any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
+        and "spectrogram" not in fname.lower()
+        for fname in file_keys
+    )
+    if has_decoded_images:
+        return True
+
+    # 2. CubeSat / ISS / その他: CRC 検証を通過したデコードパケットが 1 件以上あるか
+    if packets_count > 0:
+        return True
+
+    return False
+```
+
+### 6.2 UI トグルボタン「✨ 復調成功のみ」
+- **直感的な絞り込み**: ツールバーに配置された `✨ 復調成功のみ (XX)` チップをクリックすることで、微弱信号（QPSK シンボル同期未確立やパケット未検出）を一括除外。
+- **カテゴリフィルタとの連動**: 「METEOR」や「FUNcube」などの衛星カテゴリと掛け合わせて「気象画像が生成されたパスのみ」「テレメトリが得られたパスのみ」を瞬時に抽出可能。
+
+---
+
+## 7. 一次情報リンク
 - [JSON Lines Text Format Specification](https://jsonlines.org/)
 - [DuckDB: Querying JSON Lines](https://duckdb.org/docs/data/json/overview.html)
 - [Discord Developer Portal: Execute Webhook (Embeds Object)](https://discord.com/developers/docs/resources/webhook#execute-webhook)
