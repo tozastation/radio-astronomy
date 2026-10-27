@@ -490,3 +490,173 @@ class OrbitCalculator:
         az_deg = math.degrees(math.atan2(e, n)) % 360.0
 
         return az_deg, el_deg, range_km
+
+
+SPEED_OF_LIGHT_M_S = 299792458.0
+
+KNOWN_SATELLITE_CATALOG = {
+    "ISS": {
+        "norad_id": 25544,
+        "default_freq_mhz": 145.825,
+        "inclination_deg": 51.64,
+        "orbit_type": "LEO (傾斜角 51.6°)",
+        "protocol": "AX.25 (1200bps AFSK Bell 202)",
+    },
+    "METEOR-M2 3": {
+        "norad_id": 57166,
+        "default_freq_mhz": 137.900,
+        "inclination_deg": 98.59,
+        "orbit_type": "SSO (太陽同期極軌道 98.6°)",
+        "protocol": "LRPT (QPSK 72kbps FEC)",
+    },
+    "METEOR-M2 4": {
+        "norad_id": 59051,
+        "default_freq_mhz": 137.900,
+        "inclination_deg": 98.72,
+        "orbit_type": "SSO (太陽同期極軌道 98.7°)",
+        "protocol": "LRPT (QPSK 72kbps FEC)",
+    },
+    "FUNCUBE-1": {
+        "norad_id": 39444,
+        "default_freq_mhz": 145.935,
+        "inclination_deg": 97.84,
+        "orbit_type": "SSO (太陽同期極軌道 97.8°)",
+        "protocol": "BPSK (1200bps Telemetry)",
+    },
+}
+
+
+def lookup_satellite_catalog(satellite_name: str) -> dict:
+    """衛星名から既知カタログ情報（NORAD ID, 周波数, 傾斜角, プロトコル）を検索"""
+    sat_upper = satellite_name.upper()
+    for key, info in KNOWN_SATELLITE_CATALOG.items():
+        if key in sat_upper:
+            return info
+    return {
+        "norad_id": None,
+        "default_freq_mhz": 145.0,
+        "inclination_deg": None,
+        "orbit_type": "LEO (低軌道)",
+        "protocol": "RF Carrier / Spectrum",
+    }
+
+
+def compute_fspl_db(freq_mhz: float, distance_km: float) -> float:
+    """
+    自由空間伝搬損失 (Free Space Path Loss: FSPL) [dB] を計算。
+    FSPL = 20*log10(d_km) + 20*log10(f_mhz) + 32.44
+    """
+    if distance_km <= 0 or freq_mhz <= 0:
+        return 0.0
+    return round(20.0 * math.log10(distance_km) + 20.0 * math.log10(freq_mhz) + 32.44, 2)
+
+
+def compute_doppler_shift_hz(freq_hz: float, radial_velocity_m_s: float) -> float:
+    """
+    相対視線速度 v_r [m/s]（接近時は負、離脱時は正）からドップラー周波数偏移 Δf [Hz] を計算。
+    Δf = - f0 * (v_r / c)
+    """
+    return round(-freq_hz * (radial_velocity_m_s / SPEED_OF_LIGHT_M_S), 2)
+
+
+def compute_pass_telemetry_metrics(
+    satellite_name: str,
+    points: List[TrajectoryPoint],
+    freq_mhz: Optional[float] = None,
+    norad_id: Optional[int] = None,
+    inclination_deg: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    1パス分の TrajectoryPoint 時系列データから、地上局テレメトリ諸元
+    （TCA、仰角、距離、FSPL、理論最大ドップラー、変化率、開口窓通過時間など）を算出。
+    """
+    if not points:
+        return None
+
+    cat_info = lookup_satellite_catalog(satellite_name)
+    eff_freq_mhz = freq_mhz or cat_info.get("default_freq_mhz", 145.825)
+    eff_norad_id = norad_id or cat_info.get("norad_id")
+    eff_inc_deg = inclination_deg or cat_info.get("inclination_deg")
+    orbit_type = cat_info.get("orbit_type", "LEO")
+    protocol = cat_info.get("protocol", "RF Spectrum")
+
+    # 1. TCA (Time of Closest Approach) 及び 最大仰角の特定
+    tca_idx = 0
+    max_el = -90.0
+    for idx, p in enumerate(points):
+        if p.el > max_el:
+            max_el = p.el
+            tca_idx = idx
+
+    tca_pt = points[tca_idx]
+    max_el_az = tca_pt.az
+    tca_time_iso = tca_pt.timestamp_utc
+
+    # 2. 斜距離 (Slant Range) 最小値・最大値
+    min_range_km = min(p.range_km for p in points)
+    max_range_km = max(p.range_km for p in points)
+
+    # 3. 自由空間伝搬損失 (FSPL)
+    min_fspl_db = compute_fspl_db(eff_freq_mhz, min_range_km)
+    max_fspl_db = compute_fspl_db(eff_freq_mhz, max_range_km)
+    delta_fspl_db = round(max_fspl_db - min_fspl_db, 1)
+
+    # 4. 相対視線速度とドップラー偏移時系列の算出
+    n_pts = len(points)
+    doppler_shifts = []
+    freq_hz = eff_freq_mhz * 1e6
+
+    for i in range(n_pts):
+        if n_pts == 1:
+            vr_m_s = 0.0
+        elif i == 0:
+            dt = max(1, points[1].t - points[0].t)
+            vr_m_s = ((points[1].range_km - points[0].range_km) / dt) * 1000.0
+        elif i == n_pts - 1:
+            dt = max(1, points[-1].t - points[-2].t)
+            vr_m_s = ((points[-1].range_km - points[-2].range_km) / dt) * 1000.0
+        else:
+            dt = max(2, points[i + 1].t - points[i - 1].t)
+            vr_m_s = ((points[i + 1].range_km - points[i - 1].range_km) / dt) * 1000.0
+
+        shift_hz = compute_doppler_shift_hz(freq_hz, vr_m_s)
+        doppler_shifts.append(shift_hz)
+
+    max_doppler_hz = round(max(abs(s) for s in doppler_shifts), 1) if doppler_shifts else 0.0
+
+    # TCA における周波数変化率 df/dt [Hz/s]
+    if n_pts >= 3 and 0 < tca_idx < n_pts - 1:
+        dt = max(1, points[tca_idx + 1].t - points[tca_idx - 1].t)
+        tca_df_dt_hz_s = round((doppler_shifts[tca_idx + 1] - doppler_shifts[tca_idx - 1]) / dt, 1)
+    else:
+        tca_df_dt_hz_s = 0.0
+
+    # 5. 開口窓滞在時間と進入・離脱方位
+    window_pts = [p for p in points if p.in_window]
+    window_duration_seconds = len(window_pts)
+    window_aos_az = round(window_pts[0].az, 1) if window_pts else None
+    window_los_az = round(window_pts[-1].az, 1) if window_pts else None
+
+    return {
+        "satellite": satellite_name,
+        "norad_id": eff_norad_id,
+        "orbit_type": orbit_type,
+        "inclination_deg": eff_inc_deg,
+        "protocol": protocol,
+        "freq_mhz": round(eff_freq_mhz, 3),
+        "tca_time_iso": tca_time_iso,
+        "tca_second": tca_pt.t,
+        "max_elevation": round(max_el, 1),
+        "max_elevation_azimuth": round(max_el_az, 1),
+        "min_range_km": round(min_range_km, 1),
+        "max_range_km": round(max_range_km, 1),
+        "min_fspl_db": min_fspl_db,
+        "max_fspl_db": max_fspl_db,
+        "delta_fspl_db": delta_fspl_db,
+        "max_doppler_hz": max_doppler_hz,
+        "tca_df_dt_hz_s": tca_df_dt_hz_s,
+        "window_duration_seconds": window_duration_seconds,
+        "window_aos_az": window_aos_az,
+        "window_los_az": window_los_az,
+    }
+

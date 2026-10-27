@@ -7,6 +7,7 @@ Ultra-lightweight web dashboard for mobile and desktop browsing.
 import os
 import re
 import json
+import html
 import urllib.parse
 import threading
 import asyncio
@@ -19,7 +20,13 @@ import boto3
 from botocore.client import Config
 from temporalio.client import Client
 
-from orbit_calculator import OrbitCalculator, load_tle_for_satellite, DEFAULT_TARGET_TLES
+from orbit_calculator import (
+    OrbitCalculator,
+    load_tle_for_satellite,
+    DEFAULT_TARGET_TLES,
+    compute_pass_telemetry_metrics,
+    lookup_satellite_catalog,
+)
 
 S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", "http://garage-s3.storage.svc.cluster.local:3900")
 S3_BUCKET = os.environ.get("S3_BUCKET", "satellite-recordings")
@@ -264,6 +271,252 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .meta-item { display: flex; flex-direction: column; }
     .meta-label { color: var(--text-muted); font-size: 0.7rem; }
     .meta-val { font-weight: 600; margin-top: 2px; }
+
+    /* HUD 風 地上局テレメトリグリッド & ギーク解説ツールチップ */
+    .telemetry-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(8, 14, 26, 0.75);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 10px;
+      padding: 12px;
+      box-shadow: inset 0 0 15px rgba(56, 189, 248, 0.04);
+    }
+    .telemetry-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+    }
+    .telemetry-panel-hint {
+      color: #94a3b8;
+      font-size: 0.68rem;
+      font-weight: 400;
+      text-transform: none;
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px 14px;
+    }
+    @media (max-width: 680px) {
+      .telemetry-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+    }
+    .telemetry-item {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 6px 8px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .telemetry-item:hover {
+      background: rgba(56, 189, 248, 0.05);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+    .telemetry-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+    .telemetry-label {
+      color: #94a3b8;
+      font-size: 0.68rem;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: help;
+      border-bottom: 1px dotted rgba(56, 189, 248, 0.5);
+      user-select: none;
+      touch-action: manipulation;
+    }
+    .telemetry-label:hover {
+      color: #38bdf8;
+    }
+    .telemetry-info-badge {
+      font-size: 0.65rem;
+      color: #38bdf8;
+      opacity: 0.8;
+    }
+    .telemetry-val {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-top: 3px;
+      line-height: 1.25;
+      word-break: break-all;
+    }
+    .telemetry-subval {
+      font-size: 0.72rem;
+      font-weight: 400;
+      color: #38bdf8;
+      margin-left: 4px;
+    }
+
+    /* ギーク解説ツールチップ (HUD Popover) */
+    .geek-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 10px);
+      width: 290px;
+      max-width: 86vw;
+      background: #081024;
+      border: 1px solid #0284c7;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(56, 189, 248, 0.25);
+      padding: 10px 12px;
+      z-index: 1000;
+      text-align: left;
+      line-height: 1.4;
+      color: #e2e8f0;
+      pointer-events: auto;
+      backdrop-filter: blur(8px);
+    }
+    .geek-tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      border-width: 6px;
+      border-style: solid;
+      border-color: #0284c7 transparent transparent transparent;
+    }
+    /* 列ごとの見切れ防止位置調整 */
+    .telemetry-col-left .geek-tooltip {
+      left: 0;
+      transform: none;
+    }
+    .telemetry-col-left .geek-tooltip::after {
+      left: 20px;
+    }
+    .telemetry-col-center .geek-tooltip {
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .telemetry-col-center .geek-tooltip::after {
+      left: 50%;
+      margin-left: -6px;
+    }
+    .telemetry-col-right .geek-tooltip {
+      right: 0;
+      left: auto;
+      transform: none;
+    }
+    .telemetry-col-right .geek-tooltip::after {
+      left: auto;
+      right: 20px;
+    }
+    @media (max-width: 680px) {
+      .geek-tooltip,
+      .telemetry-col-left .geek-tooltip,
+      .telemetry-col-center .geek-tooltip,
+      .telemetry-col-right .geek-tooltip {
+        left: 0 !important;
+        right: auto !important;
+        transform: none !important;
+        width: calc(100vw - 48px) !important;
+        max-width: 320px !important;
+      }
+      .geek-tooltip::after {
+        left: 24px !important;
+        right: auto !important;
+      }
+    }
+    /* ホバー（デスクトップ）またはクリック（モバイル）で表示 */
+    .telemetry-item:hover .geek-tooltip,
+    .geek-tooltip.is-open {
+      display: block;
+      animation: tooltipFadeIn 0.15s ease-out;
+    }
+    @keyframes tooltipFadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .geek-tooltip-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .geek-tooltip-section {
+      margin-top: 6px;
+    }
+    .geek-tooltip-tag {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #fbbf24;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .geek-tooltip-formula {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.72rem;
+      color: #6ee7b7;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 3px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(110, 231, 183, 0.2);
+      margin-bottom: 4px;
+      word-break: break-all;
+    }
+    .geek-tooltip-body {
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      line-height: 1.35;
+    }
+
+    /* 最新パケット・インラインプレビュー */
+    .packet-preview-container {
+      background: #020617;
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      border-radius: 8px;
+      padding: 10px 12px;
+      box-shadow: inset 0 0 10px rgba(52, 211, 153, 0.05);
+    }
+    .packet-preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #34d399;
+      margin-bottom: 6px;
+      border-bottom: 1px dashed rgba(52, 211, 153, 0.2);
+      padding-bottom: 4px;
+    }
+    .packet-preview-line {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.76rem;
+      color: #a7f3d0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .packet-preview-src {
+      color: #38bdf8;
+      font-weight: bold;
+    }
+    .packet-preview-dst {
+      color: #cbd5e1;
+    }
 
     /* JSON Details & Code View */
     details.data-accordion {
@@ -2050,6 +2303,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       observer.observe(sentinel);
     }
 
+    function toggleGeekTooltip(e, el) {
+      e.stopPropagation();
+      const tip = el.querySelector('.geek-tooltip');
+      if (!tip) return;
+      const wasOpen = tip.classList.contains('is-open');
+      document.querySelectorAll('.geek-tooltip.is-open').forEach(t => t.classList.remove('is-open'));
+      if (!wasOpen) tip.classList.add('is-open');
+    }
+
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.geek-tooltip.is-open').forEach(t => t.classList.remove('is-open'));
+    });
+
     window.addEventListener('DOMContentLoaded', () => {
       loadPasses(1, true);
       setupInfiniteScroll();
@@ -2323,6 +2589,288 @@ def resolve_card_metadata(p: dict):
     return sat_type, signal_type, freq_label, icon, summary_text
 
 
+TELEMETRY_EXPLANATIONS = {
+    "tca": {
+        "title": "⏰ TCA (Time of Closest Approach / 最接近通過時刻)",
+        "formula": "v_r(t) = 0,  d(Range)/dt = 0",
+        "theory": "衛星が観測点に最も接近し、視線速度がゼロとなる基準時刻。接近（負の視線速度）から離脱（正の視線速度）へ反転する境界点です。",
+        "balcony": "空間距離が最小となるため電波強度がピークに達し、ドップラー偏移がゼロを横切る観測のコア時刻です。",
+    },
+    "elevation": {
+        "title": "📐 Max Elevation & Azimuth (最大仰角・通過方位)",
+        "formula": "El = arcsin(u / Range),  Az = arctan2(e, n)",
+        "theory": "地平線 (0°) から天頂 (90°) を測る最高仰角と、その瞬間の水平方位角（北0°, 東90°, 南180°, 西270°）。",
+        "balcony": "北向き開口窓 (El 25°〜60°, Az 250°〜110°) に最大仰角が収まるパスほど、上階の庇や手すりの遮蔽を避けて強力な直接波を受信できます。",
+    },
+    "window": {
+        "title": "🔭 Sky Window Duration (開口窓滞在時間)",
+        "formula": "T_window = Σ [t | Az(t) ∈ [250°, 110°] ∧ El(t) ∈ [25°, 60°]]",
+        "theory": "ベランダの幾何学的視野限界（手すり下限〜庇上限）内を衛星が通過した実効時間と、進入・離脱方位。",
+        "balcony": "南側を鉄筋コンクリートが遮るため、直接波を受信できる正味のチャンスはこの開口窓通過時間（通常2〜4分間）に限られます。",
+    },
+    "norad": {
+        "title": "🛰️ NORAD Cat ID & Orbit Type (軌道分類)",
+        "formula": "TLE Line 1 (Columns 3-7: Catalog Number), 軌道傾斜角 i",
+        "theory": "北米航空宇宙防衛司令部が付与する一意の衛星番号と、軌道傾斜角 i から分類される軌道特性。",
+        "balcony": "ISS (i=51.6°) は西から東へ傾いて飛び、気象衛星やCubeSat (i≈98° 太陽同期極軌道) は北極上空からベランダ正面へ進入します。",
+    },
+    "range": {
+        "title": "📏 Slant Range (斜距離・空間幾何距離)",
+        "formula": "Range = |r_sat(t) - r_obs| = √(e² + n² + u²) [km]",
+        "theory": "地上局アンテナから衛星本体までの直線空間距離。",
+        "balcony": "低軌道衛星は約500km（直上付近）から2500km（地平線付近）まで激変し、電波の幾何学的拡散減衰（FSPL）に直結します。",
+    },
+    "fspl": {
+        "title": "📉 FSPL (自由空間伝搬損失)",
+        "formula": "FSPL = 20 log₁₀(d_km) + 20 log₁₀(f_MHz) + 32.44 [dB]",
+        "theory": "等方性アンテナから放射された電波が、真空中を球面拡散伝搬する際の幾何学的減衰量。",
+        "balcony": "距離変動に伴いパス中に 10〜15 dB も減衰量が変化し、AOS/LOS 付近と TCA 付近での受信電力の山なり曲線の主因となります。",
+    },
+    "doppler": {
+        "title": "〰️ Doppler Shift & df/dt (ドップラー周波数偏移)",
+        "formula": "Δf = -f₀ × (v_r / c) [Hz],  df/dt [Hz/s]",
+        "theory": "衛星の高速飛行（時速約2.8万km）に伴う相対視線速度 v_r による周波数ズレと、TCA通過時の周波数変化率。",
+        "balcony": "TCA通過時に変化率 df/dt（S字カーブの傾き）が最大となり、スペクトログラム上に美しい変曲点として刻まれます。",
+    },
+    "protocol": {
+        "title": "📡 Protocol & Modulation (物理・通信諸元)",
+        "formula": "AFSK 1200bps (Bell 202) / BPSK / QPSK 72kbps",
+        "theory": "高周波搬送波にデジタルビット列を変調する方式と、データリンク層プロトコル（AX.25等）。",
+        "balcony": "ISSは音声FM帯でのAFSK変調、CubeSatは低電力に強いBPSK、気象衛星は高密度画像を送るQPSKを採用しています。",
+    },
+    "decode": {
+        "title": "📦 Decode Stats & CRC (パケット復号実績)",
+        "formula": "CRC-16-CCITT / FCS Checksum Pass",
+        "theory": "受信電波からノイズを取り除き、誤り検出符号 (CRC) を通過した正常パケットの検出数。",
+        "balcony": "ベランダの手すり反射（マルチパス）や都市雑音に打ち勝ち、1ビットの誤りもなく地上局で復号できた正味の実績です。",
+    },
+}
+
+
+def resolve_pass_telemetry_metrics(p: dict) -> dict:
+    """
+    パスデータ p から地上局テレメトリ諸元を算出・キャッシュして返す。
+    TLE 計算が不可能な場合でも安全なフォールバック値を返す。
+    """
+    if p.get("telemetry_metrics"):
+        return p["telemetry_metrics"]
+
+    satellite = p.get("satellite", "")
+    pass_id = p.get("pass_id", "")
+    cat_info = lookup_satellite_catalog(satellite)
+    summary = p.get("summary") or {}
+
+    duration = summary.get("duration_seconds") or summary.get("recording_duration_sec") or 406.0
+    try:
+        duration_sec = int(float(duration))
+    except (ValueError, TypeError):
+        duration_sec = 406
+
+    parsed_sat, start_time = parse_pass_id(pass_id)
+    if not start_time:
+        start_time = p.get("last_modified_dt") or datetime.now(timezone.utc)
+
+    tle = load_tle_for_satellite(satellite)
+    metrics = None
+    if tle:
+        try:
+            calc = OrbitCalculator()
+            points = calc.calculate_trajectory(
+                tle_line1=tle[0],
+                tle_line2=tle[1],
+                start_time=start_time,
+                duration_seconds=duration_sec,
+                step_seconds=1,
+            )
+            metrics = compute_pass_telemetry_metrics(
+                satellite_name=satellite,
+                points=points,
+                freq_mhz=cat_info.get("default_freq_mhz"),
+                norad_id=cat_info.get("norad_id"),
+                inclination_deg=cat_info.get("inclination_deg"),
+            )
+        except Exception as e:
+            print(f"Error computing telemetry metrics for {pass_id}: {e}", flush=True)
+
+    if not metrics:
+        # 安全なフォールバック辞書
+        metrics = {
+            "satellite": satellite,
+            "norad_id": cat_info.get("norad_id"),
+            "orbit_type": cat_info.get("orbit_type", "LEO"),
+            "inclination_deg": cat_info.get("inclination_deg"),
+            "protocol": cat_info.get("protocol", "RF Spectrum"),
+            "freq_mhz": cat_info.get("default_freq_mhz", 145.825),
+            "tca_time_iso": p.get("last_modified", "-"),
+            "tca_second": 0,
+            "max_elevation": 0.0,
+            "max_elevation_azimuth": 0.0,
+            "min_range_km": 0.0,
+            "max_range_km": 0.0,
+            "min_fspl_db": 0.0,
+            "max_fspl_db": 0.0,
+            "delta_fspl_db": 0.0,
+            "max_doppler_hz": 0.0,
+            "tca_df_dt_hz_s": 0.0,
+            "window_duration_seconds": 0,
+            "window_aos_az": None,
+            "window_los_az": None,
+        }
+
+    p["telemetry_metrics"] = metrics
+    return metrics
+
+
+def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str, last_modified_str: str) -> str:
+    """
+    HUD 風 地上局テレメトリグリッド（9項目）およびギーク解説ツールチップを生成。
+    """
+    def make_item(key: str, icon: str, label: str, val_main: str, val_sub: str, col_class: str) -> str:
+        exp = TELEMETRY_EXPLANATIONS.get(key, {})
+        title_esc = html.escape(exp.get("title", label))
+        formula_esc = html.escape(exp.get("formula", ""))
+        theory_esc = html.escape(exp.get("theory", ""))
+        balcony_esc = html.escape(exp.get("balcony", ""))
+
+        return f"""
+        <div class="telemetry-item {col_class}">
+          <div class="telemetry-label-row">
+            <span class="telemetry-label" onclick="toggleGeekTooltip(event, this.parentElement.parentElement)">
+              {icon} {label} <span class="telemetry-info-badge">ⓘ</span>
+            </span>
+          </div>
+          <div class="telemetry-val">
+            {val_main} <span class="telemetry-subval">{val_sub}</span>
+          </div>
+          <div class="geek-tooltip" onclick="event.stopPropagation()">
+            <div class="geek-tooltip-title">{title_esc}</div>
+            <div class="geek-tooltip-section">
+              <div class="geek-tooltip-tag">📐 物理・数式定義</div>
+              <div class="geek-tooltip-formula">{formula_esc}</div>
+              <div class="geek-tooltip-body">{theory_esc}</div>
+            </div>
+            <div class="geek-tooltip-section">
+              <div class="geek-tooltip-tag">🔭 ベランダ観測での着眼点</div>
+              <div class="geek-tooltip-body">{balcony_esc}</div>
+            </div>
+          </div>
+        </div>
+        """
+
+    # 1. TCA
+    tca_iso = metrics.get("tca_time_iso", "")
+    tca_disp = tca_iso
+    if "T" in tca_iso:
+        try:
+            dt = datetime.fromisoformat(tca_iso.replace("Z", "+00:00"))
+            tca_disp = dt.strftime("%H:%M:%S UTC")
+        except Exception:
+            pass
+    item_tca = make_item("tca", "⏰", "TCA (最接近)", tca_disp, f"(t={metrics.get('tca_second', 0)}s)", "telemetry-col-left")
+
+    # 2. Max El
+    max_el = metrics.get("max_elevation", 0.0)
+    max_el_az = metrics.get("max_elevation_azimuth", 0.0)
+    item_el = make_item("elevation", "📐", "MAX EL (最大仰角)", f"{max_el}°", f"(Az {max_el_az}°)", "telemetry-col-center")
+
+    # 3. Sky Window
+    win_sec = metrics.get("window_duration_seconds", 0)
+    aos_az = metrics.get("window_aos_az")
+    los_az = metrics.get("window_los_az")
+    win_sub = f"({aos_az}°→{los_az}°)" if (aos_az is not None and los_az is not None) else "(遮蔽なし)"
+    item_win = make_item("window", "🔭", "SKY WINDOW (開口窓)", f"{win_sec} 秒", win_sub, "telemetry-col-right")
+
+    # 4. NORAD
+    norad_id = metrics.get("norad_id")
+    norad_str = f"#{norad_id}" if norad_id else "-"
+    orbit_type = metrics.get("orbit_type", "LEO")
+    item_norad = make_item("norad", "🛰️", "NORAD / ORBIT", norad_str, f"({orbit_type})", "telemetry-col-left")
+
+    # 5. Slant Range
+    min_r = metrics.get("min_range_km", 0.0)
+    max_r = metrics.get("max_range_km", 0.0)
+    item_range = make_item("range", "📏", "SLANT RANGE (斜距離)", f"{min_r} km", f"(Max: {max_r}km)", "telemetry-col-center")
+
+    # 6. FSPL
+    min_fspl = metrics.get("min_fspl_db", 0.0)
+    delta_fspl = metrics.get("delta_fspl_db", 0.0)
+    item_fspl = make_item("fspl", "📉", "FSPL (伝搬損失)", f"{min_fspl} dB", f"(Δ {delta_fspl}dB)", "telemetry-col-right")
+
+    # 7. Doppler
+    max_dop = metrics.get("max_doppler_hz", 0.0)
+    df_dt = metrics.get("tca_df_dt_hz_s", 0.0)
+    item_dop = make_item("doppler", "〰️", "DOPPLER (理論偏移)", f"±{max_dop} Hz", f"({df_dt} Hz/s)", "telemetry-col-left")
+
+    # 8. Protocol
+    proto = metrics.get("protocol", "RF Spectrum")
+    freq_mhz = metrics.get("freq_mhz", 145.825)
+    item_proto = make_item("protocol", "📡", "PROTOCOL (通信諸元)", proto, f"({freq_mhz} MHz)", "telemetry-col-center")
+
+    # 9. Decode Stats
+    stats_main = f"{packets_count} パケット" if sat_type == "SpaceStation" else f"{packets_count} フレーム"
+    stats_sub = "CRC-OK" if packets_count > 0 else "NO SIGNAL"
+    item_decode = make_item("decode", "📦", "DECODE STATS (復号)", stats_main, f"({stats_sub})", "telemetry-col-right")
+
+    return f"""
+    <div class="telemetry-panel">
+      <div class="telemetry-panel-header">
+        <span>📐 地上局テレメトリ & 軌道力学諸元</span>
+        <span class="telemetry-panel-hint">各項目の ⓘ をタップ / ホバーで物理解説表示</span>
+      </div>
+      <div class="telemetry-grid">
+        {item_tca}
+        {item_el}
+        {item_win}
+        {item_norad}
+        {item_range}
+        {item_fspl}
+        {item_dop}
+        {item_proto}
+        {item_decode}
+      </div>
+    </div>
+    """
+
+
+def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
+    """
+    受信したパケット（APRS 等）の最新フレームをインラインでターミナル風にチラ見せ表示。
+    """
+    if not packet_items:
+        return ""
+
+    # 最新の最大2件を表示
+    recent_pkts = packet_items[-2:]
+    lines_html = []
+
+    for pkt in recent_pkts:
+        src = html.escape(pkt.get("from") or pkt.get("source") or "SRC")
+        dst = html.escape(pkt.get("to") or pkt.get("destination") or "DST")
+        route = pkt.get("route") or []
+        route_str = f" via {html.escape(','.join(route))}" if route else ""
+
+        payload = pkt.get("comment") or pkt.get("message") or pkt.get("data") or pkt.get("raw") or ""
+        payload_esc = html.escape(str(payload))
+
+        line = f"""
+        <div class="packet-preview-line">
+          <span class="packet-preview-src">&gt; {src}</span><span class="packet-preview-dst">&gt;{dst}{route_str}:</span> {payload_esc}
+        </div>
+        """
+        lines_html.append(line)
+
+    content_html = "".join(lines_html)
+    return f"""
+    <div class="packet-preview-container">
+      <div class="packet-preview-header">
+        <span>📡 最新復号パケット・プレビュー ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)</span>
+        <span style="font-family: ui-monospace, monospace; font-size: 0.68rem; color: #34d399;">CRC: PASS</span>
+      </div>
+      {content_html}
+    </div>
+    """
+
+
 def render_card_html(p: dict) -> str:
     spectrogram_html = ""
     if "spectrogram.png" in p.get("files", {}):
@@ -2438,6 +2986,11 @@ def render_card_html(p: dict) -> str:
     badge_class = f"badge-{sat_type.lower()}"
     has_data_val = "true" if (packets_count > 0 or sat_type in ["WeatherSatellite", "CubeSat"]) else "false"
 
+    # 地上局テレメトリ諸元 & パケットプレビューの生成
+    metrics = resolve_pass_telemetry_metrics(p)
+    telemetry_panel_html = render_telemetry_grid_html(metrics, packets_count, sat_type, p.get("last_modified", ""))
+    packet_preview_html = render_packet_preview_html(packet_items, sat_type)
+
     return f"""
     <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}">
       <div class="card-header">
@@ -2459,16 +3012,8 @@ def render_card_html(p: dict) -> str:
         {spectrogram_html}
         {decoded_images_html}
         {summary_box_html}
-        <div class="meta-grid">
-          <div class="meta-item">
-            <span class="meta-label">観測・処理時刻</span>
-            <span class="meta-val">{p.get('last_modified', '')}</span>
-          </div>
-          <div class="meta-item">
-            <span class="meta-label">受信信号 / パケット</span>
-            <span class="meta-val">{packets_count} 件検出</span>
-          </div>
-        </div>
+        {telemetry_panel_html}
+        {packet_preview_html}
         {summary_accordion}
         {packets_accordion}
         <div class="files-section">
