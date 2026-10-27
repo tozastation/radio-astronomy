@@ -8,7 +8,7 @@
 [![Temporal](https://img.shields.io/badge/Workflow-Temporal-black?logo=temporal&logoColor=white)](https://temporal.io/)
 
 > 東京都の北向きベランダから、RTL-SDR Blog V4 と小型 PC（GPD Pocket3）で電波を受信し、**衛星画像、テレメトリ（計測値）、復号した文字列**まで確認するためのリポジトリです。
-> とりあえず動くものを作って高まりながら、AI Agent のアウトプットに tozastation が追従していくリポジトリでもあります。
+> **Antigravity** を使ってまずは動くものを作り、無線工学やデジタル信号処理（DSP）の理論を後追いで勉強しながら進めています。
 
 マンションのベランダから、個人の地上局を動かすプロジェクト（通称: ベランダ天文学）です。受信できたかどうかは「結果の中身が見えること（画像、テレメトリ、復号文字列）」で判定します（判定基準: [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md)）。
 
