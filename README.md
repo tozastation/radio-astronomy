@@ -16,11 +16,11 @@
 
 ## 観測成果（気象衛星 METEOR-M2 高解像度 LRPT 画像）
 
-東京都の北向きベランダに設置したマグネットホイップ（室外機の天板吸着）と RTL-SDR Blog V4 で受信し、自動解析パイプラインによって復調したロシアの極軌道気象衛星 **METEOR-M2** の高解像度気象写真（MSU-MR 疑似カラー幾何補正パノラマ写真、2800 × 792 ピクセル）です。
+東京都の北向きベランダに設置したマグネットホイップ（室外機の天板吸着）と RTL-SDR Blog V4 で受信し、自動解析パイプラインによって復調したロシアの極軌道気象衛星 **METEOR-M2** の高解像度気象写真（AVHRR 自然色風マルチスペクトル合成、1568 × 792 ピクセル）です。
 
-![METEOR-M2 高解像度気象衛星写真（MSU-MR 疑似カラー補正）](docs/images/meteor_highres_decode_20261026/msu_mr_rgb_MSU-MR_124_False_Color_corrected.png)
+![METEOR-M2 高解像度気象衛星写真（AVHRR 自然色風合成）](docs/images/meteor_highres_decode_20261026/msu_mr_rgb_AVHRR_221_False_Color.png)
 
-3 分間以上の安定した OQPSK/QPSK シンボル同期を維持し、日本列島周辺の雲の渦や海洋が巨大なパノラマ写真として記録されました。復調メカニズムや DSP パイプラインの改善経緯は [docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md](docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md) にあります。
+3 分間以上の安定した OQPSK シンボル同期を維持し、画面中央を南北に貫く**間宮海峡**と**樺太（サハリン）**、西側に広がる**ロシア極東・中国東北部の大陸（初雪で冠雪した山脈やアムール川水系）**、そして東側の**北海道東方沖・千島列島に渦巻く低気圧の雲海**が鮮明に記録されました。復調メカニズムや DSP パイプラインの改善経緯は [docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md](docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md) にあります。
 
 ---
 
