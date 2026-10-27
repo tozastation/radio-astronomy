@@ -1,6 +1,7 @@
 # ベランダ電波観測所
 
 > 東京都の北向きベランダから、RTL-SDR Blog V4 と小型PC（GPD Pocket3）で電波を受信し、**衛星画像、テレメトリ（計測値）、復号した文字列**まで確認するためのリポジトリです。
+> とりあえず動くものを作って高まりながら、AI Agent のアウトプットに tozastation が追従していくリポジトリでもあります。
 
 マンションのベランダから、個人の地上局を動かすプロジェクトです。通称はベランダ天文学です。受信できたかどうかは、結果の中身が見えることで判断します。判断基準は [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md) に書いてあります。
 
@@ -83,6 +84,41 @@ flowchart TB
 | `solar-station` | コードは残している。北向きベランダから太陽は直接見えない | `apps/ground-station` |
 
 21cm 水素線を常時分光して貯める処理（生の IQ を 1 秒積算し、約 8 KB/s で保存する構成）は、このリポジトリでは動いていません。水素線の式は [docs/02_radio_astronomy_guide.md](docs/02_radio_astronomy_guide.md) に参照として残しています。
+
+---
+
+## 観測成果（気象衛星 METEOR-M2 高解像度 LRPT 画像）
+
+東京都の北向きベランダに設置したマグネットホイップ（室外機の天板吸着）と RTL-SDR Blog V4 で受信し、自動解析パイプラインによって復調したロシアの極軌道気象衛星 **METEOR-M2** の高解像度気象写真（MSU-MR 疑似カラー幾何補正パノラマ写真、2800 × 792 ピクセル）です。
+
+![METEOR-M2 高解像度気象衛星写真（MSU-MR 疑似カラー補正）](docs/images/meteor_highres_decode_20261026/msu_mr_rgb_MSU-MR_124_False_Color_corrected.png)
+
+3 分間以上の安定した OQPSK/QPSK シンボル同期を維持し、日本列島周辺の雲の渦や海洋が巨大なパノラマ写真として記録されました。復調メカニズムや DSP パイプラインの改善経緯は [docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md](docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md) にあります。
+
+---
+
+## 観測ビューア & 監視ダッシュボード
+
+### 観測結果ビューア（`satellite-viewer` / NodePort 30088）
+
+録音されたパスごとの音声・スペクトログラム、復調された気象画像、地上局テレメトリ（最接近時刻 TCA、最大仰角、開口角）をブラウザから確認できます。
+
+| 観測結果ダッシュボード | 天球観測リプレイ ＆ 実績ヒートマップ |
+| :---: | :---: |
+| ![観測結果ダッシュボード](docs/images/readme_viewer_dashboard.png) | ![天球観測リプレイ](docs/images/readme_viewer_replay.png) |
+
+- **地上局テレメトリ & 軌道力学諸元**: 通過ごとの最接近時刻 TCA、最大仰角、ベランダ開口角、ドップラー実測 TCA 補正値を即座に算出。各項目の ⓘ をタップすると無線工学・軌道力学の物理解説が表示されます（詳細は [docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md)）。
+- **天球観測リプレイ & GIF 切り出し**: 北向きベランダの見通し範囲（\(270^\circ \sim 90^\circ\)）と観測実績ヒートマップを天球上に重畳し、衛星の通過軌跡をシミュレーション再生および GIF エクスポートできます。
+
+### リアルタイム監視ダッシュボード（`Grafana` / NodePort 30080）
+
+Prometheus と連携し、衛星通過中の物理量や小型 PC（GPD Pocket3）のリソースを常時監視します。
+
+![Grafana 衛星追尾ダッシュボード](docs/images/readme_grafana_dashboard.png)
+
+- **ドップラー偏移 S 字カーブ**: 軌道計算による理論値周波数シフトと、受信信号の電力重心（実測値）をリアルタイムに比較。
+- **受信電波強度（RSSI）**: パス中の信号強度プロファイルを可視化。
+- **エッジノード監視**: GPD Pocket3（アンテナ側 `gpd-pocket3-edge`）の CPU・メモリ消費量や Pod 別リソースを KubeEdge 経由で常時メトリクス収集。
 
 ---
 
