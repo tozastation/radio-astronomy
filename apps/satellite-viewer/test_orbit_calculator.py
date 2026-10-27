@@ -43,6 +43,23 @@ class TestOrbitCalculator(unittest.TestCase):
         # ベランダ手すり下限遮蔽（仰角 $15^\circ < 25^\circ$）
         self.assertFalse(self.calc.is_in_sky_window(0.0, 15.0))
 
+    def test_is_in_sky_window_empirical_mask(self):
+        """経験的 Horizon Mask が指定された場合、実測境界で開口判定されること"""
+        # 方位 0度（北）において実測で 18°〜68° まで受かったマスク (10度ステップの bin index または方位角)
+        empirical_mask = {
+            0: (18.0, 68.0),   # Az bin 0 (0°〜10°)
+            1: (22.0, 62.0),   # Az bin 1 (10°〜20°)
+        }
+        # 通常は仰角 20° < 25° で False だが、empirical_mask では 18°〜68° のため True
+        self.assertTrue(self.calc.is_in_sky_window(5.0, 20.0, empirical_mask=empirical_mask))
+        # 通常は仰角 65° > 60° で False だが、empirical_mask では 18°〜68° のため True
+        self.assertTrue(self.calc.is_in_sky_window(5.0, 65.0, empirical_mask=empirical_mask))
+        # 範囲外（仰角 15° < 18°）は False
+        self.assertFalse(self.calc.is_in_sky_window(5.0, 15.0, empirical_mask=empirical_mask))
+        # empirical_mask に未登録の方位（例: Az 90°）はデフォルトの静的境界判定にフォールバック
+        self.assertTrue(self.calc.is_in_sky_window(90.0, 30.0, empirical_mask=empirical_mask))
+        self.assertFalse(self.calc.is_in_sky_window(90.0, 15.0, empirical_mask=empirical_mask))
+
     def test_calculate_trajectory_reaches_expected_tca(self):
         """2026-10-25 00:53:44 UTC の METEOR-M2 3 パスで期待される TCA 諸元を検証"""
         start_utc = datetime(2026, 10, 25, 0, 53, 44, tzinfo=timezone.utc)

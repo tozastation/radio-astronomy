@@ -135,17 +135,31 @@ class OrbitCalculator:
         # 観測地点の ECEF 座標を事前計算 [km]
         self.obs_ecef_km = self._geodetic_to_ecef(self.lat_rad, self.lon_rad, self.alt_m)
 
-    def is_in_sky_window(self, az_deg: float, el_deg: float) -> bool:
+    def is_in_sky_window(
+        self,
+        az_deg: float,
+        el_deg: float,
+        empirical_mask: Optional[Dict[int, Tuple[float, float]]] = None
+    ) -> bool:
         """
         北向きベランダの開口窓（スカイウィンドウ）内にあるかを判定。
+        empirical_mask が指定されている場合、方位角ビン (10°ステップ: 0〜35) に対応する
+        実測境界 (el_min, el_max) を用いて動的に判定。
+        未登録方位または empirical_mask=None の場合は、デフォルトの幾何学的境界で判定。
         - 方位角: 250°〜360° または 0°〜110°（西〜北〜東）
         - 仰角: 25°〜60°（手すり下限〜上階スラブ庇上限）
         """
+        norm_az = az_deg % 360.0
+        az_bin = int(norm_az // 10.0) % 36
+
+        if empirical_mask and az_bin in empirical_mask:
+            el_min, el_max = empirical_mask[az_bin]
+            return el_min <= el_deg <= el_max
+
         if not (self.window_el_min <= el_deg <= self.window_el_max):
             return False
 
         # 方位角判定（0度をまたぐ区間 [250, 360] ∪ [0, 110]）
-        norm_az = az_deg % 360.0
         if self.window_az_min <= norm_az or norm_az <= self.window_az_max:
             return True
         return False

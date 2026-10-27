@@ -231,6 +231,27 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertEqual(iss_stats["successful_passes"], 1)
         self.assertAlmostEqual(iss_stats["overall_success_rate"], 1.0)
 
+    def test_pass_data_cache_compute_sky_heatmap(self):
+        # 復調成功パスを模擬
+        self.cache._passes = {
+            "p1": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261025_005344",
+                "summary": {"packets_count": 10, "status": "completed", "duration_seconds": 406.0},
+                "files": {"spectrogram.png": "...", "msu_mr.png": "..."},
+            }
+        }
+        heatmap_data = self.cache.compute_sky_heatmap()
+        self.assertIn("cells", heatmap_data)
+        self.assertIn("horizon_polygon", heatmap_data)
+        self.assertIn("total_successful_passes", heatmap_data)
+        self.assertEqual(heatmap_data["total_successful_passes"], 1)
+        self.assertGreater(len(heatmap_data["cells"]), 0)
+        c0 = heatmap_data["cells"][0]
+        self.assertIn("az", c0)
+        self.assertIn("el", c0)
+        self.assertIn("count", c0)
+
     def test_generate_future_passes_data(self):
         now_dt = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
         result = generate_future_passes_data(now_dt=now_dt, horizon_hours=24)

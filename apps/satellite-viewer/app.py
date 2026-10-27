@@ -1048,9 +1048,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="replay-layout">
           <!-- Left: Sky Dome Radar -->
           <div class="radar-wrapper">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:0.8rem; font-weight:bold; color:#cbd5e1;">2D 天球レーダー</span>
+              <button id="btnToggleHeatmap" class="btn-sm" onclick="toggleSkyHeatmap()" style="padding:2px 8px; font-size:0.75rem; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:4px; cursor:pointer;">🎯 実績ヒートマップ: OFF</button>
+            </div>
             <canvas id="radarCanvas" width="440" height="440" class="radar-canvas"></canvas>
             <div class="radar-legend">
               <div class="legend-item"><div class="legend-color" style="background:#06b6d4;"></div><span>開口窓 (Az 250°~110°, El 25°~60°)</span></div>
+              <div class="legend-item"><div class="legend-color" style="background:rgba(16,185,129,0.5); border:1px dashed #10b981;"></div><span>復調実績ヒートマップ</span></div>
               <div class="legend-item"><div class="legend-color" style="background:rgba(15,23,42,0.85); border:1px solid #ef4444;"></div><span>南側建物遮蔽</span></div>
               <div class="legend-item"><div class="legend-color" style="background:#34d399; border-radius:50%;"></div><span>衛星位置</span></div>
             </div>
@@ -1341,6 +1346,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let playAnimationId = null;
     let lastPlayTimestamp = null;
     let replayDecodedImgElement = null;
+    let showHeatmap = false;
+    let skyHeatmapData = null;
+
+    async function toggleSkyHeatmap() {
+      showHeatmap = !showHeatmap;
+      const btn = document.getElementById('btnToggleHeatmap');
+      if (showHeatmap) {
+        btn.textContent = '🎯 実績ヒートマップ: ON';
+        btn.style.color = '#10b981';
+        btn.style.borderColor = '#10b981';
+        if (!skyHeatmapData) {
+          try {
+            const res = await fetch('/api/sky-mask/heatmap');
+            if (res.ok) {
+              skyHeatmapData = await res.json();
+            }
+          } catch (e) {
+            console.error('Failed to load heatmap:', e);
+          }
+        }
+      } else {
+        btn.textContent = '🎯 実績ヒートマップ: OFF';
+        btn.style.color = '#94a3b8';
+        btn.style.borderColor = '#334155';
+      }
+      renderCurrentFrame();
+    }
 
     function formatMinSec(sec) {
       const m = Math.floor(sec / 60);
@@ -1477,6 +1509,47 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.shadowBlur = 10;
       ctx.stroke();
       ctx.shadowBlur = 0;
+
+      // 5.5 復調実績ヒートマップ ＆ 経験的 Horizon Mask
+      if (showHeatmap && skyHeatmapData && skyHeatmapData.cells && skyHeatmapData.cells.length > 0) {
+        const maxCount = Math.max(1, ...skyHeatmapData.cells.map(c => c.count));
+        skyHeatmapData.cells.forEach(c => {
+          const rInner = getRadius(c.el + 5);
+          const rOuter = getRadius(c.el);
+          const aStart = (c.az - 90) * Math.PI / 180.0;
+          const aEnd = (c.az + 10 - 90) * Math.PI / 180.0;
+          const normDensity = Math.min(1.0, c.count / maxCount);
+          const alpha = 0.15 + 0.50 * normDensity;
+
+          ctx.beginPath();
+          ctx.arc(xc, yc, rOuter, aStart, aEnd, false);
+          ctx.arc(xc, yc, rInner, aEnd, aStart, true);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(16, 185, 129, ${alpha.toFixed(2)})`;
+          ctx.fill();
+        });
+
+        // 実測開口境界ポリゴン (経験的 Horizon Mask)
+        if (skyHeatmapData.horizon_polygon && skyHeatmapData.horizon_polygon.length > 2) {
+          ctx.beginPath();
+          skyHeatmapData.horizon_polygon.forEach((pt, idx) => {
+            const xy = getXY(pt.az + 5, pt.el_min);
+            if (idx === 0) ctx.moveTo(xy.x, xy.y);
+            else ctx.lineTo(xy.x, xy.y);
+          });
+          for (let i = skyHeatmapData.horizon_polygon.length - 1; i >= 0; i--) {
+            const pt = skyHeatmapData.horizon_polygon[i];
+            const xy = getXY(pt.az + 5, pt.el_max);
+            ctx.lineTo(xy.x, xy.y);
+          }
+          ctx.closePath();
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
 
       // 6. 仰角同心円グリッド (30°, 60°)
       [30, 60].forEach(el => {
@@ -2408,6 +2481,7 @@ class PassDataCache:
         self.last_sync_time = 0.0
         self._passes = {}
         self._file_mtimes = {}
+        self._heatmap_cache = None
         self._lock = threading.Lock()
 
     def get_all_passes(self):
@@ -2511,9 +2585,10 @@ class PassDataCache:
 
         stats = {}
         for pass_id, pdata in self._passes.items():
+            pid = pdata.get("pass_id") or pass_id
             sat = pdata.get("satellite")
             if not sat:
-                sat, _ = parse_pass_id(pass_id)
+                sat, _ = parse_pass_id(pid)
             if not sat:
                 continue
 
@@ -2584,6 +2659,104 @@ class PassDataCache:
                 b_entry["rate"] = (b_succ / b_tot) if b_tot > 0 else 0.0
 
         return stats
+
+    def compute_sky_heatmap(self) -> dict:
+        """
+        全復調成功パスの軌道点群 (Az, El) を集計し、
+        天球グリッドセル (Az: 10°ステップ, El: 5°ステップ) の通過カウントと
+        方位角ごとの実効開口境界 (horizon_polygon) を算出。
+        """
+        if self._heatmap_cache is not None:
+            return self._heatmap_cache
+
+        if not self._passes and self.s3_client:
+            try:
+                self.get_all_passes()
+            except Exception:
+                pass
+
+        grid_counts = {}
+        az_elevations = {b: [] for b in range(36)}
+        successful_passes_count = 0
+
+        for pass_id, pdata in self._passes.items():
+            summary = pdata.get("summary") or {}
+            packets_count = summary.get("packets_count", 0)
+            files = pdata.get("files") or {}
+            has_images = any(f.lower().endswith(".png") and "spectrogram" not in f.lower() for f in files)
+            if not (packets_count > 0 or has_images):
+                continue
+
+            pid = pdata.get("pass_id") or pass_id
+            sat = pdata.get("satellite")
+            parsed_sat, parsed_dt = parse_pass_id(pid)
+            if not sat:
+                sat = parsed_sat
+            if not sat:
+                continue
+
+            start_time = parsed_dt or pdata.get("last_modified_dt")
+            if not start_time:
+                continue
+
+            dur = int(float(summary.get("duration_seconds", 406.0)))
+            tle = load_tle_for_satellite(sat)
+            if not tle:
+                continue
+
+            try:
+                calc = OrbitCalculator()
+                pts = calc.calculate_trajectory(tle[0], tle[1], start_time, dur, step_seconds=5)
+                valid_pts = [p for p in pts if p.el >= 10.0]
+                if not valid_pts:
+                    continue
+
+                successful_passes_count += 1
+                for p in valid_pts:
+                    norm_az = p.az % 360.0
+                    az_bin = int(norm_az // 10.0) % 36
+                    el_bin = int(max(0.0, min(89.9, p.el)) // 5.0)
+
+                    cell_key = (az_bin, el_bin)
+                    grid_counts[cell_key] = grid_counts.get(cell_key, 0) + 1
+                    az_elevations[az_bin].append(p.el)
+            except Exception:
+                pass
+
+        cells = []
+        for (az_b, el_b), cnt in grid_counts.items():
+            cells.append({
+                "az": az_b * 10,
+                "el": el_b * 5,
+                "az_center": az_b * 10 + 5.0,
+                "el_center": el_b * 5 + 2.5,
+                "count": cnt,
+            })
+
+        horizon_polygon = []
+        empirical_mask = {}
+        for b in range(36):
+            az_deg = b * 10
+            els = az_elevations[b]
+            if els:
+                el_min = round(min(els), 1)
+                el_max = round(max(els), 1)
+                horizon_polygon.append({
+                    "az": az_deg,
+                    "el_min": el_min,
+                    "el_max": el_max,
+                })
+                empirical_mask[b] = (el_min, el_max)
+
+        result = {
+            "total_successful_passes": successful_passes_count,
+            "cells": cells,
+            "horizon_polygon": horizon_polygon,
+            "empirical_mask": empirical_mask,
+        }
+        if self._passes:
+            self._heatmap_cache = result
+        return result
 
 
 pass_cache = PassDataCache(s3_client, S3_BUCKET)
@@ -2716,6 +2889,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/future-passes":
             data = generate_future_passes_data(cache=pass_cache)
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=60")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/sky-mask/heatmap":
+            data = pass_cache.compute_sky_heatmap()
             body = json.dumps(data).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")

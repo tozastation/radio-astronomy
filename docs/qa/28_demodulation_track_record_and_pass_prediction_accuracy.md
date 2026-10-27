@@ -111,10 +111,41 @@ sequenceDiagram
 
 ---
 
-## 5. 今後の展開（ステップ 2・ステップ 3）
+## 5. ステップ 2：経験的 Horizon Mask の自己学習と天球ヒートマップ重畳
 
-| ステップ | 概要 | 実装・数理アプローチ | 期待効果 |
+### 5.1 天球メッシュ空間の離散化と密度マッピング
+全天球座標空間（方位角 $\text{Az} \in [0^\circ, 360^\circ)$、仰角 $\text{El} \in [0^\circ, 90^\circ]$）を、正距方位極座標投影と整合する 2 次元の離散セル（メッシュ）に分割する。
+
+- **方位角分解能**: $\Delta \text{Az} = 10^\circ$（計 36 分割）
+- **仰角分解能**: $\Delta \text{El} = 5^\circ$（計 18 分割）
+- **セル $(i, j)$**:
+  $$\text{Cell}(i, j) = \left\{ (\text{Az}, \text{El}) \;\middle|\; i \cdot \Delta\text{Az} \le \text{Az} < (i+1) \cdot \Delta\text{Az}, \ j \cdot \Delta\text{El} \le \text{El} < (j+1) \cdot \Delta\text{El} \right\}$$
+
+過去の全復調成功パス（画像生成あり、または `packets_count > 0`）の軌道点群 $(\text{Az}(t), \text{El}(t))$ をこのメッシュにマッピングし、各セルにおける復調成功密度 $D(i, j)$ を積算する。
+
+### 5.2 経験的 Horizon Mask（実測開口境界ポリゴン）の導出
+各方位角スライス $i$（$\text{Az} \in [i\Delta\text{Az}, (i+1)\Delta\text{Az})$）において、復調実績が得られた仰角の最小値・最大値から実効開口境界を定義する：
+
+$$\text{El}_{\min}(i) = \min \{ \text{El} \mid (\text{Az}, \text{El}) \in \text{Successful Trajectories in slice } i \}$$
+
+$$\text{El}_{\max}(i) = \max \{ \text{El} \mid (\text{Az}, \text{El}) \in \text{Successful Trajectories in slice } i \}$$
+
+これにより、固定の理論境界（$[25^\circ, 60^\circ]$）に対し、建築構造物（隣家の壁、手すり支柱、上階庇）の実測遮蔽境界を反映した動的判定が可能となる。
+
+### 5.3 正距方位極座標レーダーへの円環扇形（Annular Sector）描画
+Canvas 2D コンテキスト上において、セル $(i, j)$ は動径 $r(\text{El}) = R_{\max}(1 - \text{El}/90^\circ)$ に基づく円環扇形として描画される：
+- 外弧半径: $r_{\text{outer}} = r(j \cdot \Delta\text{El})$
+- 内弧半径: $r_{\text{inner}} = r((j+1) \cdot \Delta\text{El})$
+- 開始・終了角: $\theta_{\text{start}} = i \cdot \Delta\text{Az} - 90^\circ, \quad \theta_{\text{end}} = (i+1) \cdot \Delta\text{Az} - 90^\circ$
+
+通過密度に応じて半透明エメラルドグリーン（$\text{rgba}(16, 185, 129, \alpha)$）で塗り潰し、実測開口境界ポリゴンを破線で重畳描画することで、観測者は「どこが最も電波が通る実効受波エリアか」を直感的に把握できる。
+
+---
+
+## 6. 全体ロードマップと進捗状況
+
+| ステップ | 概要 | 実装・数理アプローチ | ステータス |
 | :--- | :--- | :--- | :--- |
-| **ステップ 1（本実装）** | 復調実績連動スコアリング | キャッシュ統計集計・ラプラス平滑化・UI 期待度ゲージ | 観測者が「狙い目のパス」を一目で判断可能 |
-| **ステップ 2** | 経験的 Horizon Mask の自己学習 | 復調成功点群 $(Az, El)$ の天球グリッド累積・ヒートマップ重畳 | 実際の建物凹凸に応じた開口窓境界の動的補正 |
-| **ステップ 3** | ドップラー TCA ドリフト補正 | RF スペクトログラムのゼロクロス実測による TLE 時間補正 $\Delta t$ | 数秒〜十数秒の出現時刻（AOS/TCA）の精密同期 |
+| **ステップ 1** | 復調実績連動スコアリング | キャッシュ統計集計・ラプラス平滑化・UI 期待度ゲージ | **完了** |
+| **ステップ 2** | 経験的 Horizon Mask の自己学習 | 復調成功点群 $(Az, El)$ の天球グリッド累積・ヒートマップ重畳 | **完了** |
+| **ステップ 3** | ドップラー TCA ドリフト補正 | RF スペクトログラムのゼロクロス実測による TLE 時間補正 $\Delta t$ | 次期予定 |
