@@ -1,0 +1,41 @@
+{
+  "satellite": "METEOR-M2 4",
+  "satellite_type": "WeatherSatellite",
+  "signal_type": "LRPT (QPSK 72kbps)",
+  "frequency_label": "137.900 MHz",
+  "display_icon": "🛰️",
+  "packets_count": 19,
+  "packets": [
+    {
+      "satellite": "METEOR-M2",
+      "pipeline": "meteor_m2-x_lrpt",
+      "status": "success",
+      "images": [
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MSU-MR_124_False_Color.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MCIR_corrected.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/MSU-MR-1.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_3.9_um_Shortwave_IR_(Uncalibrated)_corrected.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MSA_map.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_3.9_um_Shortwave_IR_(Uncalibrated).png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MCIR.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_AVHRR_221_False_Color_corrected.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MSA_corrected.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MCIR_map.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_3.9_um_Shortwave_IR_(Uncalibrated)_corrected_map.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/MSU-MR-4.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_3.9_um_Shortwave_IR_(Uncalibrated)_map.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MSA.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MSU-MR_124_False_Color_corrected.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_AVHRR_221_False_Color.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MCIR_corrected_map.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/msu_mr_rgb_MSA_corrected_map.png",
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/MSU-MR/MSU-MR-2.png"
+      ],
+      "cadu_files": [
+        "/tmp/pass_c7zvzib6/satdump_meteor/meteor_m2-x_lrpt/meteor_m2-x_lrpt.cadu"
+      ],
+      "summary_text": "METEOR-M2 LRPT (meteor_m2-x_lrpt) 気象画像復調成功 (19 枚の画像を生成)"
+    }
+  ],
+  "summary_text": "METEOR-M2 LRPT (meteor_m2-x_lrpt) 気象画像復調成功 (19 枚の画像を生成)"
+}
