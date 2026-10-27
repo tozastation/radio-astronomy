@@ -103,5 +103,36 @@ class TestOrbitCalculator(unittest.TestCase):
 
 
 
+    def test_find_future_passes_with_history_stats(self):
+        """直近の復調実績統計を渡した場合に、success_probability と history_summary が正しく算出されること"""
+        start_utc = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
+        history_stats = {
+            "METEOR-M2 3": {
+                "total_passes": 5,
+                "successful_passes": 4,
+                "overall_success_rate": 0.8,
+                "elevation_bands": {
+                    "high": {"total": 3, "success": 3, "rate": 1.0},
+                    "mid": {"total": 2, "success": 1, "rate": 0.5},
+                    "low": {"total": 0, "success": 0, "rate": 0.0},
+                }
+            }
+        }
+        passes = self.calc.find_future_passes(
+            targets=[("METEOR-M2 3", self.meteor_tle_l1, self.meteor_tle_l2)],
+            start_time=start_utc,
+            horizon_hours=24,
+            step_seconds=30,
+            history_stats=history_stats
+        )
+        self.assertGreater(len(passes), 0)
+        p0 = passes[0]
+        self.assertIsNotNone(p0.success_probability)
+        self.assertIsNotNone(p0.history_summary)
+        self.assertGreaterEqual(p0.success_probability, 0.0)
+        self.assertLessEqual(p0.success_probability, 1.0)
+        self.assertIn("実績", p0.history_summary)
+
+
 if __name__ == "__main__":
     unittest.main()

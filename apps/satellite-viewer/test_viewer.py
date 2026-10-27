@@ -195,6 +195,42 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("msu_mr_rgb.png", image_names)
         self.assertNotIn("spectrogram.png", image_names)
 
+    def test_pass_data_cache_satellite_history_stats(self):
+        # 過去パスデータを模擬
+        self.cache._passes = {
+            "p1": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261025_005344",
+                "summary": {"packets_count": 10, "status": "completed"},
+                "files": {"spectrogram.png": "...", "msu_mr.png": "..."},
+            },
+            "p2": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261026_010000",
+                "summary": {"packets_count": 0, "status": "completed"},
+                "files": {"spectrogram.png": "..."},
+            },
+            "p3": {
+                "satellite": "ISS (ZARYA)",
+                "pass_id": "ISS_20261025_120000",
+                "summary": {"packets_count": 5, "status": "completed"},
+                "files": {},
+            }
+        }
+        stats = self.cache.get_satellite_history_stats()
+        self.assertIn("METEOR-M2 3", stats)
+        self.assertIn("ISS (ZARYA)", stats)
+
+        meteor_stats = stats["METEOR-M2 3"]
+        self.assertEqual(meteor_stats["total_passes"], 2)
+        self.assertEqual(meteor_stats["successful_passes"], 1)
+        self.assertAlmostEqual(meteor_stats["overall_success_rate"], 0.5)
+
+        iss_stats = stats["ISS (ZARYA)"]
+        self.assertEqual(iss_stats["total_passes"], 1)
+        self.assertEqual(iss_stats["successful_passes"], 1)
+        self.assertAlmostEqual(iss_stats["overall_success_rate"], 1.0)
+
     def test_generate_future_passes_data(self):
         now_dt = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
         result = generate_future_passes_data(now_dt=now_dt, horizon_hours=24)
@@ -210,6 +246,8 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("max_elevation_azimuth", p)
         self.assertIn("window_duration_seconds", p)
         self.assertIn("quality_score", p)
+        self.assertIn("success_probability", p)
+        self.assertIn("history_summary", p)
 
     def test_static_gifenc_file_exists_and_valid(self):
         import os

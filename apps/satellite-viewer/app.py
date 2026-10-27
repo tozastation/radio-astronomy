@@ -1300,6 +1300,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           const isFair = p.quality_score.includes('FAIR');
           const badgeBg = isExcellent ? '#059669' : (isGood ? '#0284c7' : (isFair ? '#d97706' : '#475569'));
 
+          const prob = p.success_probability !== undefined && p.success_probability !== null ? Math.round(p.success_probability * 100) : null;
+          const probColor = prob !== null ? (prob >= 70 ? '#10b981' : (prob >= 40 ? '#38bdf8' : (prob >= 20 ? '#f59e0b' : '#94a3b8'))) : '#94a3b8';
+          const probBar = prob !== null ? `
+            <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #334155; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:0.8rem;">
+              <span style="color:#94a3b8; white-space:nowrap;">🎯 復調期待度: <strong style="color:${probColor}; font-size:0.9rem;">${prob}%</strong></span>
+              <div style="flex:1; background:#1e293b; border-radius:999px; height:6px; overflow:hidden;">
+                <div style="background:${probColor}; width:${prob}%; height:100%; border-radius:999px;"></div>
+              </div>
+              <span style="color:#64748b; font-size:0.75rem; white-space:nowrap;">${p.history_summary || ''}</span>
+            </div>
+          ` : '';
+
           html += `
             <div style="background:rgba(255,255,255,0.03); border:1px solid #334155; border-radius:8px; padding:12px; margin-bottom:10px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -1311,6 +1323,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div>TCA (最大仰角): <strong style="color:white;">${p.max_elevation}°</strong> (Az ${p.max_elevation_azimuth}°)</div>
                 <div>開口窓滞在: <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong></div>
               </div>
+              ${probBar}
             </div>
           `;
         });
@@ -2065,14 +2078,23 @@ def generate_trajectory_data(pass_id: str, cache) -> dict:
     }
 
 
-def generate_future_passes_data(now_dt=None, horizon_hours: int = 24) -> dict:
+def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None) -> dict:
     """
     今後 horizon_hours 時間における北向きベランダスカイウィンドウ通過予測リストを生成。
+    直近の復調実績統計（cache）を反映して成功確率・期待スコアを算出。
     """
     if now_dt is None:
         now_dt = datetime.now(timezone.utc)
     elif now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+    if cache is None:
+        try:
+            cache = pass_cache
+        except Exception:
+            cache = None
+
+    history_stats = cache.get_satellite_history_stats() if cache else None
 
     targets = []
     for sat_name in DEFAULT_TARGET_TLES.keys():
@@ -2085,7 +2107,8 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24) -> dict:
         targets=targets,
         start_time=now_dt,
         horizon_hours=horizon_hours,
-        step_seconds=30
+        step_seconds=30,
+        history_stats=history_stats,
     )
 
     return {
@@ -2476,6 +2499,92 @@ class PassDataCache:
                 reverse=True
             )
 
+    def get_satellite_history_stats(self) -> dict:
+        """
+        キャッシュされた全パス情報から、衛星別・仰角帯別の復調成功実績を集計。
+        """
+        if not self._passes and self.s3_client:
+            try:
+                self.get_all_passes()
+            except Exception:
+                pass
+
+        stats = {}
+        for pass_id, pdata in self._passes.items():
+            sat = pdata.get("satellite")
+            if not sat:
+                sat, _ = parse_pass_id(pass_id)
+            if not sat:
+                continue
+
+            if sat not in stats:
+                stats[sat] = {
+                    "total_passes": 0,
+                    "successful_passes": 0,
+                    "overall_success_rate": 0.0,
+                    "elevation_bands": {
+                        "high": {"total": 0, "success": 0, "rate": 0.0},
+                        "mid": {"total": 0, "success": 0, "rate": 0.0},
+                        "low": {"total": 0, "success": 0, "rate": 0.0},
+                    }
+                }
+
+            # 復調成功判定: packets_count > 0 または画像ファイルが存在
+            summary = pdata.get("summary") or {}
+            packets_count = summary.get("packets_count", 0)
+            files = pdata.get("files") or {}
+            has_images = any(f.lower().endswith(".png") and "spectrogram" not in f.lower() for f in files)
+            is_success = (packets_count > 0) or has_images
+
+            # 最大仰角の判定
+            max_el = pdata.get("max_elevation")
+            if max_el is None:
+                max_el = summary.get("max_elevation")
+            if max_el is None:
+                parsed_sat, parsed_dt = parse_pass_id(pass_id)
+                tle = load_tle_for_satellite(sat)
+                if parsed_dt and tle:
+                    try:
+                        dur = int(float(summary.get("duration_seconds", 406.0)))
+                        calc = OrbitCalculator()
+                        pts = calc.calculate_trajectory(tle[0], tle[1], parsed_dt, dur, step_seconds=15)
+                        if pts:
+                            max_el = max(p.el for p in pts)
+                            pdata["max_elevation"] = max_el
+                    except Exception:
+                        pass
+
+            if max_el is None:
+                max_el = 25.0
+
+            if max_el >= 35.0:
+                band = "high"
+            elif max_el >= 20.0:
+                band = "mid"
+            else:
+                band = "low"
+
+            s_entry = stats[sat]
+            s_entry["total_passes"] += 1
+            if is_success:
+                s_entry["successful_passes"] += 1
+
+            b_entry = s_entry["elevation_bands"][band]
+            b_entry["total"] += 1
+            if is_success:
+                b_entry["success"] += 1
+
+        for sat, s_entry in stats.items():
+            tot = s_entry["total_passes"]
+            succ = s_entry["successful_passes"]
+            s_entry["overall_success_rate"] = (succ / tot) if tot > 0 else 0.0
+            for b_name, b_entry in s_entry["elevation_bands"].items():
+                b_tot = b_entry["total"]
+                b_succ = b_entry["success"]
+                b_entry["rate"] = (b_succ / b_tot) if b_tot > 0 else 0.0
+
+        return stats
+
 
 pass_cache = PassDataCache(s3_client, S3_BUCKET)
 
@@ -2606,7 +2715,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/future-passes":
-            data = generate_future_passes_data()
+            data = generate_future_passes_data(cache=pass_cache)
             body = json.dumps(data).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")

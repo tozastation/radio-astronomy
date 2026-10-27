@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 import math
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 from sgp4.api import Satrec, WGS72
 
 
@@ -100,6 +100,8 @@ class FuturePass:
     max_elevation_azimuth: float
     window_duration_seconds: int
     quality_score: str
+    success_probability: Optional[float] = None
+    history_summary: Optional[str] = None
 
 
 
@@ -200,11 +202,12 @@ class OrbitCalculator:
         targets: List[Tuple[str, str, str]],  # (name, tle1, tle2)
         start_time: datetime,
         horizon_hours: int = 24,
-        step_seconds: int = 30
+        step_seconds: int = 30,
+        history_stats: Optional[Dict[str, Any]] = None,
     ) -> List[FuturePass]:
         """
         向こう horizon_hours 時間における各衛星のパスを予測し、
-        スカイウィンドウ通過諸元および品質スコアを計算。
+        スカイウィンドウ通過諸元および品質スコア・実績連動期待確率を計算。
         """
         if start_time.tzinfo is None:
             start_time = start_time.replace(tzinfo=timezone.utc)
@@ -257,6 +260,9 @@ class OrbitCalculator:
                         # パス終了
                         if max_el >= 10.0 and pass_start_dt and tca_dt:
                             quality = self._evaluate_quality(max_el, max_el_az, window_duration)
+                            prob, hist_summary = self._evaluate_success_probability(
+                                name, max_el, quality, history_stats
+                            )
                             all_passes.append(
                                 FuturePass(
                                     satellite=name,
@@ -266,7 +272,9 @@ class OrbitCalculator:
                                     max_elevation=round(max_el, 1),
                                     max_elevation_azimuth=round(max_el_az, 1),
                                     window_duration_seconds=window_duration,
-                                    quality_score=quality
+                                    quality_score=quality,
+                                    success_probability=prob,
+                                    history_summary=hist_summary,
                                 )
                             )
                         in_pass = False
@@ -279,6 +287,9 @@ class OrbitCalculator:
             if in_pass and max_el >= 10.0 and pass_start_dt and tca_dt:
                 cur_dt = start_time + timedelta(seconds=total_steps * step_seconds)
                 quality = self._evaluate_quality(max_el, max_el_az, window_duration)
+                prob, hist_summary = self._evaluate_success_probability(
+                    name, max_el, quality, history_stats
+                )
                 all_passes.append(
                     FuturePass(
                         satellite=name,
@@ -288,7 +299,9 @@ class OrbitCalculator:
                         max_elevation=round(max_el, 1),
                         max_elevation_azimuth=round(max_el_az, 1),
                         window_duration_seconds=window_duration,
-                        quality_score=quality
+                        quality_score=quality,
+                        success_probability=prob,
+                        history_summary=hist_summary,
                     )
                 )
 
@@ -305,6 +318,66 @@ class OrbitCalculator:
             return "FAIR (ベランダ視野内)"
         else:
             return "MARGINAL (建物遮蔽)"
+
+    @staticmethod
+    def _evaluate_success_probability(
+        satellite: str,
+        max_el: float,
+        quality_score: str,
+        history_stats: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[float, str]:
+        """
+        過去の復調実績統計と最大仰角・品質スコアから、推定成功確率(0.0〜1.0)とサマリー文を算出。
+        ラプラス平滑化 (Laplace Smoothing) を適用。
+        """
+        sat_stats = history_stats.get(satellite) if history_stats else None
+
+        # 仰角帯の分類
+        if max_el >= 35.0:
+            band = "high"
+            band_label = "高仰角(>=35°)"
+        elif max_el >= 20.0:
+            band = "mid"
+            band_label = "中仰角(20°〜35°)"
+        else:
+            band = "low"
+            band_label = "低仰角(<20°)"
+
+        # 過去実績が存在する場合
+        if sat_stats and sat_stats.get("total_passes", 0) > 0:
+            band_info = sat_stats.get("elevation_bands", {}).get(band, {})
+            b_total = band_info.get("total", 0)
+            b_success = band_info.get("success", 0)
+
+            if b_total > 0:
+                # 当該仰角帯の実績に基づくラプラス平滑化確率: (succ + 1) / (total + 2)
+                prob = (b_success + 1.0) / (b_total + 2.0)
+                raw_rate = (b_success / b_total) * 100.0
+                summary = f"同仰角帯実績: {b_success}/{b_total}回成功 ({raw_rate:.0f}%)"
+            else:
+                # 当該仰角帯は未観測だが全体実績がある場合
+                tot = sat_stats.get("total_passes", 0)
+                succ = sat_stats.get("successful_passes", 0)
+                prob = (succ + 1.0) / (tot + 2.0)
+                if band == "low":
+                    prob = max(0.05, prob * 0.6)
+                elif band == "high":
+                    prob = min(0.95, prob * 1.1)
+                raw_rate = (succ / tot) * 100.0
+                summary = f"全体実績: {succ}/{tot}回成功 ({band_label}は初観測)"
+            return round(prob, 2), summary
+
+        # 過去実績がまだない場合の幾何学的事前確率フォールバック
+        if "EXCELLENT" in quality_score:
+            prob = 0.75
+        elif "GOOD" in quality_score:
+            prob = 0.50
+        elif "FAIR" in quality_score:
+            prob = 0.25
+        else:
+            prob = 0.05
+
+        return round(prob, 2), "実績データ収集中 (未観測)"
 
 
     def _geodetic_to_ecef(self, lat_rad: float, lon_rad: float, alt_m: float) -> Tuple[float, float, float]:
