@@ -92,3 +92,21 @@ def test_compute_doppler_shifts_with_tle():
     # ドップラー偏移は通過開始時正（接近）、終了時負（離脱）
     assert shifts[0] > 1000.0
     assert shifts[-1] < -1000.0
+
+
+def test_decode_packets_activity_with_raw_iq(tmp_path):
+    from activities import decode_packets_activity
+    # 正常な raw ファイルを準備し、decode_packets_activity がクラッシュせず辞書を返すことを検証
+    raw_path = str(tmp_path / "ISS (ZARYA)_20261028_120000.raw")
+    # 240kSPS 1秒分の無音 IQ (128)
+    with open(raw_path, "wb") as f:
+        f.write(bytes([128] * (240000 * 2)))
+
+    import asyncio
+    res = asyncio.run(decode_packets_activity(raw_path, satellite="ISS (ZARYA)"))
+    assert res["satellite"] == "ISS (ZARYA)"
+    assert res["satellite_type"] == "SpaceStation"
+    assert "packets_count" in res
+    # 変換後の WAV ファイルが生成されていること
+    assert os.path.exists(str(tmp_path / "ISS (ZARYA)_20261028_120000_48k.wav"))
+

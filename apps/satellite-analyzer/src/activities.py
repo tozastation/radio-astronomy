@@ -1,18 +1,39 @@
 import os
+import re
 import json
 import logging
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from temporalio import activity
 
 from aprs_decoder import APRSDecoder
 from funcube_decoder import FUNcubeDecoder
 from meteor_decoder import MeteorDecoder
+from iss_dsp import ISSDspDemodulator
 from spectrogram_generator import SpectrogramGenerator
 from retention import archive_and_rotate_raw_recording, preserve_golden_raw_recording
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_ISS_TLE = (
+    "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996",
+    "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
+)
+
+
+def parse_pass_time_from_path(path_or_str: str) -> Optional[datetime]:
+    """ファイル名や pass_id から YYYYMMDD_HHMMSS 形式の日時をパースして UTC datetime を返す"""
+    fname = os.path.basename(path_or_str)
+    m = re.search(r"(\d{8})_(\d{6})", fname)
+    if m:
+        try:
+            dt = datetime.strptime(f"{m.group(1)}_{m.group(2)}", "%Y%m%d_%H%M%S")
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return None
 
 try:
     import boto3
@@ -94,8 +115,23 @@ async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[st
     category = info["category"]
 
     if category == "amateur_packet" or not satellite:
+        ext = os.path.splitext(wav_path)[1].lower()
+        effective_wav = wav_path
+        if ext in (".raw", ".u8", ".cu8"):
+            demod = ISSDspDemodulator()
+            pass_time = parse_pass_time_from_path(wav_path) or datetime.now(timezone.utc)
+            effective_wav = demod.demodulate_raw_iq(
+                raw_path=wav_path,
+                pass_start_utc=pass_time,
+                tle_lines=DEFAULT_ISS_TLE,
+                center_freq_hz=145825000.0,
+                sample_rate=240000,
+            )
+            if not effective_wav or not os.path.exists(effective_wav):
+                effective_wav = wav_path
+
         decoder = APRSDecoder()
-        frames = decoder.decode_wav(wav_path)
+        frames = decoder.decode_wav(effective_wav)
         packets_count = len(frames)
         packets = [f.to_dict() for f in frames]
         summary_text = f"APRS パケット {packets_count} 件検出"
@@ -220,9 +256,25 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         # 2. 衛星種別に応じた信号解析 & パケットデコード
         info = classify_satellite(satellite)
         category = info["category"]
+        effective_wav = local_wav
+
         if category == "amateur_packet" or not satellite:
+            ext = os.path.splitext(local_wav)[1].lower()
+            if ext in (".raw", ".u8", ".cu8"):
+                demod = ISSDspDemodulator()
+                pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id) or datetime.now(timezone.utc)
+                effective_wav = demod.demodulate_raw_iq(
+                    raw_path=local_wav,
+                    pass_start_utc=pass_time,
+                    tle_lines=DEFAULT_ISS_TLE,
+                    center_freq_hz=145825000.0,
+                    sample_rate=240000,
+                )
+                if not effective_wav or not os.path.exists(effective_wav):
+                    effective_wav = local_wav
+
             decoder = APRSDecoder()
-            frames = decoder.decode_wav(local_wav)
+            frames = decoder.decode_wav(effective_wav)
             packets_count = len(frames)
             packets = [f.to_dict() for f in frames]
             summary_text = f"APRS パケット {packets_count} 件検出"
@@ -263,9 +315,10 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
 
         # 3. スペクトログラム生成
         generator = SpectrogramGenerator()
+        spec_source = effective_wav if (category == "amateur_packet" and os.path.exists(effective_wav)) else local_wav
         out_png = os.path.splitext(local_wav)[0] + "_spectrogram.png"
         try:
-            generator.generate(local_wav, out_png, title=f"{satellite} Pass Analysis")
+            generator.generate(spec_source, out_png, title=f"{satellite} Pass Analysis")
         except Exception as e:
             logger.warning(f"Could not generate spectrogram for {local_wav}: {e}")
 
