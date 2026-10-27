@@ -156,11 +156,11 @@ class ISSDspDemodulator:
         if num_complex_samples < sample_rate * 0.1:
             return ""
 
-        # 2. 複素解析信号化 x[n] = (I - 127.5)/128 + j (Q - 127.5)/128
-        i_comp = (raw_u8[0::2].astype(np.float32) - 127.5) / 128.0
-        q_comp = (raw_u8[1::2].astype(np.float32) - 127.5) / 128.0
-        x = i_comp + 1j * q_comp
-        del raw_u8, i_comp, q_comp
+        # 2. 複素解析信号化 x[n] = (I - 127.5)/128 + j (Q - 127.5)/128 (complex64 で省メモリ化)
+        x = np.empty(num_complex_samples, dtype=np.complex64)
+        x.real = (raw_u8[0::2].astype(np.float32) - 127.5) / 128.0
+        x.imag = (raw_u8[1::2].astype(np.float32) - 127.5) / 128.0
+        del raw_u8
 
         duration_sec = num_complex_samples / float(sample_rate)
 
@@ -190,23 +190,24 @@ class ISSDspDemodulator:
                 logger.warning(f"Failed to compute Doppler shift from TLE: {e}. Falling back to zero-shift.")
                 doppler_shifts = None
 
-        # 4. 複素ミキシングによるドップラー相殺 y[n] = x[n] * exp(-j θ[n])
+        # 4. 複素ミキシングによるドップラー相殺 x[n] = x[n] * exp(-j θ[n]) (インプレース乗算)
         if doppler_shifts is not None:
             # 位相角 θ[n] = 2π * cumsum(Δf / f_s)
-            phase_rad = 2.0 * np.pi * np.cumsum(doppler_shifts) / float(sample_rate)
-            # exp(-j * phase) = cos(phase) - j * sin(phase)
-            rotator = np.cos(phase_rad).astype(np.float32) - 1j * np.sin(phase_rad).astype(np.float32)
-            y = x * rotator
-            del x, rotator, phase_rad
-        else:
-            y = x
+            phase_rad = (2.0 * np.pi * np.cumsum(doppler_shifts) / float(sample_rate)).astype(np.float32)
+            rotator = np.empty(num_complex_samples, dtype=np.complex64)
+            rotator.real = np.cos(phase_rad)
+            rotator.imag = -np.sin(phase_rad)
+            del phase_rad
+            x *= rotator
+            del rotator
 
         # 5. 位相差分 FM 復調 (Polar Discriminator)
-        # P[n] = y[n] * conj(y[n-1])
+        # P[n] = x[n] * conj(x[n-1])
         # Δφ[n] = arg(P[n]) = atan2(Im(P[n]), Re(P[n]))
-        p = y[1:] * np.conj(y[:-1])
+        p = x[1:] * np.conj(x[:-1])
+        del x
         demod_audio = np.angle(p).astype(np.float32)
-        del y, p
+        del p
 
         # 6. FIR フィルタリング & 5倍デシメーション (240kSPS -> 48kSPS)
         # AFSK (Bell 202: 1200Hz/2200Hz) の不要高周波雑音を除去するためカットオフ 3.5kHz の LPF を適用

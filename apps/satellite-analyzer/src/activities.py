@@ -117,9 +117,10 @@ async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[st
     if category == "amateur_packet" or not satellite:
         ext = os.path.splitext(wav_path)[1].lower()
         effective_wav = wav_path
+        frames = []
         if ext in (".raw", ".u8", ".cu8"):
             demod = ISSDspDemodulator()
-            pass_time = parse_pass_time_from_path(wav_path) or datetime.now(timezone.utc)
+            pass_time = parse_pass_time_from_path(wav_path)
             effective_wav = demod.demodulate_raw_iq(
                 raw_path=wav_path,
                 pass_start_utc=pass_time,
@@ -127,11 +128,13 @@ async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[st
                 center_freq_hz=145825000.0,
                 sample_rate=240000,
             )
-            if not effective_wav or not os.path.exists(effective_wav):
-                effective_wav = wav_path
+            if effective_wav and os.path.exists(effective_wav):
+                decoder = APRSDecoder()
+                frames = decoder.decode_wav(effective_wav)
+        else:
+            decoder = APRSDecoder()
+            frames = decoder.decode_wav(effective_wav)
 
-        decoder = APRSDecoder()
-        frames = decoder.decode_wav(effective_wav)
         packets_count = len(frames)
         packets = [f.to_dict() for f in frames]
         summary_text = f"APRS パケット {packets_count} 件検出"
@@ -260,21 +263,27 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
 
         if category == "amateur_packet" or not satellite:
             ext = os.path.splitext(local_wav)[1].lower()
+            frames = []
             if ext in (".raw", ".u8", ".cu8"):
                 demod = ISSDspDemodulator()
-                pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id) or datetime.now(timezone.utc)
+                pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
+                tle_lines = params.get("tle_lines") or DEFAULT_ISS_TLE
                 effective_wav = demod.demodulate_raw_iq(
                     raw_path=local_wav,
                     pass_start_utc=pass_time,
-                    tle_lines=DEFAULT_ISS_TLE,
+                    tle_lines=tle_lines,
                     center_freq_hz=145825000.0,
                     sample_rate=240000,
                 )
-                if not effective_wav or not os.path.exists(effective_wav):
+                if effective_wav and os.path.exists(effective_wav):
+                    decoder = APRSDecoder()
+                    frames = decoder.decode_wav(effective_wav)
+                else:
                     effective_wav = local_wav
+            else:
+                decoder = APRSDecoder()
+                frames = decoder.decode_wav(effective_wav)
 
-            decoder = APRSDecoder()
-            frames = decoder.decode_wav(effective_wav)
             packets_count = len(frames)
             packets = [f.to_dict() for f in frames]
             summary_text = f"APRS パケット {packets_count} 件検出"

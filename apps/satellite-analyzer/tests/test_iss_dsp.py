@@ -110,3 +110,27 @@ def test_decode_packets_activity_with_raw_iq(tmp_path):
     # 変換後の WAV ファイルが生成されていること
     assert os.path.exists(str(tmp_path / "ISS (ZARYA)_20261028_120000_48k.wav"))
 
+
+def test_demodulate_with_none_pass_time(tmp_path):
+    demod = ISSDspDemodulator()
+    raw_path = str(tmp_path / "no_time.raw")
+    with open(raw_path, "wb") as f:
+        f.write(bytes([128] * (240000 * 2)))
+
+    out_wav = demod.demodulate_raw_iq(raw_path=raw_path, pass_start_utc=None, tle_lines=None)
+    assert os.path.exists(out_wav)
+
+
+def test_decode_packets_activity_with_corrupt_raw(tmp_path):
+    from activities import decode_packets_activity
+    # 50バイトの破損 raw ファイル (100KB 未満)
+    corrupt_raw = str(tmp_path / "corrupt.raw")
+    with open(corrupt_raw, "wb") as f:
+        f.write(b"CORRUPT" * 5)
+
+    import asyncio
+    res = asyncio.run(decode_packets_activity(corrupt_raw, satellite="ISS (ZARYA)"))
+    assert res["packets_count"] == 0
+    assert res["packets"] == []
+
+
