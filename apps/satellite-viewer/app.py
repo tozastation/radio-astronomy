@@ -1307,6 +1307,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           const prob = p.success_probability !== undefined && p.success_probability !== null ? Math.round(p.success_probability * 100) : null;
           const probColor = prob !== null ? (prob >= 70 ? '#10b981' : (prob >= 40 ? '#38bdf8' : (prob >= 20 ? '#f59e0b' : '#94a3b8'))) : '#94a3b8';
+          const driftBadge = p.time_drift_seconds !== undefined && p.time_drift_seconds !== null ? `
+            <div style="font-size:0.75rem; color:#a78bfa; margin-top:4px;">
+              ⏰ TLE時刻補正: <strong>${p.time_drift_seconds > 0 ? '+' : ''}${p.time_drift_seconds}秒</strong> (実測TCA追従)
+            </div>
+          ` : '';
+
           const probBar = prob !== null ? `
             <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #334155; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:0.8rem;">
               <span style="color:#94a3b8; white-space:nowrap;">🎯 復調期待度: <strong style="color:${probColor}; font-size:0.9rem;">${prob}%</strong></span>
@@ -1328,6 +1334,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div>TCA (最大仰角): <strong style="color:white;">${p.max_elevation}°</strong> (Az ${p.max_elevation_azimuth}°)</div>
                 <div>開口窓滞在: <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong></div>
               </div>
+              ${driftBadge}
               ${probBar}
             </div>
           `;
@@ -2154,7 +2161,7 @@ def generate_trajectory_data(pass_id: str, cache) -> dict:
 def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None) -> dict:
     """
     今後 horizon_hours 時間における北向きベランダスカイウィンドウ通過予測リストを生成。
-    直近の復調実績統計（cache）を反映して成功確率・期待スコアを算出。
+    直近の復調実績統計（cache）および実測タイムドリフトを反映して成功確率・期待スコアを算出。
     """
     if now_dt is None:
         now_dt = datetime.now(timezone.utc)
@@ -2168,6 +2175,7 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None
             cache = None
 
     history_stats = cache.get_satellite_history_stats() if cache else None
+    time_drifts = cache.compute_satellite_time_drifts() if cache else None
 
     targets = []
     for sat_name in DEFAULT_TARGET_TLES.keys():
@@ -2182,6 +2190,7 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None
         horizon_hours=horizon_hours,
         step_seconds=30,
         history_stats=history_stats,
+        time_drifts=time_drifts,
     )
 
     return {
@@ -2757,6 +2766,61 @@ class PassDataCache:
         if self._passes:
             self._heatmap_cache = result
         return result
+
+    def compute_satellite_time_drifts(self) -> dict:
+        """
+        各衛星の直近復調パスから、実測通過時刻 (actual TCA) と SGP4 計算 TCA の
+        差分 (time drift seconds) を算出。
+        メタデータに actual_tca_drift_seconds がある場合はそれを採用し、
+        ない場合は実測 TCA (actual_tca) と SGP4 TCA の差分から推定。
+        """
+        if not self._passes and self.s3_client:
+            try:
+                self.get_all_passes()
+            except Exception:
+                pass
+
+        drifts = {}
+        sorted_passes = sorted(
+            self._passes.values(),
+            key=lambda x: x.get("last_modified_dt", datetime.min.replace(tzinfo=timezone.utc)),
+            reverse=True
+        )
+
+        for pdata in sorted_passes:
+            pid = pdata.get("pass_id") or ""
+            sat = pdata.get("satellite")
+            if not sat:
+                sat, _ = parse_pass_id(pid)
+            if not sat or sat in drifts:
+                continue
+
+            summary = pdata.get("summary") or {}
+            if "actual_tca_drift_seconds" in summary:
+                drifts[sat] = float(summary["actual_tca_drift_seconds"])
+                continue
+
+            actual_tca_str = summary.get("actual_tca") or summary.get("tca_time")
+            if actual_tca_str:
+                try:
+                    actual_dt = datetime.fromisoformat(actual_tca_str)
+                    if actual_dt.tzinfo is None:
+                        actual_dt = actual_dt.replace(tzinfo=timezone.utc)
+                    _, parsed_dt = parse_pass_id(pid)
+                    tle = load_tle_for_satellite(sat)
+                    if parsed_dt and tle:
+                        dur = int(float(summary.get("duration_seconds", 406.0)))
+                        calc = OrbitCalculator()
+                        pts = calc.calculate_trajectory(tle[0], tle[1], parsed_dt, dur, step_seconds=5)
+                        if pts:
+                            tca_pt = max(pts, key=lambda p: p.el)
+                            sgp4_tca_dt = parsed_dt + timedelta(seconds=tca_pt.t)
+                            diff = (actual_dt - sgp4_tca_dt).total_seconds()
+                            drifts[sat] = round(diff, 1)
+                except Exception:
+                    pass
+
+        return drifts
 
 
 pass_cache = PassDataCache(s3_client, S3_BUCKET)

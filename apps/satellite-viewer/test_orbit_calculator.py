@@ -150,6 +150,36 @@ class TestOrbitCalculator(unittest.TestCase):
         self.assertLessEqual(p0.success_probability, 1.0)
         self.assertIn("実績", p0.history_summary)
 
+    def test_find_future_passes_with_time_drifts(self):
+        """タイムドリフト補正 (time_drifts) を渡した場合、AOS/TCA/LOS がドリフト秒数分シフトすること"""
+        start_utc = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
+        # 補正なし
+        passes_orig = self.calc.find_future_passes(
+            targets=[("METEOR-M2 3", self.meteor_tle_l1, self.meteor_tle_l2)],
+            start_time=start_utc,
+            horizon_hours=24,
+            step_seconds=30
+        )
+        self.assertGreater(len(passes_orig), 0)
+        p_orig = passes_orig[0]
+
+        # 60秒の遅延ドリフト (+60秒) を適用
+        passes_drift = self.calc.find_future_passes(
+            targets=[("METEOR-M2 3", self.meteor_tle_l1, self.meteor_tle_l2)],
+            start_time=start_utc,
+            horizon_hours=24,
+            step_seconds=30,
+            time_drifts={"METEOR-M2 3": 60.0}
+        )
+        self.assertGreater(len(passes_drift), 0)
+        p_drift = passes_drift[0]
+
+        self.assertEqual(p_drift.time_drift_seconds, 60.0)
+        dt_orig_aos = datetime.fromisoformat(p_orig.aos_time)
+        dt_drift_aos = datetime.fromisoformat(p_drift.aos_time)
+        shift_sec = (dt_drift_aos - dt_orig_aos).total_seconds()
+        self.assertAlmostEqual(shift_sec, 60.0, delta=30.0)
+
 
 if __name__ == "__main__":
     unittest.main()

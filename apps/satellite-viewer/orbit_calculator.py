@@ -102,6 +102,7 @@ class FuturePass:
     quality_score: str
     success_probability: Optional[float] = None
     history_summary: Optional[str] = None
+    time_drift_seconds: Optional[float] = None
 
 
 
@@ -218,10 +219,12 @@ class OrbitCalculator:
         horizon_hours: int = 24,
         step_seconds: int = 30,
         history_stats: Optional[Dict[str, Any]] = None,
+        empirical_mask: Optional[Dict[int, Tuple[float, float]]] = None,
+        time_drifts: Optional[Dict[str, float]] = None,
     ) -> List[FuturePass]:
         """
         向こう horizon_hours 時間における各衛星のパスを予測し、
-        スカイウィンドウ通過諸元および品質スコア・実績連動期待確率を計算。
+        スカイウィンドウ通過諸元および品質スコア・実績連動期待確率・タイムドリフト補正を計算。
         """
         if start_time.tzinfo is None:
             start_time = start_time.replace(tzinfo=timezone.utc)
@@ -235,6 +238,9 @@ class OrbitCalculator:
             except Exception:
                 continue
 
+            drift_sec = time_drifts.get(name, 0.0) if time_drifts else 0.0
+            recorded_drift = round(drift_sec, 1) if (time_drifts and name in time_drifts) else None
+
             in_pass = False
             pass_start_dt: Optional[datetime] = None
             max_el = -90.0
@@ -244,7 +250,9 @@ class OrbitCalculator:
 
             for step in range(total_steps + 1):
                 cur_dt = start_time + timedelta(seconds=step * step_seconds)
-                jd, fr = self._datetime_to_jd(cur_dt)
+                # タイムバイアス補正: 観測時刻 cur_dt に対し、衛星の位置を cur_dt - drift_sec で SGP4 伝搬
+                eval_dt = cur_dt - timedelta(seconds=drift_sec)
+                jd, fr = self._datetime_to_jd(eval_dt)
                 err, r_teme, _ = satrec.sgp4(jd, fr)
                 if err != 0:
                     continue
@@ -252,7 +260,7 @@ class OrbitCalculator:
                 gmst = self._calc_gmst_rad(jd, fr)
                 r_ecef = self._teme_to_ecef(r_teme, gmst)
                 az_deg, el_deg, _ = self._ecef_to_az_el_range(r_ecef, self.obs_ecef_km)
-                in_win = self.is_in_sky_window(az_deg, el_deg)
+                in_win = self.is_in_sky_window(az_deg, el_deg, empirical_mask=empirical_mask)
 
                 if el_deg >= 5.0:
                     if not in_pass:
@@ -289,6 +297,7 @@ class OrbitCalculator:
                                     quality_score=quality,
                                     success_probability=prob,
                                     history_summary=hist_summary,
+                                    time_drift_seconds=recorded_drift,
                                 )
                             )
                         in_pass = False
@@ -316,6 +325,7 @@ class OrbitCalculator:
                         quality_score=quality,
                         success_probability=prob,
                         history_summary=hist_summary,
+                        time_drift_seconds=recorded_drift,
                     )
                 )
 

@@ -252,6 +252,19 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("el", c0)
         self.assertIn("count", c0)
 
+    def test_pass_data_cache_compute_satellite_time_drifts(self):
+        self.cache._passes = {
+            "p1": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261025_005344",
+                "summary": {"packets_count": 10, "status": "completed", "actual_tca_drift_seconds": 3.5},
+                "files": {"spectrogram.png": "..."},
+            }
+        }
+        drifts = self.cache.compute_satellite_time_drifts()
+        self.assertIn("METEOR-M2 3", drifts)
+        self.assertEqual(drifts["METEOR-M2 3"], 3.5)
+
     def test_generate_future_passes_data(self):
         now_dt = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
         result = generate_future_passes_data(now_dt=now_dt, horizon_hours=24)
@@ -269,6 +282,7 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("quality_score", p)
         self.assertIn("success_probability", p)
         self.assertIn("history_summary", p)
+        self.assertIn("time_drift_seconds", p)
 
     def test_static_gifenc_file_exists_and_valid(self):
         import os
