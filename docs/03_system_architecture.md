@@ -32,7 +32,7 @@ flowchart TB
 
         subgraph EdgeArea["アンテナ側 (EdgeCore / gpd-pocket3-edge)"]
             direction TB
-            Antenna["北向きベランダのホイップ<br/>金属面が地面側の導体"]
+            Antenna["北向きベランダの Vダイポールアンテナ<br/>（137MHz 帯 / 開き角 120°）"]
             RTLSDR["RTL-SDR Blog V4"]
 
             subgraph EdgeCoreBox["KubeEdge EdgeCore"]
