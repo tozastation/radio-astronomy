@@ -73,6 +73,7 @@ fn test_is_raw_iq_target() {
     assert!(is_raw_iq_target("METEOR-M2 4"));
     assert!(is_raw_iq_target("FUNCUBE-1 (AO-73)"));
     assert!(is_raw_iq_target("AO-73"));
-    assert!(!is_raw_iq_target("ISS (ZARYA)"));
+    assert!(is_raw_iq_target("ISS (ZARYA)"));
+    assert!(is_raw_iq_target("ISS"));
     assert!(!is_raw_iq_target("NOAA 15"));
 }
