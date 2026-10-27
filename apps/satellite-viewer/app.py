@@ -73,9 +73,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       padding: 16px;
+      padding-top: max(16px, env(safe-area-inset-top, 16px));
       padding-bottom: max(60px, env(safe-area-inset-bottom, 60px));
+      padding-left: max(16px, env(safe-area-inset-left, 16px));
+      padding-right: max(16px, env(safe-area-inset-right, 16px));
       -webkit-font-smoothing: antialiased;
     }
+    .btn-label-long { display: inline; }
+    .btn-label-short { display: none; }
+    .modal-title-long { display: inline; }
+    .modal-title-short { display: none; }
     header {
       display: flex;
       justify-content: space-between;
@@ -322,12 +329,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-weight: 400;
       text-transform: none;
     }
+    .telemetry-panel .telemetry-grid,
     .telemetry-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 10px 14px;
     }
     @media (max-width: 680px) {
+      .telemetry-panel .telemetry-grid,
       .telemetry-grid {
         grid-template-columns: 1fr;
         gap: 8px;
@@ -447,10 +456,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       .telemetry-col-center .geek-tooltip,
       .telemetry-col-right .geek-tooltip {
         left: 0 !important;
-        right: auto !important;
+        right: 0 !important;
         transform: none !important;
-        width: calc(100vw - 48px) !important;
-        max-width: 320px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
       }
       .geek-tooltip::after {
         left: 24px !important;
@@ -576,7 +586,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       padding: 4px 0;
     }
 
-    /* File Actions */
+    /* File Actions & Accordion */
+    details.files-accordion summary {
+      background: rgba(255, 255, 255, 0.02);
+    }
     .files-section {
       display: flex;
       flex-direction: column;
@@ -605,9 +618,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-radius: 8px;
       font-size: 0.8rem;
       gap: 8px;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+    .file-icon {
+      flex-shrink: 0;
     }
     .file-name {
-      font-family: monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-weight: 600;
       color: #e2e8f0;
       overflow: hidden;
@@ -901,7 +928,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       padding: 12px;
       margin-bottom: 12px;
     }
-    .telemetry-grid {
+    .replay-telemetry-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 8px;
@@ -1065,8 +1092,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     @media (max-width: 640px) {
       body {
         padding: 10px;
+        padding-top: max(10px, env(safe-area-inset-top, 10px));
         padding-bottom: max(60px, env(safe-area-inset-bottom, 60px));
+        padding-left: max(10px, env(safe-area-inset-left, 10px));
+        padding-right: max(10px, env(safe-area-inset-right, 10px));
       }
+      .btn-label-long { display: none; }
+      .btn-label-short { display: inline; }
+      .modal-title-long { display: none; }
+      .modal-title-short { display: inline; }
       header {
         flex-direction: column;
         align-items: stretch;
@@ -1081,32 +1115,55 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       .header-actions {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 6px;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 10px;
         width: 100%;
+        margin-top: 4px;
       }
       .header-actions .btn-refresh {
-        padding: 8px 4px;
-        font-size: 0.74rem;
+        padding: 9px 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
         text-align: center;
-        white-space: normal;
-        line-height: 1.25;
-        min-height: 38px;
+        white-space: nowrap;
+        min-height: 40px;
         display: flex;
         align-items: center;
         justify-content: center;
+      }
+      .header-actions .btn-reload {
+        grid-column: span 2;
+        font-size: 0.86rem;
+        font-weight: 700;
+        min-height: 42px;
+        padding: 10px 14px;
+        border-color: #38bdf8;
       }
       .toolbar-section {
         padding: 12px;
         gap: 10px;
         margin-bottom: 14px;
       }
-      .filter-chips {
+      .filter-chips, .filter-chips-mobile {
+        display: flex;
         gap: 6px;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .filter-chips::-webkit-scrollbar, .filter-chips-mobile::-webkit-scrollbar {
+        display: none;
       }
       .chip {
-        padding: 6px 11px;
+        padding: 6px 12px;
         font-size: 0.78rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .chip.chip-toggle {
+        margin-left: 0;
       }
       .filter-options {
         flex-direction: column;
@@ -1127,22 +1184,80 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       .sat-header-right {
         display: flex;
-        justify-content: space-between;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
         width: 100%;
-        padding-top: 6px;
+        padding-top: 8px;
         border-top: 1px dashed rgba(255, 255, 255, 0.08);
+      }
+      .sat-header-right .badge-status {
+        order: -1;
+        margin-left: auto;
+        font-size: 0.72rem;
       }
       .sat-header-right .btn-replay,
       .sat-header-right .btn-grafana {
-        flex: 1;
+        flex: 1 1 calc(50% - 4px);
+        min-width: 120px;
         padding: 8px 8px;
         font-size: 0.78rem;
+        min-height: 38px;
       }
       .card-body {
         padding: 12px;
         gap: 12px;
+      }
+      .telemetry-panel .telemetry-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .telemetry-item {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 8px 10px;
+      }
+      .telemetry-val {
+        margin-top: 0;
+        text-align: right;
+        font-size: 0.85rem;
+      }
+      .file-row, .file-row-mobile {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px;
+      }
+      .file-info {
+        width: 100%;
+        align-items: flex-start;
+      }
+      .file-row .file-name {
+        white-space: normal;
+        word-break: break-all;
+        overflow-wrap: anywhere;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        width: 100%;
+      }
+      .file-row .file-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        width: 100%;
+        flex-wrap: wrap;
+      }
+      .file-row .action-btn {
+        flex: 1 1 auto;
+        min-width: 90px;
+        max-width: 140px;
+        justify-content: center;
+        padding: 7px 10px;
+        font-size: 0.78rem;
+        min-height: 36px;
       }
       .modal {
         padding: 8px;
@@ -1161,10 +1276,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         padding: 10px;
       }
       .modal-footer {
-        padding: 8px 12px;
+        padding: 10px 14px;
+      }
+      .modal-footer .copy-btn {
+        width: 100%;
+        min-height: 42px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .radar-canvas {
-        max-width: 290px;
+        max-width: 280px;
       }
       .radar-wrapper {
         gap: 8px;
@@ -1173,15 +1298,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         font-size: 0.72rem;
         gap: 6px;
       }
-      .telemetry-grid {
+      .replay-telemetry-grid {
         gap: 6px;
         font-size: 0.8rem;
       }
-      .telemetry-val {
-        font-size: 0.85rem;
-      }
       .clipper-inputs-grid {
         grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .clipper-input-group {
+        padding: 6px 8px;
+      }
+      .clipper-input-group input[type="number"] {
+        padding: 6px;
+        font-size: 0.9rem;
       }
     }
   </style>
@@ -1193,9 +1323,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
     <div class="header-actions">
-      <button class="btn-refresh btn-backup" onclick="openBackupModal()">📦 バックアップ ＆ 復元</button>
-      <button class="btn-refresh btn-passes" onclick="openFuturePassesModal()">📅 通過予測 (24h)</button>
-      <button class="btn-refresh btn-reload" onclick="loadPasses(1, true)">🔄 最新データ取得</button>
+      <button class="btn-refresh btn-backup" onclick="openBackupModal()">
+        <span class="btn-label-long">📦 バックアップ ＆ 復元</span>
+        <span class="btn-label-short">📦 バックアップ</span>
+      </button>
+      <button class="btn-refresh btn-passes" onclick="openFuturePassesModal()">
+        <span class="btn-label-long">📅 通過予測 (24h)</span>
+        <span class="btn-label-short">📅 通過予測</span>
+      </button>
+      <button class="btn-refresh btn-reload" onclick="loadPasses(1, true)">
+        <span class="btn-label-long">🔄 最新データ取得</span>
+        <span class="btn-label-short">🔄 最新取得</span>
+      </button>
     </div>
   </header>
 
@@ -1255,7 +1394,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="futurePassesModal" class="modal" onclick="closeFuturePassesModal(event)">
     <div class="modal-box modal-box-large" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <span class="modal-title">📅 今後の北向きベランダ通過予測 (24時間)</span>
+        <span class="modal-title">
+          <span class="modal-title-long">📅 今後の北向きベランダ通過予測 (24時間)</span>
+          <span class="modal-title-short">📅 通過予測 (24h)</span>
+        </span>
         <button class="modal-close" onclick="closeFuturePassesModal()">&times;</button>
       </div>
       <div class="modal-body">
@@ -1359,7 +1501,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span id="repSatLabel" style="font-weight:bold; color:#38bdf8; font-size:1.05rem;">🛰️ 観測パス</span>
                 <span id="windowStatusBadge" style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:bold; background:#1e293b; color:#94a3b8; border:1px solid #334155;">判定中...</span>
               </div>
-              <div class="telemetry-grid">
+              <div class="replay-telemetry-grid">
                 <div class="telemetry-item">
                   <span class="telemetry-label">経過時刻 / JST</span>
                   <span class="telemetry-val" id="repTimeJst">--:--:--</span>
@@ -1403,16 +1545,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Timeline Scrubber & Speed Controls -->
             <div style="margin-bottom:12px;">
               <input type="range" id="replayScrubber" min="0" max="406" value="0" style="width:100%; accent-color:#38bdf8; cursor:pointer;" oninput="handleScrubberInput(this.value)">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; gap:6px;">
-                  <button id="btnPlayPause" class="btn-sm" style="background:#0284c7; color:white; font-weight:bold; padding:4px 12px;" onclick="togglePlayPause()">▶️ 再生</button>
-                  <button class="btn-sm" onclick="restartPlayback()">⏮️ 最初から</button>
+                  <button id="btnPlayPause" class="btn-sm" style="background:#0284c7; color:white; font-weight:bold; padding:6px 14px; min-height:36px;" onclick="togglePlayPause()">▶️ 再生</button>
+                  <button class="btn-sm" style="padding:6px 12px; min-height:36px;" onclick="restartPlayback()">⏮️ 最初から</button>
                 </div>
                 <div style="display:flex; gap:4px; align-items:center; font-size:0.8rem; color:#94a3b8;">
                   <span>速度:</span>
-                  <button class="chip speed-chip active" onclick="setPlaySpeed(1, this)" style="padding:2px 8px; font-size:0.75rem;">1x</button>
-                  <button class="chip speed-chip" onclick="setPlaySpeed(2, this)" style="padding:2px 8px; font-size:0.75rem;">2x</button>
-                  <button class="chip speed-chip" onclick="setPlaySpeed(5, this)" style="padding:2px 8px; font-size:0.75rem;">5x</button>
+                  <button class="chip speed-chip active" onclick="setPlaySpeed(1, this)" style="padding:4px 10px; font-size:0.75rem;">1x</button>
+                  <button class="chip speed-chip" onclick="setPlaySpeed(2, this)" style="padding:4px 10px; font-size:0.75rem;">2x</button>
+                  <button class="chip speed-chip" onclick="setPlaySpeed(5, this)" style="padding:4px 10px; font-size:0.75rem;">5x</button>
                 </div>
               </div>
             </div>
@@ -1604,25 +1746,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           ` : '';
 
           const probBar = prob !== null ? `
-            <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #334155; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:0.8rem;">
-              <span style="color:#94a3b8; white-space:nowrap;">🎯 復調期待度: <strong style="color:${probColor}; font-size:0.9rem;">${prob}%</strong></span>
-              <div style="flex:1; background:#1e293b; border-radius:999px; height:6px; overflow:hidden;">
+            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #334155;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem;">
+                <span style="color:#94a3b8;">🎯 復調期待度: <strong style="color:${probColor}; font-size:0.92rem;">${prob}%</strong></span>
+                <span style="color:#64748b; font-size:0.75rem;">${p.history_summary || ''}</span>
+              </div>
+              <div style="width:100%; background:#1e293b; border-radius:999px; height:8px; overflow:hidden;">
                 <div style="background:${probColor}; width:${prob}%; height:100%; border-radius:999px;"></div>
               </div>
-              <span style="color:#64748b; font-size:0.75rem; white-space:nowrap;">${p.history_summary || ''}</span>
             </div>
           ` : '';
 
           html += `
-            <div style="background:rgba(255,255,255,0.03); border:1px solid #334155; border-radius:8px; padding:12px; margin-bottom:10px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <span style="font-weight:bold; color:#38bdf8; font-size:1rem;">🛰️ ${p.satellite}</span>
-                <span style="background:${badgeBg}; color:white; font-size:0.75rem; padding:2px 8px; border-radius:999px; font-weight:bold;">${p.quality_score}</span>
+            <div style="background:rgba(255,255,255,0.03); border:1px solid #334155; border-radius:10px; padding:12px 14px; margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
+                <span style="font-weight:bold; color:#38bdf8; font-size:1.02rem;">🛰️ ${p.satellite}</span>
+                <span style="background:${badgeBg}; color:white; font-size:0.75rem; padding:3px 10px; border-radius:999px; font-weight:bold; letter-spacing:0.02em;">${p.quality_score}</span>
               </div>
-              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:6px; font-size:0.85rem; color:#cbd5e1;">
-                <div>AOS (出現): <strong style="color:white;">${aosJst}</strong></div>
-                <div>TCA (最大仰角): <strong style="color:white;">${p.max_elevation}°</strong> (Az ${p.max_elevation_azimuth}°)</div>
-                <div>開口窓滞在: <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong></div>
+              <div style="display:flex; flex-direction:column; gap:6px; font-size:0.82rem; color:#cbd5e1; background:rgba(0,0,0,0.25); padding:8px 12px; border-radius:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <span style="color:#94a3b8; font-size:0.76rem;">出現 (AOS)</span>
+                  <strong style="color:white; font-family:ui-monospace, monospace;">${aosJst}</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <span style="color:#94a3b8; font-size:0.76rem;">最大仰角 (TCA)</span>
+                  <strong style="color:white;">${p.max_elevation}° <span style="color:#94a3b8; font-size:0.74rem; font-weight:normal;">(Az ${p.max_elevation_azimuth}°)</span></strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <span style="color:#94a3b8; font-size:0.76rem;">開口窓滞在</span>
+                  <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong>
+                </div>
               </div>
               ${driftBadge}
               ${probBar}
@@ -3049,9 +3202,13 @@ def render_card_html(p: dict) -> str:
         else:
             view_btn = ""
 
+        fname_esc = html.escape(fname)
         file_row = f"""
         <div class="file-row">
-          <span class="file-name">📄 {fname}</span>
+          <div class="file-info">
+            <span class="file-icon">📄</span>
+            <span class="file-name" title="{fname_esc}">{fname_esc}</span>
+          </div>
           <div class="file-actions">
             {view_btn}
             <a class="action-btn btn-download" href="{dl_url}">📥 保存</a>
@@ -3061,6 +3218,16 @@ def render_card_html(p: dict) -> str:
         file_rows.append(file_row)
 
     files_grid_html = "".join(file_rows)
+    files_accordion = f"""
+    <details class="data-accordion files-accordion" open>
+      <summary>📁 生成ファイル一覧 ({len(file_rows)} 件: 中身プレビュー ＆ ダウンロード)</summary>
+      <div class="accordion-content">
+        <div class="files-grid">
+          {files_grid_html}
+        </div>
+      </div>
+    </details>
+    """ if file_rows else ""
     badge_class = f"badge-{sat_type.lower()}"
     has_data_val = "true" if is_demod_successful(p) else "false"
 
@@ -3109,12 +3276,7 @@ def render_card_html(p: dict) -> str:
         {packet_preview_html}
         {summary_accordion}
         {packets_accordion}
-        <div class="files-section">
-          <div class="files-title">ファイル一覧 (中身プレビュー ＆ ダウンロード)</div>
-          <div class="files-grid">
-            {files_grid_html}
-          </div>
-        </div>
+        {files_accordion}
       </div>
     </div>
     """

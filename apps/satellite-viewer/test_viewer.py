@@ -87,6 +87,66 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("sat-header-right", card_html)
         self.assertIn("btn-replay", card_html)
 
+    def test_mobile_responsive_optimizations(self):
+        # 1. Safe-area-insets for modern notch/hole-punch devices (Xiaomi 15 Ultra, Z Flip 7)
+        self.assertIn("env(safe-area-inset-left", HTML_TEMPLATE)
+        self.assertIn("env(safe-area-inset-right", HTML_TEMPLATE)
+        self.assertIn("env(safe-area-inset-top", HTML_TEMPLATE)
+        self.assertIn("env(safe-area-inset-bottom", HTML_TEMPLATE)
+
+        # 2. Header actions responsive labels & spacious mobile 2-row layout
+        self.assertIn("btn-label-long", HTML_TEMPLATE)
+        self.assertIn("btn-label-short", HTML_TEMPLATE)
+        self.assertIn("📦 バックアップ", HTML_TEMPLATE)
+        self.assertIn("📅 通過予測", HTML_TEMPLATE)
+        self.assertIn("🔄 最新取得", HTML_TEMPLATE)
+        self.assertIn("grid-column: span 2", HTML_TEMPLATE)
+        self.assertIn("modal-title-long", HTML_TEMPLATE)
+        self.assertIn("modal-title-short", HTML_TEMPLATE)
+
+        # 3. Filter chips mobile scrollable or wrap container
+        self.assertIn("filter-chips-mobile", HTML_TEMPLATE)
+        self.assertIn("-webkit-overflow-scrolling: touch", HTML_TEMPLATE)
+
+        # 4. Telemetry grid 1-column layout on mobile without class collision
+        self.assertIn(".telemetry-panel .telemetry-grid", HTML_TEMPLATE)
+        self.assertIn(".replay-telemetry-grid", HTML_TEMPLATE)
+        self.assertIn("width: 100% !important", HTML_TEMPLATE)  # Tooltip safe boundary
+
+        # 5. File row responsive stacking for mobile
+        self.assertIn(".file-row", HTML_TEMPLATE)
+        self.assertIn("file-row-mobile", HTML_TEMPLATE)
+        self.assertIn("overflow-wrap: anywhere", HTML_TEMPLATE)
+
+        # 6. Card rendering output has all required responsive classes and collapsible files accordion
+        p = {
+            "satellite": "METEOR-M2 3",
+            "pass_id": "METEOR-M2 3_20261025_005344",
+            "last_modified": "2026-10-25 01:00:00 UTC",
+            "files": {
+                "spectrogram.png": "results/METEOR-M2 3/pass/spectrogram.png",
+                "summary.json": "results/METEOR-M2 3/pass/summary.json",
+                "audio.wav": "results/METEOR-M2 3/pass/audio.wav",
+                "METEOR-M2 3_20261025_005344_msu_mr_rgb_color_corrected_highres.png": "results/METEOR-M2 3/pass/long.png",
+            },
+            "summary": {
+                "status": "completed",
+                "packets_count": 12,
+                "max_elevation": 45.2,
+            },
+            "packets": None,
+        }
+        card_html = render_card_html(p)
+        self.assertIn("files-accordion", card_html)
+        self.assertIn("file-row", card_html)
+        self.assertIn("file-name", card_html)
+        self.assertIn("file-actions", card_html)
+        self.assertIn("btn-replay", card_html)
+        self.assertIn("btn-grafana", card_html)
+        self.assertIn("badge-status", card_html)
+        self.assertIn("telemetry-grid", card_html)
+        self.assertIn("telemetry-item", card_html)
+
     def test_pass_data_cache_avoids_repeated_s3_calls(self):
         # 1回目の list_objects_v2 レスポンス
         paginator = MagicMock()
