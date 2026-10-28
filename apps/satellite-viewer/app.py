@@ -1602,9 +1602,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Tab 2: Animation View (Canvas & Time Controller) -->
         <div id="orbitAnimationTabContent" style="display:none;">
-          <div id="animationPlaceholder">
-            <!-- Will be populated in Tasks 4, 5, 6 -->
+          <div style="position:relative; width:100%; height:480px; background:#080d1a; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
+            <canvas id="orbitWorldCanvas" width="960" height="480" style="width:100%; height:100%; display:block;"></canvas>
+            <div id="canvasOverlayTelemetries" style="position:absolute; top:10px; left:10px; pointer-events:none; font-family:ui-monospace,monospace; font-size:0.75rem; color:#94a3b8; background:rgba(15,23,42,0.85); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
+              <div id="overlaySimTime" style="color:#f1f5f9; font-weight:bold; margin-bottom:4px;">UTC: 2026-10-28 12:00:00</div>
+              <div id="overlayRadioStatus" style="color:#38bdf8;">📡 BEAM: IDLE</div>
+            </div>
+            <div id="canvasLegend" style="position:absolute; bottom:10px; left:10px; pointer-events:none; font-size:0.72rem; color:#cbd5e1; background:rgba(15,23,42,0.85); padding:6px 12px; border-radius:6px; border:1px solid #334155; display:flex; gap:12px; flex-wrap:wrap;">
+              <span><span style="color:#38bdf8;">●</span> METEOR-M2 3</span>
+              <span><span style="color:#06b6d4;">●</span> METEOR-M2 4</span>
+              <span><span style="color:#f43f5e;">●</span> ISS</span>
+              <span><span style="color:#eab308;">●</span> AO-73</span>
+              <span><span style="color:#10b981;">▲</span> 東京観測所 (Az 250°-110°)</span>
+            </div>
           </div>
+          <div id="animationTimeControllerArea" style="margin-top:12px;"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -2122,6 +2134,201 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (typeof seekToPassTime === 'function') {
         seekToPassTime(satellite, aosTime);
       }
+    }
+
+    // --- 世界地図 & 昼夜ターミネーター Canvas 2D 描画エンジン ---
+    class WorldMapRenderer {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.tokyo = { lat: 35.6895, lon: 139.6917 };
+
+        this.coastlines = [
+          // Eurasia
+          [
+            [-10, 36], [0, 44], [10, 44], [25, 40], [30, 30], [32, 10], [40, 12], [50, 12],
+            [60, 25], [70, 20], [80, 15], [90, 22], [105, 10], [120, 25], [130, 32], [140, 40],
+            [142, 50], [130, 60], [100, 75], [60, 70], [30, 70], [20, 60], [10, 55], [0, 50],
+            [-5, 48], [-10, 36]
+          ],
+          // Africa
+          [
+            [-18, 15], [10, 37], [32, 31], [43, 12], [51, 10], [40, -15], [30, -32], [20, -35],
+            [12, -18], [0, 5], [-18, 15]
+          ],
+          // Japan
+          [
+            [130, 31], [131, 34], [135, 34], [139, 35], [141, 38], [141, 41],
+            [145, 44], [142, 45], [140, 42], [138, 38], [136, 36], [133, 35], [130, 31]
+          ],
+          // North America
+          [
+            [-168, 65], [-140, 70], [-90, 70], [-60, 50], [-70, 42], [-80, 25], [-97, 26],
+            [-105, 20], [-115, 30], [-125, 40], [-130, 50], [-160, 58], [-168, 65]
+          ],
+          // South America
+          [
+            [-80, 9], [-60, 10], [-35, -5], [-40, -22], [-55, -35], [-65, -55], [-75, -50],
+            [-70, -20], [-80, -2], [-80, 9]
+          ],
+          // Australia
+          [
+            [114, -22], [125, -15], [135, -12], [145, -15], [153, -28], [150, -38],
+            [138, -35], [130, -32], [115, -34], [114, -22]
+          ]
+        ];
+      }
+
+      lonToX(lon) {
+        let normLon = ((lon + 180) % 360 + 360) % 360 - 180;
+        return ((normLon + 180) / 360) * this.canvas.width;
+      }
+
+      latToY(lat) {
+        const clampedLat = Math.max(-85, Math.min(85, lat));
+        return ((90 - clampedLat) / 180) * this.canvas.height;
+      }
+
+      drawMap() {
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const ctx = this.ctx;
+
+        ctx.fillStyle = '#0a101d';
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.4)';
+        ctx.lineWidth = 0.5;
+        for (let lon = -150; lon <= 180; lon += 30) {
+          const x = this.lonToX(lon);
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+        }
+        for (let lat = -60; lat <= 60; lat += 30) {
+          const y = this.latToY(lat);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+
+        const eqY = this.latToY(0);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, eqY);
+        ctx.lineTo(w, eqY);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.2;
+
+        this.coastlines.forEach(poly => {
+          ctx.beginPath();
+          poly.forEach(([lon, lat], i) => {
+            const x = this.lonToX(lon);
+            const y = this.latToY(lat);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+
+      drawTerminator(utcDate) {
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const ctx = this.ctx;
+
+        const dayOfYear = Math.floor((utcDate - new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 0))) / (1000 * 60 * 60 * 24));
+        const deltaDeg = 23.44 * Math.sin((2 * Math.PI / 365.25) * (dayOfYear - 80));
+        const deltaRad = deltaDeg * Math.PI / 180;
+
+        const utcHours = utcDate.getUTCHours() + utcDate.getUTCMinutes() / 60 + utcDate.getUTCSeconds() / 3600;
+        const lambdaSunDeg = -15 * (utcHours - 12);
+
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.52)';
+        ctx.beginPath();
+
+        const stepX = 8;
+        const points = [];
+
+        for (let x = 0; x <= w; x += stepX) {
+          const lon = (x / w) * 360 - 180;
+          const diffRad = (lon - lambdaSunDeg) * Math.PI / 180;
+          let termLatRad = 0;
+          if (Math.abs(Math.tan(deltaRad)) > 1e-5) {
+            termLatRad = Math.atan(-Math.cos(diffRad) / Math.tan(deltaRad));
+          } else {
+            termLatRad = -Math.cos(diffRad) * 0.01;
+          }
+          const termLatDeg = termLatRad * 180 / Math.PI;
+          const y = this.latToY(termLatDeg);
+          points.push({ x, y });
+        }
+
+        if (deltaDeg >= 0) {
+          ctx.moveTo(0, h);
+          points.forEach(p => ctx.lineTo(p.x, p.y));
+          ctx.lineTo(w, h);
+          ctx.closePath();
+        } else {
+          ctx.moveTo(0, 0);
+          points.forEach(p => ctx.lineTo(p.x, p.y));
+          ctx.lineTo(w, 0);
+          ctx.closePath();
+        }
+        ctx.fill();
+      }
+
+      drawTokyoStation() {
+        const ctx = this.ctx;
+        const tx = this.lonToX(this.tokyo.lon);
+        const ty = this.latToY(this.tokyo.lat);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.moveTo(tx, ty);
+        const r = 40;
+        ctx.arc(tx, ty, r, (250 - 90) * Math.PI / 180, (110 - 90) * Math.PI / 180, false);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.fillStyle = '#10b981';
+        ctx.shadowColor = '#10b981';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(tx, ty, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#34d399';
+        ctx.font = 'bold 9px ui-monospace, sans-serif';
+        ctx.fillText('TOKYO (北向きベランダ)', tx + 7, ty - 4);
+        ctx.restore();
+      }
+    }
+
+    let worldMapRenderer = null;
+    function initWorldCanvas() {
+      const canvas = document.getElementById('orbitWorldCanvas');
+      if (!canvas) return;
+      if (!worldMapRenderer) {
+        worldMapRenderer = new WorldMapRenderer(canvas);
+      }
+      worldMapRenderer.drawMap();
+      worldMapRenderer.drawTerminator(new Date());
+      worldMapRenderer.drawTokyoStation();
     }
 
     // --- 今後の通過予測モーダル ロジック ---

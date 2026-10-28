@@ -61,5 +61,12 @@ class TestCalendarUI(unittest.TestCase):
         self.assertIn('renderMonthlyCalendar', HTML_TEMPLATE)
 
 
+class TestWorldMapCanvas(unittest.TestCase):
+    def test_template_contains_world_canvas(self):
+        self.assertIn('id="orbitWorldCanvas"', HTML_TEMPLATE)
+        self.assertIn('class WorldMapRenderer', HTML_TEMPLATE)
+        self.assertIn('drawTerminator', HTML_TEMPLATE)
+
+
 if __name__ == "__main__":
     unittest.main()
