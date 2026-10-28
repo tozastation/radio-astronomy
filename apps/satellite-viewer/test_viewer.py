@@ -547,6 +547,8 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn("/api/galactic-observations", HTML_TEMPLATE)
         self.assertIn("galacticRenderTopDownMap", HTML_TEMPLATE)
         self.assertIn("galacticUpdateInsights", HTML_TEMPLATE)
+        self.assertIn('id="galacticScienceGuide"', HTML_TEMPLATE)
+        self.assertIn("galacticToggleGuide", HTML_TEMPLATE)
 
         # node -c によるテンプレート内全 JavaScript 構文解析
         scripts = re.findall(r"<script[^>]*>(.*?)</script>", HTML_TEMPLATE, flags=re.DOTALL)

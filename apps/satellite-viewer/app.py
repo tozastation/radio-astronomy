@@ -1830,6 +1830,82 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </table>
           </div>
         </div>
+
+        <!-- Section 4: Scientific Principles & Deep Dive Primer (Why & How We Know) -->
+        <div id="galacticScienceGuide" style="margin-top:16px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;" onclick="galacticToggleGuide('galacticGuideBody')">
+            <div>
+              <span style="font-weight:bold; color:#38bdf8; font-size:0.95rem;">📘 観測科学・DSP徹底解説：なぜわかったのか？どうやって計算したのか？</span>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">ベランダの電波から宇宙の幾何学・質量・暗黒物質を解き明かす 5 大原理（タップで開閉）</div>
+            </div>
+            <span id="galacticGuideBody-icon" style="color:#38bdf8; font-size:1rem; font-weight:bold;">▼</span>
+          </div>
+
+          <div id="galacticGuideBody" style="display:block;">
+            <!-- Guide Item 1 -->
+            <div style="border-top:1px solid rgba(255,255,255,0.08); padding:10px 0;">
+              <div style="font-weight:bold; color:#f1f5f9; font-size:0.85rem; margin-bottom:4px; cursor:pointer; display:flex; justify-content:space-between;" onclick="galacticToggleGuide('guideItem1')">
+                <span>🔍 Q1. どうやってペルセウス腕やハローだと特定したのか？</span>
+                <span id="guideItem1-icon" style="color:var(--text-muted); font-size:0.75rem;">▲</span>
+              </div>
+              <div id="guideItem1" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:block; padding-left:8px;">
+                <b>「空間の幾何学」×「電波のドップラー周波数ズレ」の掛け算</b>で特定しています。<br>
+                1. <b>空間幾何学</b>: 地球の自転（地方恒星時 LST）からアンテナ視線の銀河座標 (l, b) を算出。銀緯 |b| &gt; 30° なら円盤外の「銀河ハロー（深宇宙）」、|b| ≤ 15° なら「天の川銀河面」です。<br>
+                2. <b>ドップラー視線速度 (DSP)</b>: 銀河面を向いている時、天の川の差動回転（外側ほど角速度が遅い）により、太陽系の外側を回るペルセウス腕は太陽系から見て<b>秒速約 45 km で遠ざかります</b>。このため 21cm 電波（1420.406 MHz）が約 213 kHz 高い方へ青方偏移し、波形上に<b>「0 km/s（手前の局所腕）」と「-45 km/s（外側のペルセウス腕）」という 2 つの山が分離して現れます</b>。この電波の山こそが渦状腕を突き抜けて捉えた動かぬ証拠です。
+              </div>
+            </div>
+
+            <!-- Guide Item 2 -->
+            <div style="border-top:1px solid rgba(255,255,255,0.08); padding:10px 0;">
+              <div style="font-weight:bold; color:#f1f5f9; font-size:0.85rem; margin-bottom:4px; cursor:pointer; display:flex; justify-content:space-between;" onclick="galacticToggleGuide('guideItem2')">
+                <span>⚛️ Q2. なぜ 21cm なのか？（数百万年に1度の奇跡の電波）</span>
+                <span id="guideItem2-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
+              </div>
+              <div id="guideItem2" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+                中性水素原子（陽子1個＋電子1個）において、陽子と電子のスピン（自転）が同じ向き（平行）から逆向き（反平行）へ落ちる際、超微細構造遷移エネルギー ΔE = 5.87 × 10⁻⁶ eV を電磁波として放射します。プランクの法則 (ΔE = hν) より、その周波数は <b>ν₀ = 1420.405751768 MHz（波長 λ = 21.106 cm）</b> と極めて精密に決まっています。<br>
+                1個の原子がこの放射を起こす確率は「約 1,100 万年に 1 回」という極微の現象ですが、銀河系内には太陽の数十億倍もの水素原子が存在するため、ベランダのアンテナで積算することで強烈な宇宙シグナルとして捉えることができます。
+              </div>
+            </div>
+
+            <!-- Guide Item 3 -->
+            <div style="border-top:1px solid rgba(255,255,255,0.08); padding:10px 0;">
+              <div style="font-weight:bold; color:#f1f5f9; font-size:0.85rem; margin-bottom:4px; cursor:pointer; display:flex; justify-content:space-between;" onclick="galacticToggleGuide('guideItem3')">
+                <span>🌌 Q3. どうやって暗黒物質（ダークマター）を実証しているのか？</span>
+                <span id="guideItem3-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
+              </div>
+              <div id="guideItem3" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+                天体が銀河の重力に引き込まれず円軌道を保つ条件は、万有引力と遠心力の釣り合い <b>V² / R = G M(R) / R²</b>（∴ M(R) = R V² / G）です。<br>
+                もし銀河の質量が目に見える星だけに集中していれば、太陽系（R₀ = 8.2 kpc, V₀ = 220 km/s）より外側にあるペルセウス腕（R ≈ 10.3 kpc）はケプラーの法則に従って <b>V_kepler = V₀ √(R₀ / R) ≈ 141.2 km/s</b> まで減速するはずです。<br>
+                しかし受信した電波のドップラー偏移を解析すると、外側でも <b>V_obs ≈ 220.0 km/s と全く減速していません（フラット回転曲線）</b>。この速度を維持するためには <b>(220.0 / 141.2)² ≈ 2.43 倍もの未知の質量</b> が必要です。この「目に見えない巨大な重力源」こそがダークマターの正体です。
+              </div>
+            </div>
+
+            <!-- Guide Item 4 -->
+            <div style="border-top:1px solid rgba(255,255,255,0.08); padding:10px 0;">
+              <div style="font-weight:bold; color:#f1f5f9; font-size:0.85rem; margin-bottom:4px; cursor:pointer; display:flex; justify-content:space-between;" onclick="galacticToggleGuide('guideItem4')">
+                <span>📏 Q4. どうやって渦状腕までの距離やガスの重さを計算したのか？</span>
+                <span id="guideItem4-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
+              </div>
+              <div id="guideItem4" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+                1. <b>空間距離 d</b>: オオルトの銀河差動回転モデル v_LSR = V₀ (R₀/R - 1) sin(l) から銀河中心距離 R を逆算し、余弦定理（三角測量）d = R₀ cos(l) + √(R² - R₀² sin²(l)) を解くことで、ペルセウス腕までの距離（約 6,200 光年〜反銀河中心方向 13,500 光年）が幾何学的に求まります。<br>
+                2. <b>ガスの総質量（柱密度）</b>: 希薄な星間ガスにおいて、スペクトルの輝度温度 T_B(v) の面積を積分すると、視線方向の断面積 1 cm² に含まれる水素原子の総数 <b>N_H = 1.823 × 10¹⁸ ∫ T_B(v) dv [atoms/cm²]</b> が求まります。これに水素原子質量とアンテナ立体角を掛けることで、視野内のガスの総重量（太陽質量の何万倍か）を計量できます。
+              </div>
+            </div>
+
+            <!-- Guide Item 5 -->
+            <div style="border-top:1px solid rgba(255,255,255,0.08); padding:10px 0;">
+              <div style="font-weight:bold; color:#f1f5f9; font-size:0.85rem; margin-bottom:4px; cursor:pointer; display:flex; justify-content:space-between;" onclick="galacticToggleGuide('guideItem5')">
+                <span>📡 Q5. なぜ安価な SDR ドングルで微弱な宇宙電波が受かるのか？（周波数スイッチング DSP の威力）</span>
+                <span id="guideItem5-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
+              </div>
+              <div id="guideItem5" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+                宇宙からの水素輝線信号はわずか数ケルビン（熱雑音より数十倍微弱）であり、通常の受信では安価なドングル内部のアンプのゲイン傾斜・うねり（数 dB）に完全に埋もれてしまいます。<br>
+                本システムでは 15 秒おきに <b>ON周波数（1420.406 MHz）</b> と <b>OFF周波数（1423.000 MHz）</b> を交互に高速スイッチングし、除算 <b>(P_ON - P_OFF) / P_OFF</b> を行うことで、ハードウェア起因の歪みを数学的に完全に相殺しています。<br>
+                さらに 5 分間（300 秒）積算することで、ラジオメーターの式 <b>ΔT_min = T_sys / √(Δf · τ)</b> に従って熱雑音の揺らぎを約 1/1,000 に圧縮し、クリーンな宇宙信号を浮かび上がらせています。
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="copy-btn" onclick="closeGalacticModal()">閉じる</button>
@@ -4408,6 +4484,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         '</tr>';
       });
       tbody.innerHTML = html;
+    }
+
+    function galacticToggleGuide(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const isHidden = el.style.display === 'none';
+      el.style.display = isHidden ? 'block' : 'none';
+      const icon = document.getElementById(id + '-icon');
+      if (icon) {
+        icon.textContent = isHidden ? '▲' : '▼';
+      }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
