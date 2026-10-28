@@ -1602,7 +1602,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Tab 2: Animation View (Canvas & Time Controller) -->
         <div id="orbitAnimationTabContent" style="display:none;">
-          <div style="position:relative; width:100%; height:480px; background:#080d1a; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
+          <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; max-height:60vh; background:#080d1a; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
             <canvas id="orbitWorldCanvas" width="960" height="480" style="width:100%; height:100%; display:block;"></canvas>
             <div id="canvasOverlayTelemetries" style="position:absolute; top:10px; left:10px; pointer-events:none; font-family:ui-monospace,monospace; font-size:0.75rem; color:#94a3b8; background:rgba(15,23,42,0.85); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
               <div id="overlaySimTime" style="color:#f1f5f9; font-weight:bold; margin-bottom:4px;">UTC: 2026-10-28 12:00:00</div>
@@ -1980,6 +1980,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     function closeOrbitCalendarModal(e) {
       if (e && e.target !== e.currentTarget && !e.target.classList.contains('modal-close') && !e.target.classList.contains('copy-btn')) return;
       document.getElementById('orbitCalendarModal').classList.remove('active');
+      if (rafHandle) {
+        cancelAnimationFrame(rafHandle);
+        rafHandle = null;
+      }
     }
 
     function switchOrbitTab(tab) {
@@ -1992,8 +1996,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const tabAnim = document.getElementById('orbitAnimationTabContent');
       if (tabCal) tabCal.style.display = isCal ? 'block' : 'none';
       if (tabAnim) tabAnim.style.display = isCal ? 'none' : 'block';
-      if (!isCal && typeof initWorldCanvas === 'function') {
-        initWorldCanvas();
+      if (isCal) {
+        if (rafHandle) {
+          cancelAnimationFrame(rafHandle);
+          rafHandle = null;
+        }
+      } else {
+        if (typeof initWorldCanvas === 'function') {
+          initWorldCanvas();
+        }
       }
     }
 
@@ -2041,7 +2052,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           cellsHtml += `<div class="calendar-cell is-other-month"><div class="calendar-day-num"><span>${dayNum}</span></div></div>`;
         }
 
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = new Intl.DateTimeFormat('ja-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
         let defaultSelectDate = null;
 
         for (let d = 1; d <= daysInMonth; d++) {
@@ -2490,7 +2501,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       drawSlantRangeBeam(ctx, satX, satY, tokyoX, tokyoY, slantRangeKm, inWindow, isBlocked, elDeg) {
-        if (elDeg < 0.0) return; // Horizon cutoff
+        if (elDeg < 5.0) return; // Horizon cutoff (elevation >= 5 deg)
 
         ctx.save();
         // Free Space Path Loss relative coloring (600km: close/strong -> 2400km: far/weak)
@@ -2619,6 +2630,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       let lockCount = 0;
       let activeSatName = null;
       let activeEl = -90;
+      let blockedCount = 0;
+      let blockedSatName = null;
+      let blockedEl = -90;
 
       if (multiPropagator) {
         multiPropagator.parsedSats.forEach(sat => {
@@ -2640,6 +2654,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (topo.el > activeEl) {
               activeEl = topo.el;
               activeSatName = sat.name;
+            }
+          } else if (topo.isBlocked && topo.el >= 5.0) {
+            blockedCount++;
+            if (topo.el > blockedEl) {
+              blockedEl = topo.el;
+              blockedSatName = sat.name;
             }
           }
 
@@ -2673,6 +2693,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (lockCount > 0) {
           overlayRadioEl.style.color = '#34d399';
           overlayRadioEl.textContent = `📡 LOCKED: ${activeSatName} (仰角 ${Math.round(activeEl)}° / 開口窓内)`;
+        } else if (blockedCount > 0) {
+          overlayRadioEl.style.color = '#f43f5e';
+          overlayRadioEl.textContent = `📡 BLOCKED: ${blockedSatName} (仰角 ${Math.round(blockedEl)}° / 建物遮蔽)`;
         } else {
           overlayRadioEl.style.color = '#38bdf8';
           overlayRadioEl.textContent = `📡 BEAM: IDLE (電波伝搬監視中)`;

@@ -344,10 +344,14 @@ class OrbitCalculator:
     ) -> Dict[str, Any]:
         """
         指定された年月の全日数にわたるパス予測を適応的ステップ探索により高速生成。
+        東京観測所（JST: UTC+9）の暦日に合わせて日付集約を行う。
         """
         days_in_month = calendar.monthrange(year, month)[1]
-        start_time = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
-        end_time = datetime(year, month, days_in_month, 23, 59, 59, tzinfo=timezone.utc)
+        jst_offset = timezone(timedelta(hours=9))
+        start_time_jst = datetime(year, month, 1, 0, 0, 0, tzinfo=jst_offset)
+        end_time_jst = datetime(year, month, days_in_month, 23, 59, 59, tzinfo=jst_offset)
+        start_time = start_time_jst.astimezone(timezone.utc)
+        end_time = end_time_jst.astimezone(timezone.utc)
         total_duration = int((end_time - start_time).total_seconds())
 
         if targets is None:
@@ -384,8 +388,8 @@ class OrbitCalculator:
             for d in range(1, days_in_month + 1)
         }
 
-        coarse_step = 120
-        fine_step = 30
+        coarse_step = 90
+        fine_step = 15
 
         for name, l1, l2 in targets:
             try:
@@ -442,7 +446,7 @@ class OrbitCalculator:
                             prob, hist_summary = self._evaluate_success_probability(
                                 name, max_el, quality, history_stats
                             )
-                            day_key = pass_start_dt.strftime("%Y-%m-%d")
+                            day_key = pass_start_dt.astimezone(jst_offset).strftime("%Y-%m-%d")
                             pass_obj = FuturePass(
                                 satellite=name,
                                 aos_time=pass_start_dt.isoformat(),
@@ -473,7 +477,7 @@ class OrbitCalculator:
                 prob, hist_summary = self._evaluate_success_probability(
                     name, max_el, quality, history_stats
                 )
-                day_key = pass_start_dt.strftime("%Y-%m-%d")
+                day_key = pass_start_dt.astimezone(jst_offset).strftime("%Y-%m-%d")
                 pass_obj = FuturePass(
                     satellite=name,
                     aos_time=pass_start_dt.isoformat(),

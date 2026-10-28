@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import sys
 from pathlib import Path
 
@@ -59,6 +59,21 @@ class TestCalendarPasses(unittest.TestCase):
         self.assertFalse(self.calc.is_in_sky_window(0.0, 15.0))  # too low
         self.assertFalse(self.calc.is_in_sky_window(0.0, 75.0))  # too high (ceiling slab cutoff)
 
+    def test_find_month_passes_jst_grouping(self):
+        targets = [("METEOR-M2 3", DEFAULT_TARGET_TLES["METEOR-M2 3"][0], DEFAULT_TARGET_TLES["METEOR-M2 3"][1])]
+        data = self.calc.find_month_passes(year=2026, month=10, targets=targets)
+        # Verify that all day keys are formatted YYYY-MM-DD
+        self.assertIn("2026-10-01", data["days"])
+        self.assertIn("2026-10-31", data["days"])
+
+        # Check every pass in every day: the AOS in JST must match the key date!
+        jst_offset = timezone(timedelta(hours=9))
+        for date_key, passes in data["days"].items():
+            for p in passes:
+                aos_dt = datetime.fromisoformat(p["aos_time"]).astimezone(jst_offset)
+                expected_key = aos_dt.strftime("%Y-%m-%d")
+                self.assertEqual(date_key, expected_key, f"Pass {p['aos_time']} (JST {aos_dt}) must be in {expected_key}, but found in {date_key}")
+
 
 class TestCalendarAPI(unittest.TestCase):
     def test_get_satellites_tle_data(self):
@@ -110,6 +125,18 @@ class TestTimeController(unittest.TestCase):
         self.assertIn('id="orbitSpeedSelect"', HTML_TEMPLATE)
         self.assertIn('id="btnPlayPause"', HTML_TEMPLATE)
         self.assertIn('id="btnNextPass"', HTML_TEMPLATE)
+
+
+class TestReviewFixes(unittest.TestCase):
+    def test_canvas_responsive_aspect_ratio(self):
+        self.assertIn('aspect-ratio: 2 / 1', HTML_TEMPLATE)
+
+    def test_radio_status_handles_blocked(self):
+        self.assertIn('📡 BLOCKED:', HTML_TEMPLATE)
+        self.assertIn('if (elDeg < 5.0) return;', HTML_TEMPLATE)
+
+    def test_raf_cleanup_on_close_and_tab(self):
+        self.assertIn('cancelAnimationFrame(rafHandle)', HTML_TEMPLATE)
 
 
 if __name__ == "__main__":
