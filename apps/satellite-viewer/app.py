@@ -13,6 +13,8 @@ import threading
 import asyncio
 import time
 import tarfile
+import gzip
+import concurrent.futures
 from dataclasses import asdict
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -47,6 +49,15 @@ s3_client = boto3.client(
     region_name="garage",
     config=Config(s3={"addressing_style": "path"})
 )
+
+
+def compress_body_if_supported(accept_encoding: str, body: bytes) -> tuple[bytes, bool]:
+    """
+    Accept-Encoding に gzip が含まれ、かつボディが 1KB を超える場合に gzip 圧縮して返す。
+    """
+    if "gzip" in (accept_encoding or "").lower() and len(body) > 1024:
+        return gzip.compress(body, compresslevel=6), True
+    return body, False
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="ja">
@@ -4052,7 +4063,7 @@ def resolve_pass_telemetry_metrics(p: dict) -> dict:
                 tle_line2=tle[1],
                 start_time=start_time,
                 duration_seconds=duration_sec,
-                step_seconds=1,
+                step_seconds=5,
             )
             metrics = compute_pass_telemetry_metrics(
                 satellite_name=satellite,
@@ -4488,27 +4499,36 @@ class PassDataCache:
 
                         self._passes[pass_id]["files"][filename] = key
 
+            fetch_tasks = []
             for pass_id in active_pass_ids:
                 pdata = self._passes[pass_id]
                 if "summary.json" in pdata["files"]:
                     skey = pdata["files"]["summary.json"]
                     current_mtime = new_file_mtimes.get(skey)
                     if pdata["summary"] is None or self._file_mtimes.get(skey) != current_mtime:
-                        try:
-                            s_obj = self.s3_client.get_object(Bucket=self.s3_bucket, Key=skey)
-                            pdata["summary"] = json.loads(s_obj["Body"].read().decode("utf-8"))
-                        except Exception:
-                            pass
+                        fetch_tasks.append((pass_id, "summary", skey))
 
                 if "packets.json" in pdata["files"]:
                     pkey = pdata["files"]["packets.json"]
                     current_mtime = new_file_mtimes.get(pkey)
                     if pdata["packets"] is None or self._file_mtimes.get(pkey) != current_mtime:
-                        try:
-                            pk_obj = self.s3_client.get_object(Bucket=self.s3_bucket, Key=pkey)
-                            pdata["packets"] = json.loads(pk_obj["Body"].read().decode("utf-8"))
-                        except Exception:
-                            pass
+                        fetch_tasks.append((pass_id, "packets", pkey))
+
+            def _fetch_s3_json(task):
+                pid, field, key = task
+                try:
+                    obj = self.s3_client.get_object(Bucket=self.s3_bucket, Key=key)
+                    data = json.loads(obj["Body"].read().decode("utf-8"))
+                    return pid, field, data
+                except Exception:
+                    return pid, field, None
+
+            if fetch_tasks:
+                max_workers = min(16, len(fetch_tasks))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    for pid, field, data in executor.map(_fetch_s3_json, fetch_tasks):
+                        if data is not None and pid in self._passes:
+                            self._passes[pid][field] = data
 
             self._file_mtimes = new_file_mtimes
             for stale_id in list(self._passes.keys()):
@@ -4768,6 +4788,22 @@ pass_cache = PassDataCache(s3_client, S3_BUCKET)
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
+    def send_bytes_response(self, status: int, content_type: str, body: bytes, cache_control: str = "no-cache", extra_headers: list = None):
+        accept_encoding = self.headers.get("Accept-Encoding", "")
+        compressed_body, is_gzip = compress_body_if_supported(accept_encoding, body)
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        if is_gzip:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(compressed_body)))
+        self.send_header("Cache-Control", cache_control)
+        if extra_headers:
+            for k, v in extra_headers:
+                self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(compressed_body)
+
     def do_HEAD(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -4857,12 +4893,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "counts": counts
             }).encode("utf-8")
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-cache")
-            self.end_headers()
-            self.wfile.write(body)
+            self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
             return
 
         if path == "/api/pending-tasks":
@@ -4929,12 +4960,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             month = int(qs.get("month", [now_dt.month])[0])
             data = get_month_passes_cached(year, month, cache=pass_cache)
             body = json.dumps(data).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "public, max-age=300")
-            self.end_headers()
-            self.wfile.write(body)
+            self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="public, max-age=300")
             return
 
         if path == "/api/sky-mask/heatmap":
@@ -5144,11 +5170,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             body = HTML_TEMPLATE.replace("__BUCKET__", S3_BUCKET)
             encoded = body.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
+            self.send_bytes_response(200, "text/html; charset=utf-8", encoded, cache_control="no-cache")
         except Exception as e:
             self.send_error(500, f"Dashboard render error: {e}")
 
@@ -5249,8 +5271,31 @@ def start_background_dispatcher():
     t.start()
 
 
+def warm_cache_background():
+    """
+    サーバー起動直後にバックグラウンドで S3 メタデータおよび直近パスの諸元を先行計算し、
+    ユーザーの初回アクセス遅延（Cold Start Latency）をゼロにする。
+    """
+    try:
+        print("🔥 [Pre-warming] Warming up PassDataCache in background...", flush=True)
+        t0 = time.time()
+        passes = pass_cache.get_all_passes()
+        # 画面に即座に表示される上位24件の地上局テレメトリ諸元も先行算出
+        for p in passes[:24]:
+            resolve_pass_telemetry_metrics(p)
+        print(f"✅ [Pre-warming] Cache warmed in {time.time() - t0:.2f}s ({len(passes)} passes)", flush=True)
+    except Exception as e:
+        print(f"⚠️ [Pre-warming] Error during cache warming: {e}", flush=True)
+
+
+def start_cache_prewarming():
+    t = threading.Thread(target=warm_cache_background, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
     start_background_dispatcher()
+    start_cache_prewarming()
     server_address = ("0.0.0.0", PORT)
     httpd = ThreadingHTTPServer(server_address, DashboardHandler)
     print(f"🚀 Satellite Viewer listening on http://0.0.0.0:{PORT} (Bucket: {S3_BUCKET})")

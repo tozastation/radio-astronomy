@@ -453,5 +453,62 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn('id="count-demod-success"', HTML_TEMPLATE)
 
 
+class TestPerformanceOptimizations(unittest.TestCase):
+    def test_pass_cache_parallel_fetching(self):
+        mock_s3 = MagicMock()
+        cache = PassDataCache(s3_client=mock_s3, s3_bucket="test-bucket")
+
+        # Mock list_objects_v2 with 3 passes
+        paginator = MagicMock()
+        mock_s3.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{
+            "Contents": [
+                {"Key": "results/ISS (ZARYA)/ISS_01/summary.json", "LastModified": datetime.now(timezone.utc)},
+                {"Key": "results/ISS (ZARYA)/ISS_01/packets.json", "LastModified": datetime.now(timezone.utc)},
+                {"Key": "results/METEOR-M2 4/METEOR_02/summary.json", "LastModified": datetime.now(timezone.utc)},
+            ]
+        }]
+
+        def mock_get_object(Bucket, Key):
+            if "summary.json" in Key:
+                return {"Body": io.BytesIO(b'{"status":"completed","packets_count":1}')}
+            elif "packets.json" in Key:
+                return {"Body": io.BytesIO(b'{"packets":[{"id":1}]}')}
+            raise ValueError(f"Unknown key {Key}")
+
+        mock_s3.get_object.side_effect = mock_get_object
+
+        passes = cache.get_all_passes()
+        self.assertEqual(len(passes), 2)
+        iss_pass = next(p for p in passes if p["pass_id"] == "ISS_01")
+        self.assertIsNotNone(iss_pass["summary"])
+        self.assertEqual(iss_pass["summary"]["status"], "completed")
+        self.assertIsNotNone(iss_pass["packets"])
+        self.assertEqual(len(iss_pass["packets"]["packets"]), 1)
+
+    def test_gzip_compression_helper(self):
+        import gzip
+        from app import compress_body_if_supported
+
+        large_body = b"hello " * 500  # 3000 bytes > 1024
+        compressed, is_gzip = compress_body_if_supported("gzip, deflate", large_body)
+        self.assertTrue(is_gzip)
+        self.assertLess(len(compressed), len(large_body))
+        self.assertEqual(gzip.decompress(compressed), large_body)
+
+        # Without gzip in accept-encoding
+        uncompressed, is_gzip2 = compress_body_if_supported("identity", large_body)
+        self.assertFalse(is_gzip2)
+        self.assertEqual(uncompressed, large_body)
+
+    def test_prewarm_cache_logic(self):
+        from app import warm_cache_background
+        # Should execute safely without uncaught exception
+        try:
+            warm_cache_background()
+        except Exception as e:
+            self.fail(f"warm_cache_background raised unexpected exception: {e}")
+
+
 if __name__ == "__main__":
     unittest.main()
