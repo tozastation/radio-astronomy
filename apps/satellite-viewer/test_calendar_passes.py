@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from orbit_calculator import OrbitCalculator, DEFAULT_TARGET_TLES
+from app import get_month_passes_cached, get_satellites_tle_data
 
 
 class TestCalendarPasses(unittest.TestCase):
@@ -29,6 +30,27 @@ class TestCalendarPasses(unittest.TestCase):
         self.assertIn("aos_time", p)
         self.assertIn("max_elevation", p)
         self.assertIn("quality_score", p)
+
+
+class TestCalendarAPI(unittest.TestCase):
+    def test_get_satellites_tle_data(self):
+        data = get_satellites_tle_data()
+        self.assertIn("satellites", data)
+        self.assertGreaterEqual(len(data["satellites"]), 4)
+        sat_names = [s["name"] for s in data["satellites"]]
+        self.assertIn("METEOR-M2 3", sat_names)
+        self.assertIn("tle1", data["satellites"][0])
+        self.assertIn("tle2", data["satellites"][0])
+        self.assertIn("color", data["satellites"][0])
+
+    def test_get_month_passes_cached(self):
+        data1 = get_month_passes_cached(2026, 10)
+        self.assertIn("days", data1)
+        # 2回目はキャッシュから瞬時に取得
+        start_t = datetime.now()
+        data2 = get_month_passes_cached(2026, 10)
+        self.assertLess((datetime.now() - start_t).total_seconds(), 0.02)
+        self.assertEqual(data1["days"], data2["days"])
 
 
 if __name__ == "__main__":

@@ -384,8 +384,8 @@ class OrbitCalculator:
             for d in range(1, days_in_month + 1)
         }
 
-        coarse_step = 90
-        fine_step = 15
+        coarse_step = 120
+        fine_step = 30
 
         for name, l1, l2 in targets:
             try:

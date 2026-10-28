@@ -2669,6 +2669,72 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None
     }
 
 
+_calendar_passes_cache = {}
+_CALENDAR_CACHE_TTL = 3600.0
+
+
+def get_satellites_tle_data() -> dict:
+    """
+    対象衛星の最新 TLE 2行および表示色・周波数などのメタデータを返却。
+    """
+    meta_info = {
+        "METEOR-M2 3": {"color": "#38bdf8", "freq_mhz": 137.9, "type": "WeatherSatellite"},
+        "METEOR-M2 4": {"color": "#06b6d4", "freq_mhz": 137.1, "type": "WeatherSatellite"},
+        "ISS (ZARYA)": {"color": "#f43f5e", "freq_mhz": 145.825, "type": "SpaceStation"},
+        "FUNCUBE-1 (AO-73)": {"color": "#eab308", "freq_mhz": 145.935, "type": "CubeSat"},
+    }
+
+    satellites = []
+    for name in DEFAULT_TARGET_TLES.keys():
+        tle = load_tle_for_satellite(name)
+        if tle:
+            info = meta_info.get(name, {"color": "#a855f7", "freq_mhz": 145.0, "type": "Satellite"})
+            satellites.append({
+                "name": name,
+                "tle1": tle[0],
+                "tle2": tle[1],
+                "color": info["color"],
+                "freq_mhz": info["freq_mhz"],
+                "type": info["type"],
+            })
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "satellites": satellites,
+    }
+
+
+def get_month_passes_cached(year: int, month: int, cache=None) -> dict:
+    """
+    指定年月のパス予測データを取得。インメモリキャッシュ（TTL: 3600秒）を利用。
+    """
+    now = time.time()
+    cache_key = (year, month)
+    if cache_key in _calendar_passes_cache:
+        cached_ts, cached_data = _calendar_passes_cache[cache_key]
+        if now - cached_ts < _CALENDAR_CACHE_TTL:
+            return cached_data
+
+    if cache is None:
+        try:
+            cache = pass_cache
+        except Exception:
+            cache = None
+
+    history_stats = cache.get_satellite_history_stats() if cache else None
+    time_drifts = cache.compute_satellite_time_drifts() if cache else None
+
+    calc = OrbitCalculator()
+    data = calc.find_month_passes(
+        year=year,
+        month=month,
+        history_stats=history_stats,
+        time_drifts=time_drifts,
+    )
+    _calendar_passes_cache[cache_key] = (now, data)
+    return data
+
+
 def generate_s3_backup_stream(s3_client, bucket: str, prefixes=("results/", "archive/", "golden/", "raw/")):
     """
     Garage S3 の対象プレフィックス配下にある全オブジェクトを、
@@ -3765,6 +3831,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "public, max-age=60")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/satellites/tle":
+            data = get_satellites_tle_data()
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path.startswith("/api/calendar/passes"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            now_dt = datetime.now(timezone.utc)
+            year = int(qs.get("year", [now_dt.year])[0])
+            month = int(qs.get("month", [now_dt.month])[0])
+            data = get_month_passes_cached(year, month, cache=pass_cache)
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=300")
             self.end_headers()
             self.wfile.write(body)
             return
