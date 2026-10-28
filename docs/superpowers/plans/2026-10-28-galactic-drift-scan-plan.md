@@ -42,7 +42,7 @@
   - `OrbitPredictor::is_qualifying_pass(sat_name: &str, max_elevation_deg: f64, min_meteor_el_deg: f64, min_default_el_deg: f64) -> bool`
   - `OrbitPredictor::estimate_active_pass_max_el(&self, sat_name: &str, tle_line1: &str, tle_line2: &str, freq_hz: f64, now: DateTime<Utc>) -> Result<f64>`
 
-- [ ] **Step 1: Write the failing test in `apps/satellite-tracker-rs/tests/orbit_test.rs`**
+- [x] **Step 1: Write the failing test in `apps/satellite-tracker-rs/tests/orbit_test.rs`**
 
 ```rust
 #[test]
@@ -75,21 +75,21 @@ fn test_estimate_active_pass_max_el_finds_peak_across_window() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --package satellite-tracker-rs --test orbit_test`
 Expected: FAIL with `no function or associated item named is_qualifying_pass`
 
-- [ ] **Step 3: Implement `is_qualifying_pass` and `estimate_active_pass_max_el` in `apps/satellite-tracker-rs/src/orbit.rs`**
+- [x] **Step 3: Implement `is_qualifying_pass` and `estimate_active_pass_max_el` in `apps/satellite-tracker-rs/src/orbit.rs`**
 
 `is_qualifying_pass` checks if `sat_name.to_uppercase().contains("METEOR")` to compare against `min_meteor_el_deg`, otherwise `min_default_el_deg`. `estimate_active_pass_max_el` scans `now - 10 min` to `now + 20 min` in `10s` steps while `is_in_view` is true around `now` to return the maximum elevation in degrees. Also update `get_next_qualifying_pass` (or filter inside `get_next_pass` / caller) so non-qualifying passes are skipped when computing next AOS.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --package satellite-tracker-rs --test orbit_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/satellite-tracker-rs/src/orbit.rs apps/satellite-tracker-rs/tests/orbit_test.rs
@@ -119,7 +119,7 @@ git commit -m "feat: 衛星パスの最大仰角によるスマート足切り�
   - `pub fn accumulate_welch_psd(iq_samples: &[(f32, f32)], fft_size: usize) -> Vec<f64>`
   - `pub fn calibrate_frequency_switched_spectrum(psd_on: &[f64], psd_off: &[f64], sample_rate_hz: f64, center_freq_on_hz: f64, lsr_corr_km_s: f64, t_sys_k: f64) -> (GalacticSpectrum, GalacticRfMetrics)`
 
-- [ ] **Step 1: Write the failing test in `apps/satellite-tracker-rs/tests/galactic_test.rs`**
+- [x] **Step 1: Write the failing test in `apps/satellite-tracker-rs/tests/galactic_test.rs`**
 
 ```rust
 use chrono::{TimeZone, Utc};
@@ -193,22 +193,22 @@ fn test_frequency_switching_cancels_bandpass_and_handles_zero_off_power() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --package satellite-tracker-rs --test galactic_test`
 Expected: FAIL with `unresolved import satellite_tracker_rs::galactic`
 
-- [ ] **Step 3: Implement `apps/satellite-tracker-rs/src/galactic.rs`, register `pub mod galactic;` in `src/lib.rs`, and support `.json` Content-Type in `src/s3.rs`**
+- [x] **Step 3: Implement `apps/satellite-tracker-rs/src/galactic.rs`, register `pub mod galactic;` in `src/lib.rs`, and support `.json` Content-Type in `src/s3.rs`**
 
 In `src/galactic.rs`, implement the spherical trigonometry transformations (`compute_galactic_pointing`), LSR velocity correction (`compute_lsr_velocity_correction`), 1024-pt Hanning-windowed Welch PSD accumulation (`accumulate_welch_psd`), frequency-switched baseline subtraction with linear slope detrending (`calibrate_frequency_switched_spectrum` restricted to $v_{\text{LSR}} \in [-150.0, +150.0]\text{ km/s}$), and a helper `generate_synthetic_galactic_iq(count: usize, sample_rate: f64, is_on_band: bool, gal_l_deg: f64, gal_b_deg: f64, seed: &mut u64) -> Vec<(f32, f32)>` so mock mode produces physically realistic Galactic plane profiles when $|b| \le 15^\circ$.
 In `src/s3.rs`, set `content-type` to `"application/json"` when `local_path` ends with `.json` (defaulting to `"audio/wav"` otherwise).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --package satellite-tracker-rs --test galactic_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/satellite-tracker-rs/src/galactic.rs apps/satellite-tracker-rs/src/lib.rs apps/satellite-tracker-rs/src/s3.rs apps/satellite-tracker-rs/tests/galactic_test.rs
@@ -227,25 +227,25 @@ git commit -m "feat: 天の川銀河座標変換と21cm周波数スイッチン�
 - Consumes: `OrbitPredictor::is_qualifying_pass`, `OrbitPredictor::estimate_active_pass_max_el`, `galactic::*`
 - Produces: Autonomous switching between Qualifying Satellite Pass recording and 300-second Galactic 21cm Drift Scan cycles with S3 upload to `galactic/YYYY-MM-DD/scan_HHMMSS.json`.
 
-- [ ] **Step 1: Write the failing integration test in `apps/satellite-tracker-rs/tests/integration_test.rs`**
+- [x] **Step 1: Write the failing integration test in `apps/satellite-tracker-rs/tests/integration_test.rs`**
 
 Add a test `test_galactic_scan_cycle_and_s3_key_generation` verifying that accumulating ON/OFF slices and flushing produces a valid `GalacticScanResult` JSON file at `spool_dir/scan_YYYYMMDD_HHMMSS.json` and uploads to `galactic/YYYY-MM-DD/scan_HHMMSS.json` via `S3Uploader` in mock mode.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --package satellite-tracker-rs --test integration_test`
 Expected: FAIL
 
-- [ ] **Step 3: Update `apps/satellite-tracker-rs/src/main.rs` and `src/galactic.rs` with `GalacticScanSession`**
+- [x] **Step 3: Update `apps/satellite-tracker-rs/src/main.rs` and `src/galactic.rs` with `GalacticScanSession`**
 
 Add `GalacticScanSession` in `src/galactic.rs` that accumulates ON/OFF PSD slices every tick during idle time (and during skipped marginal satellite passes), flushes after `300.0` seconds (or early-flushes when a qualifying satellite pass is within `30.0` seconds of AOS and at least `60.0` seconds have been integrated), writes the JSON to `spool_dir`, and uploads to `galactic/YYYY-MM-DD/scan_HHMMSS.json`. In `main.rs`, filter `visible_candidates` and `get_next_pass` using `OrbitPredictor::is_qualifying_pass` with `MIN_MAX_EL_METEOR_DEG` (`25.0`) and `MIN_MAX_EL_DEFAULT_DEG` (`20.0`).
 
-- [ ] **Step 4: Run all Rust tests to verify they pass**
+- [x] **Step 4: Run all Rust tests to verify they pass**
 
 Run: `cargo test --package satellite-tracker-rs`
 Expected: PASS (all unit and integration tests green)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/satellite-tracker-rs/src/galactic.rs apps/satellite-tracker-rs/src/main.rs apps/satellite-tracker-rs/tests/integration_test.rs
@@ -269,7 +269,7 @@ git commit -m "feat: メインループに低仰角パス足切りと銀河ド�
   - `fetch_galactic_observations(s3_client, bucket: str, limit: int = 96) -> Dict[str, Any]`
   - HTTP `GET /api/galactic-observations` endpoint (Gzip-compressed JSON)
 
-- [ ] **Step 1: Write the failing test in `apps/satellite-viewer/test_viewer.py`**
+- [x] **Step 1: Write the failing test in `apps/satellite-viewer/test_viewer.py`**
 
 ```python
     def test_galactic_pointing_and_empty_s3_fallback(self):
@@ -295,22 +295,22 @@ git commit -m "feat: メインループに低仰角パス足切りと銀河ド�
         self.assertIn("latest_spectrum", obs)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/pytest apps/satellite-viewer/test_viewer.py -k test_galactic_pointing_and_empty_s3_fallback -v`
 Expected: FAIL with `ImportError: cannot import name 'compute_galactic_pointing'`
 
-- [ ] **Step 3: Implement `compute_galactic_pointing`, `compute_galactic_24h_drift_curve` in `orbit_calculator.py` and `fetch_galactic_observations` + `/api/galactic-observations` in `app.py`**
+- [x] **Step 3: Implement `compute_galactic_pointing`, `compute_galactic_24h_drift_curve` in `orbit_calculator.py` and `fetch_galactic_observations` + `/api/galactic-observations` in `app.py`**
 
 In `orbit_calculator.py`, implement the exact J2000.0 spherical coordinate transformations matching the Rust implementation, including `lsr_correction_km_s` and expected spiral arm velocities (`expected_arms_km_s`).
 In `app.py`, implement `fetch_galactic_observations` which lists `galactic/` keys from S3, fetches up to `limit` latest scan JSON files concurrently using `concurrent.futures.ThreadPoolExecutor(max_workers=16)`, and returns `current_pointing`, `scan_count`, `scans`, `latest_spectrum`, and `drift_curve_24h`. Wire `GET /api/galactic-observations` using `self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest apps/satellite-viewer/test_viewer.py -k test_galactic_pointing_and_empty_s3_fallback -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/satellite-viewer/orbit_calculator.py apps/satellite-viewer/app.py apps/satellite-viewer/test_viewer.py
@@ -329,7 +329,7 @@ git commit -m "feat: Viewerに天の川銀河ポインティング計算とS3並
 - Consumes: `GET /api/galactic-observations`
 - Produces: Header button `openGalacticModal()`, modal `#galacticModal` with `#galacticSpectrumCanvas` and `#galacticDriftCanvas`, and `galactic*` JavaScript namespace functions.
 
-- [ ] **Step 1: Write the failing UI and JS syntax regression test in `apps/satellite-viewer/test_viewer.py`**
+- [x] **Step 1: Write the failing UI and JS syntax regression test in `apps/satellite-viewer/test_viewer.py`**
 
 ```python
     def test_galactic_monitor_ui_and_js_syntax(self):
@@ -354,24 +354,24 @@ git commit -m "feat: Viewerに天の川銀河ポインティング計算とS3並
         self.assertEqual(res.returncode, 0, f"JS syntax error: {res.stderr}")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/pytest apps/satellite-viewer/test_viewer.py -k test_galactic_monitor_ui_and_js_syntax -v`
 Expected: FAIL with `'openGalacticModal()' not found in HTML_TEMPLATE`
 
-- [ ] **Step 3: Add the『Galactic Monitor』button, modal, and `galactic*` Canvas rendering scripts to `HTML_TEMPLATE` in `apps/satellite-viewer/app.py`**
+- [x] **Step 3: Add the『Galactic Monitor』button, modal, and `galactic*` Canvas rendering scripts to `HTML_TEMPLATE` in `apps/satellite-viewer/app.py`**
 
 Add a header action button (`🌌 銀河観測` / `🌌 銀河`) that opens `#galacticModal`. Inside `#galacticModal`, render:
 1. Real-time pointing telemetry grid: Galactic $(l, b)$, Equatorial $(\alpha, \delta)$, LST, LSR correction $\Delta v_{\text{LSR}}$, current region badge (`WARM_GALACTIC_PLANE` vs `COLD_HALO`), and Pass Gating filter policy badge (`METEOR >= 25° / ISS・CubeSat >= 20°`).
 2. `#galacticSpectrumCanvas`: 21cm HI line velocity spectrum ($v_{\text{LSR}} \in [-150, +150]\text{ km/s}$ vs $\Delta T_A\text{ [K]}$) with vertical dashed markers for Orion Arm ($0\text{ km/s}$) and Perseus Arm ($-45\text{ km/s}$).
 3. `#galacticDriftCanvas`: 24-hour Galactic drift scan curve plotting $|b|$ (highlighting $|b| \le 15^\circ$ Galactic plane crossings in cyan/amber) alongside observed continuum power points.
 
-- [ ] **Step 4: Run all Python Viewer tests to verify they pass**
+- [x] **Step 4: Run all Python Viewer tests to verify they pass**
 
 Run: `.venv/bin/pytest apps/satellite-viewer/`
 Expected: PASS (all tests including `node -c` JS check green)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/satellite-viewer/app.py apps/satellite-viewer/test_viewer.py
