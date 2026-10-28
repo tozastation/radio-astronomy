@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from orbit_calculator import OrbitCalculator, DEFAULT_TARGET_TLES
-from app import get_month_passes_cached, get_satellites_tle_data
+from app import get_month_passes_cached, get_satellites_tle_data, HTML_TEMPLATE
 
 
 class TestCalendarPasses(unittest.TestCase):
@@ -51,6 +51,14 @@ class TestCalendarAPI(unittest.TestCase):
         data2 = get_month_passes_cached(2026, 10)
         self.assertLess((datetime.now() - start_t).total_seconds(), 0.02)
         self.assertEqual(data1["days"], data2["days"])
+
+
+class TestCalendarUI(unittest.TestCase):
+    def test_template_contains_calendar_elements(self):
+        self.assertIn('id="orbitCalendarModal"', HTML_TEMPLATE)
+        self.assertIn('id="calendarGrid"', HTML_TEMPLATE)
+        self.assertIn('id="calendarDayDetails"', HTML_TEMPLATE)
+        self.assertIn('renderMonthlyCalendar', HTML_TEMPLATE)
 
 
 if __name__ == "__main__":

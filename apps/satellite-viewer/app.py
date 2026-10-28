@@ -144,6 +144,159 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-color: #38bdf8;
     }
     .btn-passes:active { background: #0369a1; }
+    .btn-orbit {
+      background: linear-gradient(135deg, #7c3aed, #0284c7);
+      color: white;
+      border-color: #a855f7;
+    }
+    .btn-orbit:active { opacity: 0.85; }
+    .modal-box-extra-large {
+      max-width: 1200px;
+      width: 96vw;
+      max-height: 92vh;
+    }
+    .orbit-tabs {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+    }
+    .orbit-tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .orbit-tab-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .calendar-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    @media (min-width: 860px) {
+      .calendar-container {
+        grid-template-columns: 3fr 2fr;
+      }
+    }
+    .calendar-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+    }
+    .calendar-header-day {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 4px 0;
+    }
+    .calendar-cell {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      min-height: 60px;
+      padding: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .calendar-cell:hover {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.05);
+    }
+    .calendar-cell.active {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.15);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .calendar-cell.is-today {
+      border-color: #38bdf8;
+    }
+    .calendar-cell.has-golden {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.08);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+    }
+    .calendar-cell.is-other-month {
+      opacity: 0.25;
+      cursor: default;
+    }
+    .calendar-day-num {
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .calendar-day-golden-star {
+      color: #fbbf24;
+      font-size: 0.75rem;
+    }
+    .calendar-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-top: 4px;
+    }
+    .cal-pill {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .calendar-details-panel {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+    .cal-pass-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cal-pass-card:hover {
+      border-color: var(--accent);
+    }
+    .btn-observe-pass {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+    .btn-observe-pass:hover {
+      background: #0369a1;
+    }
     .btn-reload {
       background: var(--card-bg);
       color: var(--text);
@@ -1323,6 +1476,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
     <div class="header-actions">
+      <button class="btn-refresh btn-orbit" onclick="openOrbitCalendarModal()">
+        <span class="btn-label-long">🌍 軌道・電波アニメ</span>
+        <span class="btn-label-short">🌍 軌道</span>
+      </button>
       <button class="btn-refresh btn-backup" onclick="openBackupModal()">
         <span class="btn-label-long">📦 バックアップ ＆ 復元</span>
         <span class="btn-label-short">📦 バックアップ</span>
@@ -1386,6 +1543,72 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="modal-footer">
         <button class="copy-btn" onclick="copyModalContent()">📋 コピー</button>
         <button class="copy-btn" onclick="closeTextModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orbit Calendar & Multi-Satellite Animation Modal -->
+  <div id="orbitCalendarModal" class="modal" onclick="closeOrbitCalendarModal(event)">
+    <div class="modal-box modal-box-extra-large" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">
+          <span class="modal-title-long">🌍 月間軌道予測カレンダー ＆ 複数衛星電波伝搬アニメーション</span>
+          <span class="modal-title-short">🌍 軌道予測・電波アニメ</span>
+        </span>
+        <button class="modal-close" onclick="closeOrbitCalendarModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="orbit-tabs">
+          <button id="tabBtnCalendar" class="orbit-tab-btn active" onclick="switchOrbitTab('calendar')">📅 月間カレンダー</button>
+          <button id="tabBtnAnimation" class="orbit-tab-btn" onclick="switchOrbitTab('animation')">🌍 世界地図 ＆ 電波伝搬アニメ</button>
+        </div>
+
+        <!-- Tab 1: Calendar View -->
+        <div id="orbitCalendarTabContent">
+          <div class="calendar-container">
+            <div class="calendar-main">
+              <div class="calendar-nav">
+                <button class="btn-refresh" onclick="prevCalendarMonth()">&lt; 前月</button>
+                <h3 id="calendarMonthTitle" style="color:var(--accent); font-size:1.05rem;">2026年 10月</h3>
+                <button class="btn-refresh" onclick="nextCalendarMonth()">次月 &gt;</button>
+              </div>
+              <div class="calendar-grid">
+                <div class="calendar-header-day">日</div>
+                <div class="calendar-header-day">月</div>
+                <div class="calendar-header-day">火</div>
+                <div class="calendar-header-day">水</div>
+                <div class="calendar-header-day">木</div>
+                <div class="calendar-header-day">金</div>
+                <div class="calendar-header-day">土</div>
+              </div>
+              <div id="calendarGrid" class="calendar-grid" style="margin-top:6px;">
+                <!-- Days will be rendered by renderMonthlyCalendar -->
+              </div>
+            </div>
+
+            <div class="calendar-details-panel">
+              <h4 id="calendarSelectedDateTitle" style="color:#f1f5f9; margin-bottom:10px; font-size:0.95rem; display:flex; justify-content:space-between; align-items:center;">
+                <span>パス詳細</span>
+                <span id="calendarSelectedPassCount" style="color:var(--text-muted); font-size:0.8rem;">0 件</span>
+              </h4>
+              <div id="calendarDayDetails">
+                <div style="color:var(--text-muted); text-align:center; padding:30px 10px; font-size:0.85rem;">
+                  日付を選択すると、その日の通過予定とスカイウィンドウ詳細が表示されます。
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Animation View (Canvas & Time Controller) -->
+        <div id="orbitAnimationTabContent" style="display:none;">
+          <div id="animationPlaceholder">
+            <!-- Will be populated in Tasks 4, 5, 6 -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="copy-btn" onclick="closeOrbitCalendarModal()">閉じる</button>
       </div>
     </div>
   </div>
@@ -1702,6 +1925,202 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         statusDiv.textContent = '復元エラー: ' + err.message;
       } finally {
         btn.disabled = false;
+      }
+    }
+
+    // --- 月間軌道予測カレンダー & 複数衛星電波アニメーション ロジック ---
+    let currentCalYear = new Date().getUTCFullYear();
+    let currentCalMonth = new Date().getUTCMonth() + 1;
+    let calendarMonthData = null;
+    let selectedCalDate = null;
+
+    function openOrbitCalendarModal() {
+      const modal = document.getElementById('orbitCalendarModal');
+      modal.classList.add('active');
+      renderMonthlyCalendar(currentCalYear, currentCalMonth);
+    }
+
+    function closeOrbitCalendarModal(e) {
+      if (e && e.target !== e.currentTarget && !e.target.classList.contains('modal-close') && !e.target.classList.contains('copy-btn')) return;
+      document.getElementById('orbitCalendarModal').classList.remove('active');
+    }
+
+    function switchOrbitTab(tab) {
+      const isCal = tab === 'calendar';
+      const btnCal = document.getElementById('tabBtnCalendar');
+      const btnAnim = document.getElementById('tabBtnAnimation');
+      if (btnCal) btnCal.classList.toggle('active', isCal);
+      if (btnAnim) btnAnim.classList.toggle('active', !isCal);
+      const tabCal = document.getElementById('orbitCalendarTabContent');
+      const tabAnim = document.getElementById('orbitAnimationTabContent');
+      if (tabCal) tabCal.style.display = isCal ? 'block' : 'none';
+      if (tabAnim) tabAnim.style.display = isCal ? 'none' : 'block';
+      if (!isCal && typeof initWorldCanvas === 'function') {
+        initWorldCanvas();
+      }
+    }
+
+    function prevCalendarMonth() {
+      currentCalMonth--;
+      if (currentCalMonth < 1) {
+        currentCalMonth = 12;
+        currentCalYear--;
+      }
+      renderMonthlyCalendar(currentCalYear, currentCalMonth);
+    }
+
+    function nextCalendarMonth() {
+      currentCalMonth++;
+      if (currentCalMonth > 12) {
+        currentCalMonth = 1;
+        currentCalYear++;
+      }
+      renderMonthlyCalendar(currentCalYear, currentCalMonth);
+    }
+
+    async function renderMonthlyCalendar(year, month) {
+      currentCalYear = year;
+      currentCalMonth = month;
+      const titleEl = document.getElementById('calendarMonthTitle');
+      if (titleEl) titleEl.textContent = `${year}年 ${month}月`;
+
+      const gridEl = document.getElementById('calendarGrid');
+      if (!gridEl) return;
+      gridEl.innerHTML = '<div style="grid-column: span 7; text-align:center; padding:30px; color:#94a3b8;">📅 月間パスを計算中...</div>';
+
+      try {
+        const res = await fetch(`/api/calendar/passes?year=${year}&month=${month}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        calendarMonthData = await res.json();
+
+        const firstDayOfWeek = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+        const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+        const prevMonthLastDay = new Date(Date.UTC(year, month - 1, 0)).getUTCDate();
+
+        let cellsHtml = '';
+
+        for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+          const dayNum = prevMonthLastDay - i;
+          cellsHtml += `<div class="calendar-cell is-other-month"><div class="calendar-day-num"><span>${dayNum}</span></div></div>`;
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        let defaultSelectDate = null;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const dayPasses = (calendarMonthData.days && calendarMonthData.days[dateStr]) || [];
+          const hasGolden = dayPasses.some(p => p.quality_score && p.quality_score.includes('EXCELLENT'));
+          const isToday = dateStr === todayStr;
+
+          if (isToday) defaultSelectDate = dateStr;
+          else if (!defaultSelectDate && d === 1) defaultSelectDate = dateStr;
+
+          let pillsHtml = '';
+          const satColors = {};
+          if (calendarMonthData.satellites) {
+            calendarMonthData.satellites.forEach(s => { satColors[s.name] = s.color; });
+          }
+          dayPasses.slice(0, 5).forEach(p => {
+            const color = satColors[p.satellite] || '#38bdf8';
+            pillsHtml += `<span class="cal-pill" style="background:${color};" title="${p.satellite} (${p.max_elevation}°)"></span>`;
+          });
+          if (dayPasses.length > 5) {
+            pillsHtml += `<span style="font-size:0.6rem; color:#94a3b8;">+${dayPasses.length - 5}</span>`;
+          }
+
+          const starHtml = hasGolden ? '<span class="calendar-day-golden-star" title="🌟 スカイウィンドウ直撃パスあり！">🌟</span>' : '';
+          const cellClasses = ['calendar-cell'];
+          if (hasGolden) cellClasses.push('has-golden');
+          if (isToday) cellClasses.push('is-today');
+
+          cellsHtml += `
+            <div id="cal-cell-${dateStr}" class="${cellClasses.join(' ')}" onclick="selectCalendarDay('${dateStr}')">
+              <div class="calendar-day-num">
+                <span>${d}</span>
+                ${starHtml}
+              </div>
+              <div class="calendar-pills">
+                ${pillsHtml}
+              </div>
+            </div>
+          `;
+        }
+
+        const totalRendered = firstDayOfWeek + daysInMonth;
+        const nextMonthDays = (7 - (totalRendered % 7)) % 7;
+        for (let n = 1; n <= nextMonthDays; n++) {
+          cellsHtml += `<div class="calendar-cell is-other-month"><div class="calendar-day-num"><span>${n}</span></div></div>`;
+        }
+
+        gridEl.innerHTML = cellsHtml;
+
+        if (defaultSelectDate) {
+          selectCalendarDay(defaultSelectDate);
+        }
+      } catch (err) {
+        console.error('Failed to load monthly calendar:', err);
+        gridEl.innerHTML = '<div style="grid-column: span 7; text-align:center; padding:30px; color:#ef4444;">カレンダーの取得に失敗しました。</div>';
+      }
+    }
+
+    function selectCalendarDay(dateStr) {
+      selectedCalDate = dateStr;
+      document.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('active'));
+      const activeCell = document.getElementById(`cal-cell-${dateStr}`);
+      if (activeCell) activeCell.classList.add('active');
+
+      const titleEl = document.getElementById('calendarSelectedDateTitle');
+      const detailsEl = document.getElementById('calendarDayDetails');
+      if (!detailsEl || !calendarMonthData) return;
+
+      const passes = (calendarMonthData.days && calendarMonthData.days[dateStr]) || [];
+      if (titleEl) {
+        titleEl.innerHTML = `<span>📅 ${dateStr} のパス</span><span id="calendarSelectedPassCount" style="color:var(--text-muted); font-size:0.8rem;">${passes.length} 件</span>`;
+      }
+
+      if (passes.length === 0) {
+        detailsEl.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px 10px; font-size:0.85rem;">この日の通過予定はありません。</div>';
+        return;
+      }
+
+      let html = '';
+      passes.forEach(p => {
+        const aosJst = new Date(p.aos_time).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' });
+        const losJst = new Date(p.los_time).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' });
+        const isExcellent = p.quality_score.includes('EXCELLENT');
+        const isGood = p.quality_score.includes('GOOD');
+        const badgeBg = isExcellent ? '#059669' : (isGood ? '#0284c7' : '#475569');
+
+        const prob = (p.success_probability !== undefined && p.success_probability !== null) ? Math.round(p.success_probability * 100) : null;
+        const probText = prob !== null ? `🎯 期待度: <strong style="color:#38bdf8;">${prob}%</strong>` : '';
+
+        html += `
+          <div class="cal-pass-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="color:#38bdf8; font-size:0.9rem;">🛰️ ${p.satellite}</strong>
+              <span style="background:${badgeBg}; color:white; font-size:0.7rem; padding:2px 8px; border-radius:999px; font-weight:bold;">${p.quality_score}</span>
+            </div>
+            <div style="font-size:0.8rem; color:#cbd5e1; display:flex; justify-content:space-between;">
+              <span>🕒 ${aosJst} 〜 ${losJst}</span>
+              <span>仰角: <strong>${p.max_elevation}°</strong></span>
+            </div>
+            <div style="font-size:0.75rem; color:#94a3b8; display:flex; justify-content:space-between;">
+              <span>開口窓: <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong></span>
+              <span>${probText}</span>
+            </div>
+            <button class="btn-observe-pass" onclick="jumpToPassAnimation('${p.satellite}', '${p.aos_time}')">🎬 このパスを観測</button>
+          </div>
+        `;
+      });
+
+      detailsEl.innerHTML = html;
+    }
+
+    function jumpToPassAnimation(satellite, aosTime) {
+      switchOrbitTab('animation');
+      if (typeof seekToPassTime === 'function') {
+        seekToPassTime(satellite, aosTime);
       }
     }
 
