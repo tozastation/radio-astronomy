@@ -14,12 +14,12 @@ USB の受信機は 1 台です。アンテナ側の `satellite-tracker-rs` が�
 
 | 処理 | 状態 | 置き場所 |
 | :--- | :--- | :--- |
-| `satellite-tracker-rs` | 通過のあいだだけ受信機を開き、48 kHz の WAV を書く | アンテナ側の Pod |
-| Garage / Temporal / KEDA / `satellite-analyzer` / `satellite-viewer` | 通過が終わった録音を解析し、中身を見る | 同じ PC 上の Kubernetes |
+| `satellite-tracker-rs` | 好条件の衛星通過時（METEOR $\ge 25^\circ$、狭帯域 $\ge 20^\circ$）は受信機を開いて録音。アイドル時間および低仰角スキップ時は北東ベランダ固定ビームで天の川銀河 21cm ドリフトスキャン（周波数スイッチング分光）を自律積算 | アンテナ側の Pod |
+| Garage / Temporal / KEDA / `satellite-analyzer` / `satellite-viewer` | 通過が終わった衛星録音の解析、および銀河分光スペクトル・24時間ドリフト曲線のリアルタイム可視化 | 同じ PC 上の Kubernetes |
 | `kubeedge-metrics-proxy` | アンテナ側コンテナの CPU とメモリを中継する | アンテナ側 |
 | `solar-station` | コードは残している。北向きベランダから太陽は直接見えないので、いまの観測には入れていない | `apps/ground-station` |
 
-21cm 水素線を常時分光して貯める処理（生の IQ を 1 秒積算し、約 8 KB/s で保存する構成）は、このリポジトリでは動いていません。水素線の式は [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md) に参照として残しています。
+衛星のアイドル時間には、地球の自転に伴って北向きベランダの開口窓を横断する天の川銀河面（カシオペア座・はくちょう座・ペルセウス腕）を対象とした「天の川銀河 21cm ドリフトスキャン観測」が自律稼働しています。5分ごとの周波数スイッチング積算結果は Garage S3 の `galactic/` プレフィックスに JSON として保存され、`satellite-viewer`（NodePort 30088）の『Galactic Monitor』からリアルタイムに視線速度スペクトルと 24 時間ドリフト推移を確認できます。水素線の物理と計算式は [02_radio_astronomy_guide.md](02_radio_astronomy_guide.md) にあります。
 
 ---
 
