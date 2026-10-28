@@ -76,5 +76,13 @@ class TestRadioPhysicsAnimation(unittest.TestCase):
         self.assertIn('drawLockedCapturePulse', HTML_TEMPLATE)
 
 
+class TestTimeController(unittest.TestCase):
+    def test_template_contains_time_controller(self):
+        self.assertIn('id="orbitTimeSlider"', HTML_TEMPLATE)
+        self.assertIn('id="orbitSpeedSelect"', HTML_TEMPLATE)
+        self.assertIn('id="btnPlayPause"', HTML_TEMPLATE)
+        self.assertIn('id="btnNextPass"', HTML_TEMPLATE)
+
+
 if __name__ == "__main__":
     unittest.main()

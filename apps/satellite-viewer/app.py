@@ -1616,7 +1616,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span><span style="color:#10b981;">▲</span> 東京観測所 (Az 250°-110°)</span>
             </div>
           </div>
-          <div id="animationTimeControllerArea" style="margin-top:12px;"></div>
+          <!-- Time Controller UI -->
+          <div id="animationTimeControllerArea" style="margin-top:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button id="btnPlayPause" class="btn-refresh" onclick="togglePlayPause()" style="min-width:75px;">▶ 再生</button>
+                <button id="btnPrevPass" class="btn-refresh" onclick="skipToPass(-1)" title="前のパスへ">⏮️ 前パス</button>
+                <button id="btnNextPass" class="btn-refresh" onclick="skipToPass(1)" title="次のパスへ">⏭️ 次パス</button>
+                <button id="btnLiveTime" class="btn-refresh" onclick="resetToLiveTime()" style="border-color:#10b981; color:#34d399;">⏱️ LIVE</button>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.8rem; color:var(--text-muted);">速度:</span>
+                <select id="orbitSpeedSelect" onchange="changeSimSpeed(this.value)" style="background:var(--card-bg); color:var(--text); border:1px solid var(--border); padding:5px 8px; border-radius:6px; font-size:0.82rem;">
+                  <option value="1">1x (等倍・LIVE)</option>
+                  <option value="10">10x (10倍速)</option>
+                  <option value="60" selected>60x (1分/秒)</option>
+                  <option value="300">300x (5分/秒)</option>
+                  <option value="1800">1800x (30分/秒)</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span id="sliderTimeLabelStart" style="font-size:0.75rem; color:var(--text-muted); font-family:ui-monospace,monospace;">00:00</span>
+              <input type="range" id="orbitTimeSlider" min="0" max="86400" value="43200" style="flex:1; cursor:pointer;" oninput="onTimeSliderInput(this.value)">
+              <span id="sliderTimeLabelEnd" style="font-size:0.75rem; color:var(--text-muted); font-family:ui-monospace,monospace;">23:59</span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -2529,15 +2554,207 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     let worldMapRenderer = null;
-    function initWorldCanvas() {
+    let multiPropagator = null;
+    let simCurrentTime = new Date();
+    let simAnchorMidnight = new Date(Date.UTC(simCurrentTime.getUTCFullYear(), simCurrentTime.getUTCMonth(), simCurrentTime.getUTCDate()));
+    let isPlaying = true;
+    let simSpeedMultiplier = 60;
+    let lastRafTime = null;
+    let animPulsePhase = 0;
+    let rafHandle = null;
+    let isSliderDragging = false;
+
+    async function initWorldCanvas() {
       const canvas = document.getElementById('orbitWorldCanvas');
       if (!canvas) return;
       if (!worldMapRenderer) {
         worldMapRenderer = new WorldMapRenderer(canvas);
       }
+
+      if (!multiPropagator) {
+        try {
+          const res = await fetch('/api/satellites/tle');
+          if (res.ok) {
+            const data = await res.json();
+            multiPropagator = new MultiSatellitePropagator(data.satellites);
+          }
+        } catch (err) {
+          console.error('Failed to load satellites TLE:', err);
+        }
+      }
+
+      if (!rafHandle) {
+        lastRafTime = performance.now();
+        rafHandle = requestAnimationFrame(animationLoop);
+      }
+    }
+
+    function animationLoop(now) {
+      if (!lastRafTime) lastRafTime = now;
+      const deltaMs = now - lastRafTime;
+      lastRafTime = now;
+
+      if (isPlaying) {
+        simCurrentTime = new Date(simCurrentTime.getTime() + deltaMs * simSpeedMultiplier);
+      }
+      animPulsePhase = (animPulsePhase + deltaMs * 0.001) % 1.0;
+
+      renderOrbitFrame();
+      rafHandle = requestAnimationFrame(animationLoop);
+    }
+
+    function renderOrbitFrame() {
+      if (!worldMapRenderer) return;
+      const canvas = worldMapRenderer.canvas;
+      const ctx = worldMapRenderer.ctx;
+
       worldMapRenderer.drawMap();
-      worldMapRenderer.drawTerminator(new Date());
+      worldMapRenderer.drawTerminator(simCurrentTime);
       worldMapRenderer.drawTokyoStation();
+
+      const tokyo = worldMapRenderer.tokyo;
+      const tx = worldMapRenderer.lonToX(tokyo.lon);
+      const ty = worldMapRenderer.latToY(tokyo.lat);
+
+      let lockCount = 0;
+      let activeSatName = null;
+      let activeEl = -90;
+
+      if (multiPropagator) {
+        multiPropagator.parsedSats.forEach(sat => {
+          const pos = multiPropagator.propagate(sat, simCurrentTime);
+          const topo = multiPropagator.computeTopocentric(pos);
+          const sx = worldMapRenderer.lonToX(pos.lon);
+          const sy = worldMapRenderer.latToY(pos.lat);
+
+          // Wavefront ripples
+          multiPropagator.drawWavefrontRipples(ctx, sx, sy, sat.color, animPulsePhase);
+
+          // Slant range beam
+          multiPropagator.drawSlantRangeBeam(ctx, sx, sy, tx, ty, topo.rangeKm, topo.inWindow, topo.isBlocked, topo.el);
+
+          // Capture pulse if in sky window
+          if (topo.inWindow) {
+            multiPropagator.drawLockedCapturePulse(ctx, sx, sy, tx, ty, animPulsePhase);
+            lockCount++;
+            if (topo.el > activeEl) {
+              activeEl = topo.el;
+              activeSatName = sat.name;
+            }
+          }
+
+          // Satellite icon & label
+          ctx.save();
+          ctx.fillStyle = sat.color;
+          ctx.shadowColor = sat.color;
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#f1f5f9';
+          ctx.font = '9px ui-monospace, sans-serif';
+          const elStr = topo.el >= 0 ? ` (+${Math.round(topo.el)}°)` : '';
+          ctx.fillText(sat.name + elStr, sx + 5, sy + 3);
+          ctx.restore();
+        });
+      }
+
+      // Update overlay telemetries
+      const utcStr = simCurrentTime.toISOString().replace('T', ' ').slice(0, 19);
+      const jstStr = new Date(simCurrentTime.getTime() + 9 * 3600 * 1000).toISOString().replace('T', ' ').slice(11, 19);
+      const overlayTimeEl = document.getElementById('overlaySimTime');
+      if (overlayTimeEl) {
+        overlayTimeEl.textContent = `UTC: ${utcStr} (JST ${jstStr})`;
+      }
+
+      const overlayRadioEl = document.getElementById('overlayRadioStatus');
+      if (overlayRadioEl) {
+        if (lockCount > 0) {
+          overlayRadioEl.style.color = '#34d399';
+          overlayRadioEl.textContent = `📡 LOCKED: ${activeSatName} (仰角 ${Math.round(activeEl)}° / 開口窓内)`;
+        } else {
+          overlayRadioEl.style.color = '#38bdf8';
+          overlayRadioEl.textContent = `📡 BEAM: IDLE (電波伝搬監視中)`;
+        }
+      }
+
+      // Sync slider position with current sim day
+      const slider = document.getElementById('orbitTimeSlider');
+      if (slider && !isSliderDragging) {
+        const midnight = new Date(Date.UTC(simCurrentTime.getUTCFullYear(), simCurrentTime.getUTCMonth(), simCurrentTime.getUTCDate()));
+        const secIntoDay = Math.floor((simCurrentTime.getTime() - midnight.getTime()) / 1000);
+        slider.value = secIntoDay;
+      }
+    }
+
+    function togglePlayPause() {
+      isPlaying = !isPlaying;
+      const btn = document.getElementById('btnPlayPause');
+      if (btn) btn.textContent = isPlaying ? '⏸ 停止' : '▶ 再生';
+    }
+
+    function changeSimSpeed(val) {
+      simSpeedMultiplier = parseFloat(val);
+    }
+
+    function onTimeSliderInput(val) {
+      isSliderDragging = true;
+      const midnight = new Date(Date.UTC(simCurrentTime.getUTCFullYear(), simCurrentTime.getUTCMonth(), simCurrentTime.getUTCDate()));
+      simCurrentTime = new Date(midnight.getTime() + parseInt(val, 10) * 1000);
+      renderOrbitFrame();
+      setTimeout(() => { isSliderDragging = false; }, 200);
+    }
+
+    function resetToLiveTime() {
+      simCurrentTime = new Date();
+      isPlaying = true;
+      simSpeedMultiplier = 1;
+      const select = document.getElementById('orbitSpeedSelect');
+      if (select) select.value = '1';
+      const btn = document.getElementById('btnPlayPause');
+      if (btn) btn.textContent = '⏸ 停止';
+      renderOrbitFrame();
+    }
+
+    function seekToPassTime(satellite, aosTime) {
+      const passDate = new Date(aosTime);
+      simCurrentTime = new Date(passDate.getTime() - 90 * 1000);
+      isPlaying = true;
+      simSpeedMultiplier = 60;
+      const select = document.getElementById('orbitSpeedSelect');
+      if (select) select.value = '60';
+      const btn = document.getElementById('btnPlayPause');
+      if (btn) btn.textContent = '⏸ 停止';
+      initWorldCanvas();
+      renderOrbitFrame();
+    }
+
+    function skipToPass(direction) {
+      if (!calendarMonthData || !calendarMonthData.days) return;
+      const allPasses = [];
+      Object.keys(calendarMonthData.days).sort().forEach(d => {
+        calendarMonthData.days[d].forEach(p => allPasses.push(p));
+      });
+      allPasses.sort((a, b) => new Date(a.aos_time) - new Date(b.aos_time));
+
+      const curMs = simCurrentTime.getTime();
+      let targetPass = null;
+
+      if (direction > 0) {
+        targetPass = allPasses.find(p => new Date(p.aos_time).getTime() > curMs + 30000);
+      } else {
+        for (let i = allPasses.length - 1; i >= 0; i--) {
+          if (new Date(allPasses[i].aos_time).getTime() < curMs - 30000) {
+            targetPass = allPasses[i];
+            break;
+          }
+        }
+      }
+
+      if (targetPass) {
+        seekToPassTime(targetPass.satellite, targetPass.aos_time);
+      }
     }
 
     // --- 今後の通過予測モーダル ロジック ---
