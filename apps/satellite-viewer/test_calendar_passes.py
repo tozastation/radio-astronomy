@@ -31,6 +31,34 @@ class TestCalendarPasses(unittest.TestCase):
         self.assertIn("max_elevation", p)
         self.assertIn("quality_score", p)
 
+    def test_find_month_passes_leap_year_february(self):
+        targets = [("ISS (ZARYA)", DEFAULT_TARGET_TLES["ISS (ZARYA)"][0], DEFAULT_TARGET_TLES["ISS (ZARYA)"][1])]
+        # 2024 is a leap year (29 days)
+        data_leap = self.calc.find_month_passes(year=2024, month=2, targets=targets)
+        self.assertEqual(len(data_leap["days"]), 29)
+        self.assertIn("2024-02-29", data_leap["days"])
+
+        # 2025 is a non-leap year (28 days)
+        data_normal = self.calc.find_month_passes(year=2025, month=2, targets=targets)
+        self.assertEqual(len(data_normal["days"]), 28)
+        self.assertIn("2025-02-28", data_normal["days"])
+        self.assertNotIn("2025-02-29", data_normal["days"])
+
+    def test_sky_window_azimuth_wraparound_and_boundaries(self):
+        # Azimuth across North (0 deg): 250 -> 360 -> 110
+        self.assertTrue(self.calc.is_in_sky_window(355.0, 45.0))
+        self.assertTrue(self.calc.is_in_sky_window(5.0, 45.0))
+        self.assertTrue(self.calc.is_in_sky_window(260.0, 30.0))
+        self.assertTrue(self.calc.is_in_sky_window(100.0, 50.0))
+
+        # South side (Blocked by building: 110 -> 250)
+        self.assertFalse(self.calc.is_in_sky_window(180.0, 45.0))
+        self.assertFalse(self.calc.is_in_sky_window(200.0, 55.0))
+
+        # Elevation boundaries (25 - 60 deg)
+        self.assertFalse(self.calc.is_in_sky_window(0.0, 15.0))  # too low
+        self.assertFalse(self.calc.is_in_sky_window(0.0, 75.0))  # too high (ceiling slab cutoff)
+
 
 class TestCalendarAPI(unittest.TestCase):
     def test_get_satellites_tle_data(self):
