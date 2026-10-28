@@ -833,3 +833,133 @@ def compute_pass_telemetry_metrics(
         "window_los_az": window_los_az,
     }
 
+
+
+# ==============================================================================
+# 天の川銀河ポインティング & 21cm ドリフトスキャン計算
+# ==============================================================================
+
+def compute_galactic_pointing(
+    lat_deg: float = 35.6895,
+    lon_deg: float = 139.6917,
+    az_deg: float = 30.0,
+    el_deg: float = 35.0,
+    dt: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    elif dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    lat_rad = math.radians(lat_deg)
+    az_rad = math.radians(az_deg)
+    el_rad = math.radians(el_deg)
+
+    # 1. GMST & LST
+    ts = dt.timestamp()
+    jd = (ts / 86400.0) + 2440587.5
+    d = jd - 2451545.0
+    gmst_deg = (280.46061837 + 360.98564736629 * d) % 360.0
+    lst_deg = (gmst_deg + lon_deg) % 360.0
+
+    # 2. 地平座標 (Az, El) -> 赤道座標 (HA, Dec)
+    sin_dec = math.sin(el_rad) * math.sin(lat_rad) + math.cos(el_rad) * math.cos(lat_rad) * math.cos(az_rad)
+    dec_rad = math.asin(max(-1.0, min(1.0, sin_dec)))
+    dec_deg = math.degrees(dec_rad)
+
+    y_h = -math.cos(el_rad) * math.sin(az_rad)
+    x_h = math.cos(el_rad) * math.sin(lat_rad) * math.cos(az_rad) - math.sin(el_rad) * math.cos(lat_rad)
+    ha_deg = math.degrees(math.atan2(y_h, x_h)) % 360.0
+
+    ra_deg = (lst_deg - ha_deg) % 360.0
+    ra_rad = math.radians(ra_deg)
+
+    # 3. 赤道座標 (RA, Dec) -> 銀河座標 (l, b) (IAU J2000.0)
+    ngp_ra_rad = math.radians(192.85948)
+    ngp_dec_rad = math.radians(27.12825)
+    ncp_gal_lon_rad = math.radians(122.93192)
+
+    sin_b = math.sin(dec_rad) * math.sin(ngp_dec_rad) + math.cos(dec_rad) * math.cos(ngp_dec_rad) * math.cos(ra_rad - ngp_ra_rad)
+    b_rad = math.asin(max(-1.0, min(1.0, sin_b)))
+    gal_b_deg = math.degrees(b_rad)
+
+    y_gal = math.cos(dec_rad) * math.sin(ra_rad - ngp_ra_rad)
+    x_gal = math.sin(dec_rad) * math.cos(ngp_dec_rad) - math.cos(dec_rad) * math.sin(ngp_dec_rad) * math.cos(ra_rad - ngp_ra_rad)
+    l_diff = math.atan2(y_gal, x_gal)
+    gal_l_deg = (math.degrees(ncp_gal_lon_rad - l_diff)) % 360.0
+
+    # 4. LSR 視線速度補正
+    l_rad = math.radians(gal_l_deg)
+    u_sun = 10.0
+    v_sun = 15.4
+    w_sun = 7.8
+    v_solar = u_sun * math.cos(l_rad) * math.cos(b_rad) + v_sun * math.sin(l_rad) * math.cos(b_rad) + w_sun * math.sin(b_rad)
+
+    day_of_year = float(dt.strftime("%j"))
+    ecliptic_lon_sun = (280.0 + 360.0 * (day_of_year / 365.25)) % 360.0
+    earth_vel_angle = math.radians((ecliptic_lon_sun + 90.0) % 360.0)
+    v_earth = 29.78 * math.cos(l_rad - earth_vel_angle) * math.cos(b_rad)
+    lsr_corr_km_s = round(v_solar + v_earth * 0.5, 2)
+
+    is_plane = abs(gal_b_deg) <= 15.0
+    if is_plane:
+        sky_type = "WARM_GALACTIC_PLANE"
+        if 65.0 <= gal_l_deg <= 95.0:
+            region_label = "はくちょう座領域（局所腕・オリオン腕）"
+        elif 95.0 <= gal_l_deg <= 140.0:
+            region_label = "ケフェウス座・カシオペア座領域（ペルセウス腕）"
+        elif 140.0 <= gal_l_deg <= 190.0:
+            region_label = "ペルセウス座・ぎょしゃ座領域（反銀河中心方向）"
+        else:
+            region_label = f"天の川銀河面 (l={gal_l_deg:.1f}°)"
+    elif abs(gal_b_deg) > 30.0:
+        sky_type = "COLD_HALO"
+        region_label = f"銀河ハロー (b={gal_b_deg:.1f}°)"
+    else:
+        sky_type = "INTERMEDIATE"
+        region_label = f"中間銀緯 (l={gal_l_deg:.1f}°, b={gal_b_deg:.1f}°)"
+
+    return {
+        "timestamp_iso": dt.isoformat(),
+        "az_deg": round(az_deg, 2),
+        "el_deg": round(el_deg, 2),
+        "lst_deg": round(lst_deg, 2),
+        "ra_deg": round(ra_deg, 2),
+        "dec_deg": round(dec_deg, 2),
+        "gal_l_deg": round(gal_l_deg, 2),
+        "gal_b_deg": round(gal_b_deg, 2),
+        "region_label": region_label,
+        "sky_type": sky_type,
+        "lsr_correction_km_s": lsr_corr_km_s,
+    }
+
+
+def compute_galactic_24h_drift_curve(
+    lat_deg: float = 35.6895,
+    lon_deg: float = 139.6917,
+    az_deg: float = 30.0,
+    el_deg: float = 35.0,
+    start_dt: Optional[datetime] = None,
+    step_minutes: int = 15,
+) -> List[Dict[str, Any]]:
+    if start_dt is None:
+        start_dt = datetime.now(timezone.utc)
+    elif start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+
+    total_steps = int(24 * 60 / step_minutes)
+    curve = []
+    for step in range(total_steps + 1):
+        cur_t = start_dt + timedelta(minutes=step * step_minutes)
+        pt = compute_galactic_pointing(lat_deg, lon_deg, az_deg, el_deg, cur_t)
+        curve.append({
+            "step": step,
+            "timestamp_iso": cur_t.isoformat(),
+            "gal_l_deg": pt["gal_l_deg"],
+            "gal_b_deg": pt["gal_b_deg"],
+            "abs_b_deg": round(abs(pt["gal_b_deg"]), 2),
+            "is_plane": pt["sky_type"] == "WARM_GALACTIC_PLANE",
+            "region_label": pt["region_label"],
+            "lsr_correction_km_s": pt["lsr_correction_km_s"],
+        })
+    return curve

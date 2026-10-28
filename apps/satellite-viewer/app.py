@@ -15,6 +15,7 @@ import time
 import tarfile
 import gzip
 import concurrent.futures
+from typing import Dict, Any, Optional, List
 from dataclasses import asdict
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -28,6 +29,8 @@ from orbit_calculator import (
     DEFAULT_TARGET_TLES,
     compute_pass_telemetry_metrics,
     lookup_satellite_catalog,
+    compute_galactic_pointing,
+    compute_galactic_24h_drift_curve,
 )
 
 S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", "http://garage-s3.storage.svc.cluster.local:3900")
@@ -4787,6 +4790,80 @@ class PassDataCache:
 pass_cache = PassDataCache(s3_client, S3_BUCKET)
 
 
+def fetch_galactic_observations(
+    s3_client,
+    bucket: str,
+    limit: int = 96,
+    now_dt: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """
+    S3 の galactic/ 配下からスキャン結果 JSON を最大 limit 件、並列フェッチして集計。
+    データが存在しない初期状態でも理論ポインティング・24時間ドリフト予測カーブを返す。
+    """
+    if now_dt is None:
+        now_dt = datetime.now(timezone.utc)
+    elif now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+    # 1. 現在の理論ポインティングと 24時間ドリフト予測曲線を算出
+    current_pointing = compute_galactic_pointing(az_deg=30.0, el_deg=35.0, dt=now_dt)
+    drift_curve = compute_galactic_24h_drift_curve(az_deg=30.0, el_deg=35.0, start_dt=now_dt, step_minutes=15)
+
+    scans = []
+    try:
+        resp = s3_client.list_objects_v2(Bucket=bucket, Prefix="galactic/")
+        contents = resp.get("Contents", [])
+        json_items = [item for item in contents if item["Key"].endswith(".json")]
+        json_items.sort(key=lambda x: x["LastModified"], reverse=True)
+        selected_keys = [item["Key"] for item in json_items[:limit]]
+
+        def fetch_json(k):
+            try:
+                obj = s3_client.get_object(Bucket=bucket, Key=k)
+                data = json.loads(obj["Body"].read().decode("utf-8"))
+                data["s3_key"] = k
+                return data
+            except Exception:
+                return None
+
+        if selected_keys:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(selected_keys))) as executor:
+                results = list(executor.map(fetch_json, selected_keys))
+                scans = [r for r in results if r is not None]
+    except Exception as e:
+        print(f"Error fetching galactic observations from S3: {e}", flush=True)
+
+    # 2. 最新スペクトル (S3 実データがあれば最新スキャンから、無ければ理論予測合成スペクトル)
+    if scans:
+        latest_spectrum = scans[0].get("spectrum", {})
+    else:
+        # S3 データ未蓄積時の理論ガイドスペクトル (視線速度 [-150, +150] km/s)
+        import math
+        v_lsr_list = [round(-150.0 + i * 2.0, 1) for i in range(151)]
+        is_plane = current_pointing["sky_type"] == "WARM_GALACTIC_PLANE"
+        gal_l = current_pointing["gal_l_deg"]
+        perseus_peak_v = -45.0 if 95.0 <= gal_l <= 140.0 else -10.0
+        temp_list = []
+        for v in v_lsr_list:
+            if is_plane:
+                sig = 8.0 * math.exp(-((v - 0.0) / 12.0) ** 2) + 18.0 * math.exp(-((v - perseus_peak_v) / 10.0) ** 2)
+                temp_list.append(round(sig + 0.2 * math.sin(v), 2))
+            else:
+                temp_list.append(round(0.05 * math.cos(v * 0.1), 2))
+        latest_spectrum = {
+            "v_lsr_km_s": v_lsr_list,
+            "relative_temp_k": temp_list,
+        }
+
+    return {
+        "scan_count": len(scans),
+        "current_pointing": current_pointing,
+        "drift_curve_24h": drift_curve,
+        "latest_spectrum": latest_spectrum,
+        "scans": scans,
+    }
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def send_bytes_response(self, status: int, content_type: str, body: bytes, cache_control: str = "no-cache", extra_headers: list = None):
         accept_encoding = self.headers.get("Accept-Encoding", "")
@@ -4939,6 +5016,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=60")
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if path == "/api/galactic-observations":
+            data = fetch_galactic_observations(s3_client, S3_BUCKET)
+            body = json.dumps(data).encode("utf-8")
+            self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
             return
 
         if path == "/api/satellites/tle":

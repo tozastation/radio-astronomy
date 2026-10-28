@@ -509,6 +509,29 @@ class TestPerformanceOptimizations(unittest.TestCase):
         except Exception as e:
             self.fail(f"warm_cache_background raised unexpected exception: {e}")
 
+    def test_galactic_pointing_and_empty_s3_fallback(self):
+        from orbit_calculator import compute_galactic_pointing, compute_galactic_24h_drift_curve
+        from app import fetch_galactic_observations
+
+        dt = datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc)
+        pt = compute_galactic_pointing(35.6895, 139.6917, 30.0, 35.0, dt)
+        self.assertTrue(0.0 <= pt["gal_l_deg"] < 360.0)
+        self.assertTrue(-90.0 <= pt["gal_b_deg"] <= 90.0)
+        self.assertIn("region_label", pt)
+        self.assertIn("lsr_correction_km_s", pt)
+
+        curve = compute_galactic_24h_drift_curve(35.6895, 139.6917, 30.0, 35.0, dt, step_minutes=30)
+        self.assertEqual(len(curve), 49)
+
+        # S3 に galactic/ データが0件のときでも理論ポインティングと予測スペクトル・24hカーブが返ること
+        mock_s3 = MagicMock()
+        mock_s3.list_objects_v2.return_value = {"Contents": []}
+        obs = fetch_galactic_observations(mock_s3, "test-bucket", now_dt=dt)
+        self.assertEqual(obs["scan_count"], 0)
+        self.assertIn("current_pointing", obs)
+        self.assertIn("drift_curve_24h", obs)
+        self.assertIn("latest_spectrum", obs)
+
 
 if __name__ == "__main__":
     unittest.main()
