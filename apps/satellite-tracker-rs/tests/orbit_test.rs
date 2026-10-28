@@ -85,3 +85,32 @@ fn test_get_next_pass() {
     assert!(p.aos_time <= p.tca_time && p.tca_time <= p.los_time, "TCAはAOSとLOSの間であること");
     assert!(p.max_elevation_deg >= 10.0, "最大仰角は10度以上であること");
 }
+
+#[test]
+fn test_pass_gating_qualifies_high_el_and_rejects_marginal_passes() {
+    // METEOR は 25.0° 以上のみ合格
+    assert!(!OrbitPredictor::is_qualifying_pass("METEOR-M2 3", 18.5, 25.0, 20.0));
+    assert!(!OrbitPredictor::is_qualifying_pass("METEOR-M2 4", 24.9, 25.0, 20.0));
+    assert!(OrbitPredictor::is_qualifying_pass("METEOR-M2 3", 25.0, 25.0, 20.0));
+    assert!(OrbitPredictor::is_qualifying_pass("METEOR-M2 4", 52.3, 25.0, 20.0));
+
+    // ISS / FUNCUBE 等は 20.0° 以上で合格
+    assert!(!OrbitPredictor::is_qualifying_pass("ISS (ZARYA)", 14.2, 25.0, 20.0));
+    assert!(OrbitPredictor::is_qualifying_pass("ISS (ZARYA)", 20.0, 25.0, 20.0));
+    assert!(OrbitPredictor::is_qualifying_pass("FUNCUBE-1 (AO-73)", 22.5, 25.0, 20.0));
+}
+
+#[test]
+fn test_estimate_active_pass_max_el_finds_peak_across_window() {
+    let predictor = OrbitPredictor::new(35.6895, 139.6917, 30.0, "NORTH", 10.0);
+    let line1 = "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996";
+    let line2 = "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263";
+    let start = Utc.with_ymd_and_hms(2026, 10, 21, 0, 0, 0).unwrap();
+    if let Ok(Some(next_pass)) = predictor.get_next_pass("ISS (ZARYA)", line1, line2, 145_825_000.0, start, 24.0, 10) {
+        // AOS 直後の時刻から評価してもパス全体のピーク仰角が得られること
+        let est_max = predictor
+            .estimate_active_pass_max_el("ISS (ZARYA)", line1, line2, 145_825_000.0, next_pass.aos_time)
+            .unwrap();
+        assert!((est_max - next_pass.max_elevation_deg).abs() < 2.0);
+    }
+}

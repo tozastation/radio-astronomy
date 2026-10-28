@@ -74,6 +74,75 @@ impl OrbitPredictor {
         }
     }
 
+    /// 衛星種別とパスの最大仰角から、録音対象とすべき好条件パスかを判定 (Pass Gating)
+    pub fn is_qualifying_pass(
+        sat_name: &str,
+        max_elevation_deg: f64,
+        min_meteor_el_deg: f64,
+        min_default_el_deg: f64,
+    ) -> bool {
+        let name_upper = sat_name.to_uppercase();
+        if name_upper.contains("METEOR") {
+            max_elevation_deg >= min_meteor_el_deg
+        } else {
+            max_elevation_deg >= min_default_el_deg
+        }
+    }
+
+    /// 現在通過中または直近のパスについて、AOS〜LOS 窓全体のピーク最大仰角 (度) を推定
+    pub fn estimate_active_pass_max_el(
+        &self,
+        sat_name: &str,
+        tle_line1: &str,
+        tle_line2: &str,
+        _freq_hz: f64,
+        now: DateTime<Utc>,
+    ) -> Result<f64> {
+        let elements = Elements::from_tle(
+            Some(sat_name.to_string()),
+            tle_line1.as_bytes(),
+            tle_line2.as_bytes(),
+        )
+        .map_err(|e| anyhow!("TLEパース失敗: {:?}", e))?;
+
+        let constants = Constants::from_elements(&elements)
+            .map_err(|e| anyhow!("SGP4初期化失敗: {:?}", e))?;
+
+        // now 前後 [-10分, +20分] を 10秒刻みで走査し、is_in_view の最大仰角を探索
+        let mut max_el = -90.0f64;
+        let step_sec = 10i64;
+        for i in -60..=120 {
+            let t = now + Duration::seconds(i * step_sec);
+            if let Ok((el, az, _)) = calculate_topo_pos_and_range(
+                &elements,
+                &constants,
+                &self.obs_ecef,
+                self.observer_lat,
+                self.observer_lon,
+                t,
+            ) {
+                if self.is_in_view(el, az) && el > max_el {
+                    max_el = el;
+                }
+            }
+        }
+
+        if max_el < -80.0 {
+            if let Ok((el, _, _)) = calculate_topo_pos_and_range(
+                &elements,
+                &constants,
+                &self.obs_ecef,
+                self.observer_lat,
+                self.observer_lon,
+                now,
+            ) {
+                max_el = el;
+            }
+        }
+
+        Ok(max_el)
+    }
+
     /// 指定時刻における衛星の位置、視線速度、ドップラー偏移を算出
     pub fn calculate_position(
         &self,
