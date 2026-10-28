@@ -423,6 +423,12 @@ impl GalacticScanSession {
         if self.start_time.is_none() {
             self.start_time = Some(now);
             self.last_switch_time = Some(now);
+        } else if let Some(last_switch) = self.last_switch_time {
+            let elapsed = (now - last_switch).num_milliseconds() as f64 / 1000.0;
+            if elapsed >= self.switch_interval_sec {
+                self.is_on_tuning = !self.is_on_tuning;
+                self.last_switch_time = Some(now);
+            }
         }
 
         let psd = accumulate_welch_psd(iq_samples, 1024);
@@ -436,14 +442,6 @@ impl GalacticScanSession {
                 self.accumulated_off_psd[i] += psd[i];
             }
             self.off_slices_count += 1;
-        }
-
-        if let Some(last_switch) = self.last_switch_time {
-            let elapsed = (now - last_switch).num_milliseconds() as f64 / 1000.0;
-            if elapsed >= self.switch_interval_sec {
-                self.is_on_tuning = !self.is_on_tuning;
-                self.last_switch_time = Some(now);
-            }
         }
     }
 

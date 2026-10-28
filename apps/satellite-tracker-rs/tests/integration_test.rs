@@ -93,3 +93,68 @@ async fn test_tracker_e2e_pass_lifecycle() {
 
     let _ = fs::remove_dir_all(&spool_dir);
 }
+
+#[tokio::test]
+async fn test_galactic_scan_cycle_and_s3_key_generation() {
+    use chrono::{TimeZone, Utc};
+    use satellite_tracker_rs::galactic::GalacticScanSession;
+
+    let spool_dir = get_integration_spool_dir().join("galactic");
+    fs::create_dir_all(&spool_dir).unwrap();
+
+    let mut session = GalacticScanSession::new(
+        spool_dir.clone(),
+        300.0,
+        30.0,
+        35.0,
+        35.6895,
+        139.6917,
+    );
+
+    let start_time = Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap();
+
+    // 1. ON チューニングでのスライス積算
+    let on_samples = vec![(0.1f32, 0.1f32); 2048];
+    session.accumulate_slice(&on_samples, start_time);
+    assert_eq!(session.on_slices_count, 1);
+    assert!(session.is_on_tuning);
+
+    // 2. 15秒後の OFF チューニング切り替えとスライス積算
+    let switch_time = start_time + chrono::Duration::seconds(16);
+    let off_samples = vec![(0.05f32, 0.05f32); 2048];
+    session.accumulate_slice(&off_samples, switch_time);
+    assert_eq!(session.off_slices_count, 1);
+    assert!(!session.is_on_tuning);
+
+    // 3. 20秒後に早期フラッシュ (プリエンプション想定)
+    let flush_time = start_time + chrono::Duration::seconds(20);
+    let json_path = session.flush_result(flush_time, true).unwrap().expect("JSON output exists");
+    assert!(json_path.exists());
+
+    // JSON の内容検証
+    let json_content = fs::read_to_string(&json_path).unwrap();
+    assert!(json_content.contains("\"preempted\": true"));
+    assert!(json_content.contains("\"gal_l_deg\""));
+    assert!(json_content.contains("\"gal_b_deg\""));
+    assert!(json_content.contains("\"spectrum\""));
+
+    // 4. S3 へのアップロードとキー検証
+    let mut uploader = S3Uploader::new(
+        "http://localhost:3900".to_string(),
+        "satellite-recordings".to_string(),
+        "test_key".to_string(),
+        "test_secret".to_string(),
+    );
+    uploader.mock_mode = true;
+
+    let date_str = start_time.format("%Y-%m-%d").to_string();
+    let file_name = json_path.file_name().unwrap().to_string_lossy().to_string();
+    let s3_key = format!("galactic/{}/{}", date_str, file_name);
+
+    let ok = uploader.upload_and_cleanup(&json_path, &s3_key).await.unwrap();
+    assert!(ok);
+    assert!(!json_path.exists());
+    assert!(s3_key.starts_with("galactic/2026-10-28/scan_"));
+
+    let _ = fs::remove_dir_all(&spool_dir);
+}

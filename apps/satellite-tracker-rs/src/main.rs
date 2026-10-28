@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use log::{info, warn};
 use satellite_tracker_rs::dsp::DspProcessor;
+use satellite_tracker_rs::galactic::{generate_synthetic_galactic_iq, GalacticScanSession};
 use satellite_tracker_rs::metrics::MetricsExporter;
 use satellite_tracker_rs::orbit::{parse_tle_catalog, OrbitPredictor};
 use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header, is_raw_iq_target};
@@ -213,10 +214,30 @@ async fn main() -> Result<()> {
         .parse()
         .unwrap_or(2);
     let spool_dir = PathBuf::from(std::env::var("SPOOL_DIR").unwrap_or_else(|_| "/tmp/spool".to_string()));
+    let min_meteor_el_deg: f64 = std::env::var("MIN_MAX_EL_METEOR_DEG")
+        .unwrap_or_else(|_| "25.0".to_string())
+        .parse()
+        .unwrap_or(25.0);
+    let min_default_el_deg: f64 = std::env::var("MIN_MAX_EL_DEFAULT_DEG")
+        .unwrap_or_else(|_| "20.0".to_string())
+        .parse()
+        .unwrap_or(20.0);
+    let beam_az_deg: f64 = std::env::var("BEAM_AZ_DEG")
+        .unwrap_or_else(|_| "30.0".to_string())
+        .parse()
+        .unwrap_or(30.0);
+    let beam_el_deg: f64 = std::env::var("BEAM_EL_DEG")
+        .unwrap_or_else(|_| "35.0".to_string())
+        .parse()
+        .unwrap_or(35.0);
+    let galactic_cycle_sec: f64 = std::env::var("GALACTIC_CYCLE_SEC")
+        .unwrap_or_else(|_| "300.0".to_string())
+        .parse()
+        .unwrap_or(300.0);
 
     info!(
-        "Config: Observer=[Lat={:.4}, Lon={:.4}, Alt={:.1}m], Balcony={}, MockSDR={}, Port={}",
-        lat, lon, alt_m, balcony_facing, mock_sdr, metrics_port
+        "Config: Observer=[Lat={:.4}, Lon={:.4}, Alt={:.1}m], Balcony={}, MockSDR={}, Port={}, Gating=[Meteor={:.1}°, Default={:.1}°], Beam=[Az={:.1}°, El={:.1}°]",
+        lat, lon, alt_m, balcony_facing, mock_sdr, metrics_port, min_meteor_el_deg, min_default_el_deg, beam_az_deg, beam_el_deg
     );
 
     // 2. モジュール初期化
@@ -224,6 +245,15 @@ async fn main() -> Result<()> {
     let mut sdr = SdrCollector::new(mock_sdr, 2_400_000.0, 40.0);
     let _dsp = DspProcessor::new(2_400_000.0, 48_000);
     let mut spooler = AudioSpooler::new(spool_dir.clone(), 48_000, 500 * 1024 * 1024, 10.0);
+    let mut galactic_session = GalacticScanSession::new(
+        spool_dir.clone(),
+        galactic_cycle_sec,
+        beam_az_deg,
+        beam_el_deg,
+        lat,
+        lon,
+    );
+    let mut prng_seed = 0x9e37_79b9_7f4a_7c15;
     let uploader = S3Uploader::from_env();
     let exporter = Arc::new(MetricsExporter::new());
 
@@ -261,16 +291,26 @@ async fn main() -> Result<()> {
                     match predictor.calculate_position(sat.name, &sat.line1, &sat.line2, sat.freq_hz, now_utc) {
                         Ok(pos) => {
                             if predictor.is_in_view(pos.elevation_deg, pos.azimuth_deg) {
-                                visible_candidates.push((sat, pos));
+                                let est_max = predictor
+                                    .estimate_active_pass_max_el(sat.name, &sat.line1, &sat.line2, sat.freq_hz, now_utc)
+                                    .unwrap_or(pos.elevation_deg);
+                                if OrbitPredictor::is_qualifying_pass(sat.name, est_max, min_meteor_el_deg, min_default_el_deg) {
+                                    visible_candidates.push((sat, pos));
+                                } else {
+                                    // 足切り (Pass Gating)
+                                    exporter.set_tracking_status(sat.name, false);
+                                }
                             } else {
                                 exporter.set_tracking_status(sat.name, false);
                                 // 次回パス予測
                                 if let Ok(Some(next_pass)) = predictor.get_next_pass(sat.name, &sat.line1, &sat.line2, sat.freq_hz, now_utc, 12.0, 30) {
-                                    let aos_ts = next_pass.aos_time.timestamp() as f64;
-                                    exporter.set_next_pass(sat.name, aos_ts);
-                                    let diff_sec = aos_ts - now_utc.timestamp() as f64;
-                                    if diff_sec > 0.0 && diff_sec < earliest_next_aos_sec {
-                                        earliest_next_aos_sec = diff_sec;
+                                    if OrbitPredictor::is_qualifying_pass(sat.name, next_pass.max_elevation_deg, min_meteor_el_deg, min_default_el_deg) {
+                                        let aos_ts = next_pass.aos_time.timestamp() as f64;
+                                        exporter.set_next_pass(sat.name, aos_ts);
+                                        let diff_sec = aos_ts - now_utc.timestamp() as f64;
+                                        if diff_sec > 0.0 && diff_sec < earliest_next_aos_sec {
+                                            earliest_next_aos_sec = diff_sec;
+                                        }
                                     }
                                 }
                             }
@@ -282,6 +322,14 @@ async fn main() -> Result<()> {
                 }
 
                 if !visible_candidates.is_empty() {
+                    // 衛星パス優先突入に伴う銀河スキャンの早期フラッシュ
+                    if galactic_session.elapsed_seconds(now_utc) >= 10.0 {
+                        if let Ok(Some(json_path)) = galactic_session.flush_result(now_utc, true) {
+                            let s3_key = format!("galactic/{}/{}", now_utc.format("%Y-%m-%d"), json_path.file_name().unwrap().to_string_lossy());
+                            let _ = uploader.upload_and_cleanup(&json_path, &s3_key).await;
+                        }
+                    }
+
                     // 最大仰角の衛星を選択
                     visible_candidates.sort_by(|a, b| b.1.elevation_deg.partial_cmp(&a.1.elevation_deg).unwrap());
                     let (chosen_sat, chosen_pos) = &visible_candidates[0];
@@ -430,13 +478,46 @@ async fn main() -> Result<()> {
                         pass_in_progress = false;
                     }
 
-                    // 動的省電力制御: 次回 AOS まで 30 秒以上空いていれば SDR 給電停止 (スタンバイ)
+                    // 次回好条件パスの AOS まで 30 秒以上空いていれば天の川銀河ドリフトスキャンを実行
                     if earliest_next_aos_sec > 30.0 {
-                        if !sdr.is_standby() {
-                            let _ = sdr.standby();
+                        let current_tuning = galactic_session.current_tuning_freq_hz();
+                        let is_on = galactic_session.is_on_tuning;
+
+                        let samples = if mock_sdr {
+                            let pt = satellite_tracker_rs::galactic::compute_galactic_pointing(lat, lon, beam_az_deg, beam_el_deg, now_utc);
+                            generate_synthetic_galactic_iq(2048, 2_048_000.0, is_on, pt.gal_l_deg, pt.gal_b_deg, &mut prng_seed)
+                        } else {
+                            if sdr.is_standby() || (sdr.center_freq_hz() - current_tuning).abs() > 100.0 {
+                                let _ = sdr.warmup(current_tuning);
+                            }
+                            sdr.read_samples(2048).unwrap_or_else(|_| {
+                                let pt = satellite_tracker_rs::galactic::compute_galactic_pointing(lat, lon, beam_az_deg, beam_el_deg, now_utc);
+                                generate_synthetic_galactic_iq(2048, 2_048_000.0, is_on, pt.gal_l_deg, pt.gal_b_deg, &mut prng_seed)
+                            })
+                        };
+
+                        galactic_session.accumulate_slice(&samples, now_utc);
+
+                        // サイクル完了判定
+                        if galactic_session.elapsed_seconds(now_utc) >= galactic_cycle_sec {
+                            info!("Galactic 21cm drift scan cycle completed ({:.0}s). Uploading scan JSON...", galactic_session.elapsed_seconds(now_utc));
+                            if let Ok(Some(json_path)) = galactic_session.flush_result(now_utc, false) {
+                                let s3_key = format!("galactic/{}/{}", now_utc.format("%Y-%m-%d"), json_path.file_name().unwrap().to_string_lossy());
+                                let _ = uploader.upload_and_cleanup(&json_path, &s3_key).await;
+                            }
                         }
-                    } else if earliest_next_aos_sec <= 30.0 && sdr.is_standby() {
-                        let _ = sdr.warmup(145_825_000.0);
+                    } else if earliest_next_aos_sec <= 30.0 {
+                        // 衛星 AOS 30秒前のプリエンプション (早期フラッシュ)
+                        if galactic_session.elapsed_seconds(now_utc) >= 10.0 {
+                            info!("Preempting Galactic scan for approaching satellite pass (AOS in {:.1}s)", earliest_next_aos_sec);
+                            if let Ok(Some(json_path)) = galactic_session.flush_result(now_utc, true) {
+                                let s3_key = format!("galactic/{}/{}", now_utc.format("%Y-%m-%d"), json_path.file_name().unwrap().to_string_lossy());
+                                let _ = uploader.upload_and_cleanup(&json_path, &s3_key).await;
+                            }
+                        }
+                        if sdr.is_standby() {
+                            let _ = sdr.warmup(145_825_000.0);
+                        }
                     }
                 }
             }
