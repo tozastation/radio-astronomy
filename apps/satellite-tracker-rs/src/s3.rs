@@ -135,7 +135,7 @@ impl S3Uploader {
             .header("Host", &host_header)
             .header("x-amz-date", &amz_date)
             .header("x-amz-content-sha256", &payload_hash)
-            .header("Content-Type", "audio/wav")
+            .header("Content-Type", content_type)
             .header("Authorization", &auth_header)
             .body(file_bytes)
             .send()
