@@ -5,3 +5,4 @@ pub mod spooler;
 pub mod s3;
 pub mod metrics;
 pub mod receiver;
+pub mod galactic;

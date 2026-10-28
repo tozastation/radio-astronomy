@@ -109,7 +109,12 @@ impl S3Uploader {
         headers.insert("host", host_header.parse().unwrap());
         headers.insert("x-amz-date", amz_date.parse().unwrap());
         headers.insert("x-amz-content-sha256", payload_hash.parse().unwrap());
-        headers.insert("content-type", "audio/wav".parse().unwrap());
+        let content_type = if local_path.extension().map(|e| e == "json").unwrap_or(false) {
+            "application/json"
+        } else {
+            "audio/wav"
+        };
+        headers.insert("content-type", content_type.parse().unwrap());
 
         let sig = aws_sign_v4::AwsSign::new(
             "PUT",
