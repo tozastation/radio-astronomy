@@ -539,9 +539,14 @@ class TestPerformanceOptimizations(unittest.TestCase):
 
         self.assertIn("openGalacticModal()", HTML_TEMPLATE)
         self.assertIn('id="galacticModal"', HTML_TEMPLATE)
+        self.assertIn('id="galacticInsightCard"', HTML_TEMPLATE)
         self.assertIn('id="galacticSpectrumCanvas"', HTML_TEMPLATE)
+        self.assertIn('id="galacticTopDownCanvas"', HTML_TEMPLATE)
+        self.assertIn('id="galacticDarkMatterPanel"', HTML_TEMPLATE)
         self.assertIn('id="galacticDriftCanvas"', HTML_TEMPLATE)
         self.assertIn("/api/galactic-observations", HTML_TEMPLATE)
+        self.assertIn("galacticRenderTopDownMap", HTML_TEMPLATE)
+        self.assertIn("galacticUpdateInsights", HTML_TEMPLATE)
 
         # node -c によるテンプレート内全 JavaScript 構文解析
         scripts = re.findall(r"<script[^>]*>(.*?)</script>", HTML_TEMPLATE, flags=re.DOTALL)
