@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: viewer
-          image: localhost:5000/satellite-viewer:v1.7.1
+          image: localhost:5000/satellite-viewer:v1.7.2
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
