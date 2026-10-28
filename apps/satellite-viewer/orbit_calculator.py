@@ -6,6 +6,7 @@ Computes Azimuth, Elevation, Range, and Sky Window visibility.
 
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone, timedelta
+import calendar
 import math
 import os
 from pathlib import Path
@@ -331,6 +332,174 @@ class OrbitCalculator:
 
         all_passes.sort(key=lambda p: p.aos_time)
         return all_passes
+
+    def find_month_passes(
+        self,
+        year: int,
+        month: int,
+        targets: Optional[List[Tuple[str, str, str]]] = None,
+        history_stats: Optional[Dict[str, Any]] = None,
+        empirical_mask: Optional[Dict[int, Tuple[float, float]]] = None,
+        time_drifts: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """
+        指定された年月の全日数にわたるパス予測を適応的ステップ探索により高速生成。
+        """
+        days_in_month = calendar.monthrange(year, month)[1]
+        start_time = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end_time = datetime(year, month, days_in_month, 23, 59, 59, tzinfo=timezone.utc)
+        total_duration = int((end_time - start_time).total_seconds())
+
+        if targets is None:
+            targets = []
+            for sat_name in DEFAULT_TARGET_TLES.keys():
+                tle = load_tle_for_satellite(sat_name)
+                if tle:
+                    targets.append((sat_name, tle[0], tle[1]))
+
+        meta_colors = {
+            "METEOR-M2 3": "#38bdf8",
+            "METEOR-M2 4": "#06b6d4",
+            "ISS (ZARYA)": "#f43f5e",
+            "FUNCUBE-1 (AO-73)": "#eab308",
+        }
+        meta_freqs = {
+            "METEOR-M2 3": 137.9,
+            "METEOR-M2 4": 137.1,
+            "ISS (ZARYA)": 145.825,
+            "FUNCUBE-1 (AO-73)": 145.935,
+        }
+
+        satellites_info = [
+            {
+                "name": t[0],
+                "color": meta_colors.get(t[0], "#a855f7"),
+                "freq_mhz": meta_freqs.get(t[0], 145.0),
+            }
+            for t in targets
+        ]
+
+        days_dict: Dict[str, List[Dict[str, Any]]] = {
+            f"{year:04d}-{month:02d}-{d:02d}": []
+            for d in range(1, days_in_month + 1)
+        }
+
+        coarse_step = 90
+        fine_step = 15
+
+        for name, l1, l2 in targets:
+            try:
+                satrec = Satrec.twoline2rv(l1.strip(), l2.strip(), WGS72)
+            except Exception:
+                continue
+
+            drift_sec = time_drifts.get(name, 0.0) if time_drifts else 0.0
+            recorded_drift = round(drift_sec, 1) if (time_drifts and name in time_drifts) else None
+
+            in_pass = False
+            pass_start_dt: Optional[datetime] = None
+            max_el = -90.0
+            max_el_az = 0.0
+            tca_dt: Optional[datetime] = None
+            window_duration = 0
+
+            cur_sec = 0
+            while cur_sec <= total_duration:
+                step_sec = fine_step if in_pass else coarse_step
+                cur_dt = start_time + timedelta(seconds=cur_sec)
+                eval_dt = cur_dt - timedelta(seconds=drift_sec)
+                jd, fr = self._datetime_to_jd(eval_dt)
+                err, r_teme, _ = satrec.sgp4(jd, fr)
+                if err != 0:
+                    cur_sec += step_sec
+                    continue
+
+                gmst = self._calc_gmst_rad(jd, fr)
+                r_ecef = self._teme_to_ecef(r_teme, gmst)
+                az_deg, el_deg, _ = self._ecef_to_az_el_range(r_ecef, self.obs_ecef_km)
+                in_win = self.is_in_sky_window(az_deg, el_deg, empirical_mask=empirical_mask)
+
+                if el_deg >= 5.0:
+                    if not in_pass:
+                        in_pass = True
+                        pass_start_dt = cur_dt
+                        max_el = el_deg
+                        max_el_az = az_deg
+                        tca_dt = cur_dt
+                        window_duration = fine_step if in_win else 0
+                    else:
+                        if el_deg > max_el:
+                            max_el = el_deg
+                            max_el_az = az_deg
+                            tca_dt = cur_dt
+                        if in_win:
+                            window_duration += step_sec
+                else:
+                    if in_pass:
+                        # パス終了
+                        if max_el >= 10.0 and pass_start_dt and tca_dt:
+                            quality = self._evaluate_quality(max_el, max_el_az, window_duration)
+                            prob, hist_summary = self._evaluate_success_probability(
+                                name, max_el, quality, history_stats
+                            )
+                            day_key = pass_start_dt.strftime("%Y-%m-%d")
+                            pass_obj = FuturePass(
+                                satellite=name,
+                                aos_time=pass_start_dt.isoformat(),
+                                tca_time=tca_dt.isoformat(),
+                                los_time=cur_dt.isoformat(),
+                                max_elevation=round(max_el, 1),
+                                max_elevation_azimuth=round(max_el_az, 1),
+                                window_duration_seconds=window_duration,
+                                quality_score=quality,
+                                success_probability=prob,
+                                history_summary=hist_summary,
+                                time_drift_seconds=recorded_drift,
+                            )
+                            if day_key in days_dict:
+                                days_dict[day_key].append(asdict(pass_obj))
+                        in_pass = False
+                        pass_start_dt = None
+                        max_el = -90.0
+                        tca_dt = None
+                        window_duration = 0
+
+                cur_sec += step_sec
+
+            # 月末境界でパス中
+            if in_pass and max_el >= 10.0 and pass_start_dt and tca_dt:
+                cur_dt = start_time + timedelta(seconds=total_duration)
+                quality = self._evaluate_quality(max_el, max_el_az, window_duration)
+                prob, hist_summary = self._evaluate_success_probability(
+                    name, max_el, quality, history_stats
+                )
+                day_key = pass_start_dt.strftime("%Y-%m-%d")
+                pass_obj = FuturePass(
+                    satellite=name,
+                    aos_time=pass_start_dt.isoformat(),
+                    tca_time=tca_dt.isoformat(),
+                    los_time=cur_dt.isoformat(),
+                    max_elevation=round(max_el, 1),
+                    max_elevation_azimuth=round(max_el_az, 1),
+                    window_duration_seconds=window_duration,
+                    quality_score=quality,
+                    success_probability=prob,
+                    history_summary=hist_summary,
+                    time_drift_seconds=recorded_drift,
+                )
+                if day_key in days_dict:
+                    days_dict[day_key].append(asdict(pass_obj))
+
+        # 各日内で AOS 順にソート
+        for day_key in days_dict:
+            days_dict[day_key].sort(key=lambda p: p["aos_time"])
+
+        return {
+            "year": year,
+            "month": month,
+            "satellites": satellites_info,
+            "days": days_dict,
+        }
 
     @staticmethod
     def _evaluate_quality(max_el: float, max_el_az: float, window_dur: int) -> str:
