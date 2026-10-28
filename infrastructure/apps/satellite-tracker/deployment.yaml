@@ -28,7 +28,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tracker
-          image: localhost:5000/satellite-tracker-rs:v1.6.0
+          image: localhost:5000/satellite-tracker-rs:v1.7.0
           imagePullPolicy: Always
           command: ["/bin/sh", "-c", "satellite-tracker-rs 2>&1 | tee -a /tmp/spool/tracker.log"]
           ports:
@@ -48,6 +48,16 @@ spec:
               value: "30.0"
             - name: BALCONY_FACING
               value: "NORTH"
+            # 天の川銀河ドリフトスキャン固定ビーム指向
+            - name: BEAM_AZ_DEG
+              value: "30.0"
+            - name: BEAM_EL_DEG
+              value: "35.0"
+            # 衛星スマート足切り (Pass Gating) 閾値
+            - name: MIN_MAX_EL_METEOR_DEG
+              value: "25.0"
+            - name: MIN_MAX_EL_DEFAULT_DEG
+              value: "20.0"
             - name: MOCK_SDR
               value: "false"
             - name: METRICS_PORT
