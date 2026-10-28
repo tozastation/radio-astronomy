@@ -2319,6 +2319,215 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
+    // --- 複数衛星軌道伝搬 ＆ 電波伝搬物理エフェクト ---
+    class MultiSatellitePropagator {
+      constructor(satellites) {
+        this.satellites = satellites || [];
+        this.obs = { lat: 35.6895, lon: 139.6917, altKm: 0.03 };
+        this.parsedSats = this.satellites.map(s => this.parseTLE(s));
+      }
+
+      parseTLE(sat) {
+        // TLE Line 1: epoch year, epoch day
+        // TLE Line 2: inc, raan, ecc, argp, ma, mm
+        const l1 = sat.tle1 || '';
+        const l2 = sat.tle2 || '';
+        const epochYearShort = parseInt(l1.substring(18, 20), 10) || 26;
+        const epochYear = epochYearShort < 57 ? 2000 + epochYearShort : 1900 + epochYearShort;
+        const epochDay = parseFloat(l1.substring(20, 32)) || 1.0;
+
+        // Compute epoch Date UTC
+        const epochDate = new Date(Date.UTC(epochYear, 0, 1));
+        epochDate.setUTCMilliseconds((epochDay - 1) * 86400 * 1000);
+
+        const incDeg = parseFloat(l2.substring(8, 16)) || 98.7;
+        const raanDeg = parseFloat(l2.substring(17, 25)) || 0.0;
+        const ecc = parseFloat('.' + l2.substring(26, 33).trim()) || 0.001;
+        const argpDeg = parseFloat(l2.substring(34, 42)) || 0.0;
+        const maDeg = parseFloat(l2.substring(43, 51)) || 0.0;
+        const mm = parseFloat(l2.substring(52, 63)) || 14.2;
+
+        return {
+          name: sat.name,
+          color: sat.color || '#38bdf8',
+          freqMhz: sat.freq_mhz || 137.9,
+          epochDate,
+          incDeg,
+          raanDeg,
+          ecc,
+          argpDeg,
+          maDeg,
+          mm,
+        };
+      }
+
+      propagate(sat, date) {
+        const deltaDays = (date.getTime() - sat.epochDate.getTime()) / (1000 * 86400);
+        const n = sat.mm; // revs per day
+        const a = Math.cbrt(398600.4418 / Math.pow((2 * Math.PI * n) / 86400, 2));
+
+        // J2 nodal regression rate [deg/day]
+        const j2Precession = -9.9639 * Math.pow(6378.137 / a, 3.5) * Math.cos(sat.incDeg * Math.PI / 180) / Math.pow(1 - sat.ecc * sat.ecc, 2);
+        const curRaanDeg = sat.raanDeg + j2Precession * deltaDays;
+
+        // Mean anomaly & True anomaly
+        let M = (sat.maDeg + n * 360 * deltaDays) % 360;
+        if (M < 0) M += 360;
+        const mRad = M * Math.PI / 180;
+        const nuRad = mRad + (2 * sat.ecc - Math.pow(sat.ecc, 3) / 4) * Math.sin(mRad) + 1.25 * Math.pow(sat.ecc, 2) * Math.sin(2 * mRad);
+
+        const uRad = (sat.argpDeg * Math.PI / 180) + nuRad;
+        const r = (a * (1 - sat.ecc * sat.ecc)) / (1 + sat.ecc * Math.cos(nuRad));
+
+        const raanRad = curRaanDeg * Math.PI / 180;
+        const incRad = sat.incDeg * Math.PI / 180;
+
+        const xOrb = r * Math.cos(uRad);
+        const yOrb = r * Math.sin(uRad);
+
+        const X = xOrb * Math.cos(raanRad) - yOrb * Math.sin(raanRad) * Math.cos(incRad);
+        const Y = xOrb * Math.sin(raanRad) + yOrb * Math.cos(raanRad) * Math.cos(incRad);
+        const Z = yOrb * Math.sin(incRad);
+
+        // GMST angle
+        const jd = (date.getTime() / 86400000) + 2440587.5;
+        const t = (jd - 2451545.0) / 36525.0;
+        let gmstSec = 24110.54841 + 8640184.812866 * t + 0.093104 * t * t - 6.2e-6 * t * t * t;
+        const dayFraction = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds() + date.getUTCMilliseconds() / 1000) / 86400;
+        gmstSec += dayFraction * 86400 * 1.00273790935;
+        const gmstDeg = ((gmstSec % 86400) / 86400) * 360;
+        const gmstRad = gmstDeg * Math.PI / 180;
+
+        // Subsatellite point
+        const latRad = Math.asin(Math.max(-1, Math.min(1, Z / r)));
+        const raRad = Math.atan2(Y, X);
+        let lonRad = raRad - gmstRad;
+        let lonDeg = (lonRad * 180 / Math.PI) % 360;
+        if (lonDeg > 180) lonDeg -= 360;
+        if (lonDeg < -180) lonDeg += 360;
+
+        const latDeg = latRad * 180 / Math.PI;
+        const altKm = r - 6378.137;
+
+        return { lat: latDeg, lon: lonDeg, altKm, xEcef: X, yEcef: Y, zEcef: Z };
+      }
+
+      computeTopocentric(satPos) {
+        // Convert Tokyo to ECEF
+        const R = 6378.137;
+        const tokyoLatRad = this.obs.lat * Math.PI / 180;
+        const tokyoLonRad = this.obs.lon * Math.PI / 180;
+        const tx = (R + this.obs.altKm) * Math.cos(tokyoLatRad) * Math.cos(tokyoLonRad);
+        const ty = (R + this.obs.altKm) * Math.cos(tokyoLatRad) * Math.sin(tokyoLonRad);
+        const tz = (R + this.obs.altKm) * Math.sin(tokyoLatRad);
+
+        // Sat ECEF
+        const satLatRad = satPos.lat * Math.PI / 180;
+        const satLonRad = satPos.lon * Math.PI / 180;
+        const sx = (R + satPos.altKm) * Math.cos(satLatRad) * Math.cos(satLonRad);
+        const sy = (R + satPos.altKm) * Math.cos(satLatRad) * Math.sin(satLonRad);
+        const sz = (R + satPos.altKm) * Math.sin(satLatRad);
+
+        const dx = sx - tx;
+        const dy = sy - ty;
+        const dz = sz - tz;
+        const rangeKm = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // ENU
+        const east = -Math.sin(tokyoLonRad) * dx + Math.cos(tokyoLonRad) * dy;
+        const north = -Math.sin(tokyoLatRad) * Math.cos(tokyoLonRad) * dx - Math.sin(tokyoLatRad) * Math.sin(tokyoLonRad) * dy + Math.cos(tokyoLatRad) * dz;
+        const up = Math.cos(tokyoLatRad) * Math.cos(tokyoLonRad) * dx + Math.cos(tokyoLatRad) * Math.sin(tokyoLonRad) * dy + Math.sin(tokyoLatRad) * dz;
+
+        const elDeg = Math.asin(Math.max(-1, Math.min(1, up / rangeKm))) * 180 / Math.PI;
+        let azDeg = (Math.atan2(east, north) * 180 / Math.PI) % 360;
+        if (azDeg < 0) azDeg += 360;
+
+        const inWindow = (elDeg >= 25.0 && elDeg <= 60.0) && (azDeg >= 250.0 || azDeg <= 110.0);
+        const isBlocked = (elDeg >= 5.0) && !inWindow;
+
+        return { az: azDeg, el: elDeg, rangeKm, inWindow, isBlocked };
+      }
+
+      drawWavefrontRipples(ctx, satX, satY, satColor, phase) {
+        ctx.save();
+        for (let k = 0; k < 3; k++) {
+          const prog = (phase + k / 3) % 1;
+          const radius = prog * 36;
+          const alpha = (1 - prog) * 0.7;
+          ctx.beginPath();
+          ctx.strokeStyle = satColor;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = 1.2;
+          ctx.arc(satX, satY, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      drawSlantRangeBeam(ctx, satX, satY, tokyoX, tokyoY, slantRangeKm, inWindow, isBlocked, elDeg) {
+        if (elDeg < 0.0) return; // Horizon cutoff
+
+        ctx.save();
+        // Free Space Path Loss relative coloring (600km: close/strong -> 2400km: far/weak)
+        const normDist = Math.max(0, Math.min(1, (slantRangeKm - 600) / 1800));
+
+        let strokeColor = '#38bdf8';
+        let beamWidth = 1.0 + (1.0 - normDist) * 3.5;
+
+        if (isBlocked) {
+          ctx.setLineDash([5, 5]);
+          strokeColor = '#f43f5e';
+          beamWidth = 1.2;
+          ctx.globalAlpha = 0.6;
+        } else if (inWindow) {
+          strokeColor = '#10b981';
+          beamWidth = 3.5;
+          ctx.shadowColor = '#10b981';
+          ctx.shadowBlur = 12;
+          ctx.globalAlpha = 0.95;
+        } else {
+          // FSPL color gradient from red/orange (far) to cyan (close)
+          const r = Math.round(245 * normDist + 56 * (1 - normDist));
+          const g = Math.round(158 * normDist + 189 * (1 - normDist));
+          const b = Math.round(11 * normDist + 248 * (1 - normDist));
+          strokeColor = `rgb(${r},${g},${b})`;
+          ctx.globalAlpha = 0.4 + (1.0 - normDist) * 0.4;
+        }
+
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = beamWidth;
+        ctx.beginPath();
+        ctx.moveTo(satX, satY);
+        ctx.lineTo(tokyoX, tokyoY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      drawLockedCapturePulse(ctx, satX, satY, tokyoX, tokyoY, pulseProgress) {
+        ctx.save();
+        ctx.shadowColor = '#34d399';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#ffffff';
+
+        for (let m = 0; m < 4; m++) {
+          const t = (pulseProgress + m / 4) % 1;
+          const px = (1 - t) * satX + t * tokyoX;
+          const py = (1 - t) * satY + t * tokyoY;
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Tokyo antenna capture glow
+        ctx.beginPath();
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2;
+        ctx.arc(tokyoX, tokyoY, 8 + Math.sin(pulseProgress * Math.PI * 4) * 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     let worldMapRenderer = null;
     function initWorldCanvas() {
       const canvas = document.getElementById('orbitWorldCanvas');

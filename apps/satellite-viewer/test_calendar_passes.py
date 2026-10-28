@@ -68,5 +68,13 @@ class TestWorldMapCanvas(unittest.TestCase):
         self.assertIn('drawTerminator', HTML_TEMPLATE)
 
 
+class TestRadioPhysicsAnimation(unittest.TestCase):
+    def test_template_contains_radio_physics_logic(self):
+        self.assertIn('class MultiSatellitePropagator', HTML_TEMPLATE)
+        self.assertIn('drawWavefrontRipples', HTML_TEMPLATE)
+        self.assertIn('drawSlantRangeBeam', HTML_TEMPLATE)
+        self.assertIn('drawLockedCapturePulse', HTML_TEMPLATE)
+
+
 if __name__ == "__main__":
     unittest.main()
