@@ -1620,7 +1620,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div id="animationTimeControllerArea" style="margin-top:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
               <div style="display:flex; align-items:center; gap:8px;">
-                <button id="btnPlayPause" class="btn-refresh" onclick="togglePlayPause()" style="min-width:75px;">▶ 再生</button>
+                <button id="btnOrbitPlayPause" class="btn-refresh" onclick="toggleOrbitPlayPause()" style="min-width:75px;">▶ 再生</button>
                 <button id="btnPrevPass" class="btn-refresh" onclick="skipToPass(-1)" title="前のパスへ">⏮️ 前パス</button>
                 <button id="btnNextPass" class="btn-refresh" onclick="skipToPass(1)" title="次のパスへ">⏭️ 次パス</button>
                 <button id="btnLiveTime" class="btn-refresh" onclick="resetToLiveTime()" style="border-color:#10b981; color:#34d399;">⏱️ LIVE</button>
@@ -2568,7 +2568,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let multiPropagator = null;
     let simCurrentTime = new Date();
     let simAnchorMidnight = new Date(Date.UTC(simCurrentTime.getUTCFullYear(), simCurrentTime.getUTCMonth(), simCurrentTime.getUTCDate()));
-    let isPlaying = true;
+    let isOrbitAnimPlaying = true;
     let simSpeedMultiplier = 60;
     let lastRafTime = null;
     let animPulsePhase = 0;
@@ -2605,7 +2605,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const deltaMs = now - lastRafTime;
       lastRafTime = now;
 
-      if (isPlaying) {
+      if (isOrbitAnimPlaying) {
         simCurrentTime = new Date(simCurrentTime.getTime() + deltaMs * simSpeedMultiplier);
       }
       animPulsePhase = (animPulsePhase + deltaMs * 0.001) % 1.0;
@@ -2711,10 +2711,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
-    function togglePlayPause() {
-      isPlaying = !isPlaying;
-      const btn = document.getElementById('btnPlayPause');
-      if (btn) btn.textContent = isPlaying ? '⏸ 停止' : '▶ 再生';
+    function toggleOrbitPlayPause() {
+      isOrbitAnimPlaying = !isOrbitAnimPlaying;
+      const btn = document.getElementById('btnOrbitPlayPause');
+      if (btn) btn.textContent = isOrbitAnimPlaying ? '⏸ 停止' : '▶ 再生';
     }
 
     function changeSimSpeed(val) {
@@ -2731,11 +2731,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function resetToLiveTime() {
       simCurrentTime = new Date();
-      isPlaying = true;
+      isOrbitAnimPlaying = true;
       simSpeedMultiplier = 1;
       const select = document.getElementById('orbitSpeedSelect');
       if (select) select.value = '1';
-      const btn = document.getElementById('btnPlayPause');
+      const btn = document.getElementById('btnOrbitPlayPause');
       if (btn) btn.textContent = '⏸ 停止';
       renderOrbitFrame();
     }
@@ -2743,11 +2743,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     function seekToPassTime(satellite, aosTime) {
       const passDate = new Date(aosTime);
       simCurrentTime = new Date(passDate.getTime() - 90 * 1000);
-      isPlaying = true;
+      isOrbitAnimPlaying = true;
       simSpeedMultiplier = 60;
       const select = document.getElementById('orbitSpeedSelect');
       if (select) select.value = '60';
-      const btn = document.getElementById('btnPlayPause');
+      const btn = document.getElementById('btnOrbitPlayPause');
       if (btn) btn.textContent = '⏸ 停止';
       initWorldCanvas();
       renderOrbitFrame();

@@ -123,7 +123,7 @@ class TestTimeController(unittest.TestCase):
     def test_template_contains_time_controller(self):
         self.assertIn('id="orbitTimeSlider"', HTML_TEMPLATE)
         self.assertIn('id="orbitSpeedSelect"', HTML_TEMPLATE)
-        self.assertIn('id="btnPlayPause"', HTML_TEMPLATE)
+        self.assertIn('id="btnOrbitPlayPause"', HTML_TEMPLATE)
         self.assertIn('id="btnNextPass"', HTML_TEMPLATE)
 
 
@@ -137,6 +137,22 @@ class TestReviewFixes(unittest.TestCase):
 
     def test_raf_cleanup_on_close_and_tab(self):
         self.assertIn('cancelAnimationFrame(rafHandle)', HTML_TEMPLATE)
+
+    def test_javascript_syntax_validity_and_no_duplicate_declarations(self):
+        import subprocess
+        import re
+        scripts = re.findall(r'<script>(.*?)</script>', HTML_TEMPLATE, re.DOTALL)
+        self.assertTrue(len(scripts) > 0)
+        js_code = scripts[-1]
+        
+        # Node.js check-syntax
+        proc = subprocess.run(
+            ['node', '-c'],
+            input=js_code,
+            text=True,
+            capture_output=True
+        )
+        self.assertEqual(proc.returncode, 0, f"JS Syntax error detected: {proc.stderr}")
 
 
 if __name__ == "__main__":
