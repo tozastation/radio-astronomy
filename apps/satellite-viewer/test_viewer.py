@@ -532,6 +532,27 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn("drift_curve_24h", obs)
         self.assertIn("latest_spectrum", obs)
 
+    def test_galactic_monitor_ui_and_js_syntax(self):
+        import subprocess
+        import tempfile
+        import re
+
+        self.assertIn("openGalacticModal()", HTML_TEMPLATE)
+        self.assertIn('id="galacticModal"', HTML_TEMPLATE)
+        self.assertIn('id="galacticSpectrumCanvas"', HTML_TEMPLATE)
+        self.assertIn('id="galacticDriftCanvas"', HTML_TEMPLATE)
+        self.assertIn("/api/galactic-observations", HTML_TEMPLATE)
+
+        # node -c によるテンプレート内全 JavaScript 構文解析
+        scripts = re.findall(r"<script[^>]*>(.*?)</script>", HTML_TEMPLATE, flags=re.DOTALL)
+        self.assertTrue(len(scripts) > 0)
+        combined_js = "\n".join(scripts)
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+            f.write(combined_js)
+            js_path = f.name
+        res = subprocess.run(["node", "-c", js_path], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"JS syntax error: {res.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()

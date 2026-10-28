@@ -1490,6 +1490,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="badge-bucket">Garage S3: __BUCKET__</span>
     </div>
     <div class="header-actions">
+      <button class="btn-refresh btn-orbit" onclick="openGalacticModal()">
+        <span class="btn-label-long">🌌 銀河観測</span>
+        <span class="btn-label-short">🌌 銀河</span>
+      </button>
       <button class="btn-refresh btn-orbit" onclick="openOrbitCalendarModal()">
         <span class="btn-label-long">🌍 軌道・電波アニメ</span>
         <span class="btn-label-short">🌍 軌道</span>
@@ -1660,6 +1664,110 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
       <div class="modal-footer">
         <button class="copy-btn" onclick="closeOrbitCalendarModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Galactic Drift Scan & 21cm Hydrogen Line Monitor Modal -->
+  <div id="galacticModal" class="modal" onclick="closeGalacticModal(event)">
+    <div class="modal-box modal-box-extra-large" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">
+          <span class="modal-title-long">🌌 天の川銀河21cmドリフトスキャン ＆ 水素線分光モニター</span>
+          <span class="modal-title-short">🌌 銀河観測モニター</span>
+        </span>
+        <button class="modal-close" onclick="closeGalacticModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <!-- Top Status Bar: Pointing & Preemption Banner -->
+        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="font-weight:bold; color:var(--accent); font-size:1.05rem;">📡 アンテナ固定ビーム: 北東ベランダ (Az 30.0°, El 35.0°)</span>
+              <span id="galacticRegionBadge" style="padding:3px 10px; border-radius:999px; font-size:0.75rem; font-weight:bold; background:#0284c7; color:white;">判定中...</span>
+            </div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">
+              S3スキャン蓄積: <span id="galacticScanCount" style="color:var(--text); font-weight:bold;">0</span> 件
+            </div>
+          </div>
+          <!-- Telemetry parameters grid -->
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; font-family:ui-monospace,monospace; font-size:0.82rem; background:rgba(15,23,42,0.6); padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+            <div><span style="color:var(--text-muted);">銀経 l:</span> <span id="galacticL" style="color:#38bdf8; font-weight:bold;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">銀緯 b:</span> <span id="galacticB" style="color:#38bdf8; font-weight:bold;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">赤経 α:</span> <span id="galacticRa" style="color:#e2e8f0;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">赤緯 δ:</span> <span id="galacticDec" style="color:#e2e8f0;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">LST:</span> <span id="galacticLst" style="color:#e2e8f0;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">Δv_LSR:</span> <span id="galacticLsr" style="color:#34d399; font-weight:bold;">--</span> km/s</div>
+          </div>
+          <!-- Pass Gating Policy Notice -->
+          <div style="margin-top:10px; font-size:0.78rem; background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); border-radius:6px; padding:6px 12px; color:#cbd5e1; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <span>🛡️ <b>衛星スマート足切り (Pass Gating)</b>: METEOR ≥ 25.0° / ISS・CubeSat ≥ 20.0° のみ最優先プリエンプション（低仰角パス時は銀河観測を継続）</span>
+            <span style="color:#34d399; font-weight:bold;">SDRアイドル時 周波数スイッチング自律積算</span>
+          </div>
+        </div>
+
+        <!-- Main Visualizations Grid -->
+        <div style="display:grid; grid-template-columns: 1fr; gap:16px;">
+          <!-- Section 1: 21cm Hydrogen Line Spectrum -->
+          <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+              <div>
+                <span style="font-weight:bold; color:#f1f5f9; font-size:0.95rem;">📊 21cm 中性水素線 (HI) 視線速度スペクトル (ON/OFF周波数スイッチング較正)</span>
+                <span style="font-size:0.75rem; color:var(--text-muted); margin-left:8px;">ON: 1420.405 MHz / OFF: 1423.000 MHz</span>
+              </div>
+              <div id="galacticSpectrumStats" style="font-size:0.78rem; font-family:ui-monospace,monospace; color:var(--accent);">
+                局所腕 (0 km/s) / ペルセウス腕 (-45 km/s)
+              </div>
+            </div>
+            <div style="position:relative; width:100%; aspect-ratio: 2.5 / 1; height:auto; max-height:340px; background:#080d1a; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
+              <canvas id="galacticSpectrumCanvas" width="900" height="340" style="width:100%; height:100%; display:block;"></canvas>
+            </div>
+          </div>
+
+          <!-- Section 2: 24h Galactic Drift Curve -->
+          <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+              <div>
+                <span style="font-weight:bold; color:#f1f5f9; font-size:0.95rem;">📈 24時間 銀河面ドリフトスキャン予測 ＆ 連続波トータルパワー</span>
+                <span style="font-size:0.75rem; color:var(--text-muted); margin-left:8px;">天の川銀河面 (|b| ≤ 15°) ハイライト</span>
+              </div>
+              <div style="display:flex; gap:12px; font-size:0.75rem; color:var(--text-muted);">
+                <span><span style="display:inline-block; width:10px; height:10px; background:rgba(56,189,248,0.25); border:1px solid #38bdf8; margin-right:4px;"></span>銀河面 (|b|≤15°)</span>
+                <span><span style="display:inline-block; width:10px; height:2px; background:#38bdf8; margin-right:4px; vertical-align:middle;"></span>銀緯 |b| 推移</span>
+                <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f43f5e; margin-right:4px;"></span>連続波 [dB]</span>
+              </div>
+            </div>
+            <div style="position:relative; width:100%; aspect-ratio: 3 / 1; height:auto; max-height:260px; background:#080d1a; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
+              <canvas id="galacticDriftCanvas" width="900" height="260" style="width:100%; height:100%; display:block;"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Recent Scans Table -->
+        <div style="margin-top:16px; background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:14px;">
+          <div style="font-weight:bold; color:#f1f5f9; font-size:0.9rem; margin-bottom:8px;">📋 直近の銀河スキャン履歴 (Garage S3)</div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.8rem; font-family:ui-monospace,monospace; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border); color:var(--text-muted);">
+                  <th style="padding:6px 8px;">観測日時 (UTC)</th>
+                  <th style="padding:6px 8px;">銀経 l / 銀緯 b</th>
+                  <th style="padding:6px 8px;">領域</th>
+                  <th style="padding:6px 8px;">連続波パワー</th>
+                  <th style="padding:6px 8px;">ピークSNR</th>
+                  <th style="padding:6px 8px;">積算時間</th>
+                  <th style="padding:6px 8px;">状態</th>
+                </tr>
+              </thead>
+              <tbody id="galacticScansTableBody">
+                <tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted);">スキャン履歴を読み込み中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="copy-btn" onclick="closeGalacticModal()">閉じる</button>
       </div>
     </div>
   </div>
@@ -3608,6 +3716,345 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.addEventListener('click', () => {
       document.querySelectorAll('.geek-tooltip.is-open').forEach(t => t.classList.remove('is-open'));
     });
+
+    // --- Galactic Monitor & 21cm Hydrogen Line Spectroscopy ---
+    let galacticData = null;
+    let galacticPollTimer = null;
+
+    function openGalacticModal() {
+      const modal = document.getElementById('galacticModal');
+      if (modal) modal.classList.add('active');
+      galacticFetchObservations();
+      if (!galacticPollTimer) {
+        galacticPollTimer = setInterval(galacticFetchObservations, 10000);
+      }
+    }
+
+    function closeGalacticModal(e) {
+      if (e && e.target !== document.getElementById('galacticModal')) return;
+      const modal = document.getElementById('galacticModal');
+      if (modal) modal.classList.remove('active');
+      if (galacticPollTimer) {
+        clearInterval(galacticPollTimer);
+        galacticPollTimer = null;
+      }
+    }
+
+    async function galacticFetchObservations() {
+      try {
+        const res = await fetch('/api/galactic-observations');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        galacticData = data;
+        galacticUpdateUI(data);
+      } catch (err) {
+        console.error('Error fetching galactic observations:', err);
+      }
+    }
+
+    function galacticUpdateUI(data) {
+      if (!data) return;
+      const pt = data.current_pointing;
+      if (pt) {
+        const elL = document.getElementById('galacticL');
+        if (elL) elL.textContent = pt.gal_l_deg.toFixed(1);
+        const elB = document.getElementById('galacticB');
+        if (elB) elB.textContent = pt.gal_b_deg.toFixed(1);
+        const elRa = document.getElementById('galacticRa');
+        if (elRa) elRa.textContent = pt.ra_deg.toFixed(1);
+        const elDec = document.getElementById('galacticDec');
+        if (elDec) elDec.textContent = pt.dec_deg.toFixed(1);
+        const elLst = document.getElementById('galacticLst');
+        if (elLst) elLst.textContent = pt.lst_deg.toFixed(1);
+        const elLsr = document.getElementById('galacticLsr');
+        if (elLsr) elLsr.textContent = (pt.lsr_correction_km_s > 0 ? '+' : '') + pt.lsr_correction_km_s.toFixed(2);
+
+        const badge = document.getElementById('galacticRegionBadge');
+        if (badge) {
+          badge.textContent = pt.region_label || '不明';
+          if (pt.sky_type === 'WARM_GALACTIC_PLANE') {
+            badge.style.background = '#0284c7';
+            badge.style.color = 'white';
+          } else {
+            badge.style.background = '#6366f1';
+            badge.style.color = 'white';
+          }
+        }
+      }
+
+      const countEl = document.getElementById('galacticScanCount');
+      if (countEl) countEl.textContent = data.scan_count || 0;
+
+      galacticRenderSpectrum(data.latest_spectrum);
+      galacticRenderDrift(data.drift_curve_24h, data.scans);
+      galacticRenderScansTable(data.scans);
+    }
+
+    function galacticRenderSpectrum(spec) {
+      const canvas = document.getElementById('galacticSpectrumCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const padLeft = 60;
+      const padRight = 30;
+      const padTop = 30;
+      const padBottom = 40;
+      const chartW = w - padLeft - padRight;
+      const chartH = h - padTop - padBottom;
+
+      ctx.fillStyle = '#080d1a';
+      ctx.fillRect(0, 0, w, h);
+
+      const vMin = -150.0;
+      const vMax = 150.0;
+      const tempMin = -1.0;
+      const tempMax = 25.0;
+
+      function xForV(v) {
+        return padLeft + ((v - vMin) / (vMax - vMin)) * chartW;
+      }
+      function yForT(t) {
+        return padTop + chartH - ((t - tempMin) / (tempMax - tempMin)) * chartH;
+      }
+
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'right';
+      for (let t = 0; t <= 20; t += 5) {
+        const y = yForT(t);
+        ctx.beginPath();
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(w - padRight, y);
+        ctx.stroke();
+        ctx.fillText(t + ' K', padLeft - 8, y + 3);
+      }
+
+      ctx.textAlign = 'center';
+      for (let v = -150; v <= 150; v += 50) {
+        const x = xForV(v);
+        ctx.beginPath();
+        ctx.moveTo(x, padTop);
+        ctx.lineTo(x, padTop + chartH);
+        ctx.stroke();
+        ctx.fillText(v + ' km/s', x, h - 14);
+      }
+      ctx.setLineDash([]);
+
+      const zeroY = yForT(0);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(padLeft, zeroY);
+      ctx.lineTo(w - padRight, zeroY);
+      ctx.stroke();
+
+      const orionX = xForV(0);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(orionX, padTop);
+      ctx.lineTo(orionX, padTop + chartH);
+      ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'left';
+      ctx.fillText('局所腕 (Orion) 0 km/s', orionX + 4, padTop + 14);
+
+      const perseusX = xForV(-45);
+      ctx.strokeStyle = '#06b6d4';
+      ctx.beginPath();
+      ctx.moveTo(perseusX, padTop);
+      ctx.lineTo(perseusX, padTop + chartH);
+      ctx.stroke();
+      ctx.fillStyle = '#06b6d4';
+      ctx.fillText('ペルセウス腕 -45 km/s', perseusX + 4, padTop + 28);
+      ctx.setLineDash([]);
+
+      if (spec && spec.v_lsr_km_s && spec.relative_temp_k && spec.v_lsr_km_s.length > 0) {
+        const vs = spec.v_lsr_km_s;
+        const ts = spec.relative_temp_k;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < vs.length; i++) {
+          const x = xForV(vs[i]);
+          const y = yForT(ts[i]);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        ctx.lineTo(xForV(vs[vs.length - 1]), zeroY);
+        ctx.lineTo(xForV(vs[0]), zeroY);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, padTop, 0, zeroY);
+        grad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
+        grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+      } else {
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('観測スペクトル待機中 (SDR アイドル時に周波数スイッチング自動積算)', w / 2, h / 2);
+      }
+    }
+
+    function galacticRenderDrift(curve, scans) {
+      const canvas = document.getElementById('galacticDriftCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const padLeft = 60;
+      const padRight = 30;
+      const padTop = 25;
+      const padBottom = 35;
+      const chartW = w - padLeft - padRight;
+      const chartH = h - padTop - padBottom;
+
+      ctx.fillStyle = '#080d1a';
+      ctx.fillRect(0, 0, w, h);
+
+      if (!curve || curve.length === 0) {
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('24時間ドリフト予測カーブ計算中...', w / 2, h / 2);
+        return;
+      }
+
+      const maxSteps = curve.length - 1;
+      function xForStep(s) {
+        return padLeft + (s / maxSteps) * chartW;
+      }
+      function yForB(b) {
+        return padTop + (b / 90.0) * chartH;
+      }
+
+      const planeY = yForB(15.0);
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+      ctx.fillRect(padLeft, padTop, chartW, planeY - padTop);
+
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, planeY);
+      ctx.lineTo(w - padRight, planeY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = '#38bdf8';
+      ctx.textAlign = 'left';
+      ctx.fillText('天の川銀河面 (|b| ≤ 15°)', padLeft + 6, padTop + 14);
+
+      ctx.strokeStyle = '#1e293b';
+      ctx.setLineDash([2, 4]);
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'right';
+      for (let b = 0; b <= 90; b += 30) {
+        const y = yForB(b);
+        ctx.beginPath();
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(w - padRight, y);
+        ctx.stroke();
+        ctx.fillText('|b|=' + b + '°', padLeft - 8, y + 3);
+      }
+
+      ctx.textAlign = 'center';
+      for (let hr = 0; hr <= 24; hr += 4) {
+        const s = (hr / 24) * maxSteps;
+        const x = xForStep(s);
+        ctx.beginPath();
+        ctx.moveTo(x, padTop);
+        ctx.lineTo(x, padTop + chartH);
+        ctx.stroke();
+        ctx.fillText('+' + hr + 'h', x, h - 12);
+      }
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < curve.length; i++) {
+        const x = xForStep(i);
+        const y = yForB(curve[i].abs_b_deg);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      const nowX = xForStep(0);
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(nowX, padTop);
+      ctx.lineTo(nowX, padTop + chartH);
+      ctx.stroke();
+      ctx.fillStyle = '#34d399';
+      ctx.textAlign = 'left';
+      ctx.fillText('現在', nowX + 4, padTop + chartH - 6);
+
+      if (scans && scans.length > 0) {
+        scans.forEach(s => {
+          if (!s.pointing || s.pointing.gal_b_deg === undefined) return;
+          const absB = Math.abs(s.pointing.gal_b_deg);
+          const scanTime = new Date(s.timestamp_utc).getTime();
+          const startTime = new Date(curve[0].timestamp_iso).getTime();
+          const elapsedSec = (scanTime - startTime) / 1000;
+          if (elapsedSec >= 0 && elapsedSec <= 86400) {
+            const step = (elapsedSec / 86400) * maxSteps;
+            const px = xForStep(step);
+            const py = yForB(absB);
+            ctx.fillStyle = '#f43f5e';
+            ctx.beginPath();
+            ctx.arc(px, py, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      }
+    }
+
+    function galacticRenderScansTable(scans) {
+      const tbody = document.getElementById('galacticScansTableBody');
+      if (!tbody) return;
+      if (!scans || scans.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted);">Garage S3 に観測スキャンデータはまだありません (SDR アイドル時に自動蓄積されます)</td></tr>';
+        return;
+      }
+      let html = '';
+      scans.slice(0, 10).forEach(s => {
+        const timeStr = s.timestamp_utc ? s.timestamp_utc.replace('T', ' ').replace('Z', '') : '--';
+        const pt = s.pointing || {};
+        const l = pt.gal_l_deg !== undefined ? pt.gal_l_deg.toFixed(1) + '°' : '--';
+        const b = pt.gal_b_deg !== undefined ? pt.gal_b_deg.toFixed(1) + '°' : '--';
+        const region = pt.region_label || '--';
+        const rf = s.rf_metrics || {};
+        const pwr = rf.continuum_power_db !== undefined ? rf.continuum_power_db.toFixed(1) + ' dB' : '--';
+        const snr = rf.peak_line_snr_db !== undefined ? rf.peak_line_snr_db.toFixed(1) + ' dB' : '--';
+        const dur = s.integration_sec ? s.integration_sec.toFixed(0) + 's' : '--';
+        const status = s.preempted ? '<span style="color:#fbbf24;">衛星プリエンプション</span>' : '<span style="color:#34d399;">正常完了</span>';
+        html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
+          '<td style="padding:6px 8px;">' + timeStr + '</td>' +
+          '<td style="padding:6px 8px;">l=' + l + ', b=' + b + '</td>' +
+          '<td style="padding:6px 8px;">' + region + '</td>' +
+          '<td style="padding:6px 8px;">' + pwr + '</td>' +
+          '<td style="padding:6px 8px;">' + snr + '</td>' +
+          '<td style="padding:6px 8px;">' + dur + '</td>' +
+          '<td style="padding:6px 8px;">' + status + '</td>' +
+        '</tr>';
+      });
+      tbody.innerHTML = html;
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       loadPasses(1, true);
