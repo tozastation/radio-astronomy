@@ -609,6 +609,16 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('銀河面中心 ↑', HTML_TEMPLATE)
         self.assertIn('深宇宙ハロー ↓', HTML_TEMPLATE)
 
+    def test_canvas_high_dpi_helper(self):
+        # galacticSetupCanvasDpi が定義され、devicePixelRatio に応じた高DPIスケーリングが行われていること
+        self.assertIn('function galacticSetupCanvasDpi(', HTML_TEMPLATE)
+        self.assertIn('window.devicePixelRatio', HTML_TEMPLATE)
+        self.assertIn('ctx.scale(dpr, dpr)', HTML_TEMPLATE)
+        # 主要Canvas描画関数で galacticSetupCanvasDpi が使用されていること
+        self.assertIn('galacticSetupCanvasDpi(canvas, 600, 600)', HTML_TEMPLATE)
+        self.assertIn('galacticSetupCanvasDpi(canvas, 900, 420)', HTML_TEMPLATE)
+        self.assertIn('galacticSetupCanvasDpi(canvas, 900, 260)', HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()

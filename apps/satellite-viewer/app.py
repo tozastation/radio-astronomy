@@ -4251,12 +4251,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
+    function galacticSetupCanvasDpi(canvas, defaultW, defaultH) {
+      const dpr = window.devicePixelRatio || 1;
+      const expectedW = Math.round(defaultW * dpr);
+      const expectedH = Math.round(defaultH * dpr);
+      if (canvas.width !== expectedW || canvas.height !== expectedH) {
+        canvas.width = expectedW;
+        canvas.height = expectedH;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      return { ctx, w: defaultW, h: defaultH, dpr };
+    }
+
     function galacticRenderTopDownMap(pt, animTime) {
       const canvas = document.getElementById('galacticTopDownCanvas');
       if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
+      const { ctx, w, h } = galacticSetupCanvasDpi(canvas, 600, 600);
       ctx.clearRect(0, 0, w, h);
 
       const cx = w / 2;
@@ -4507,9 +4519,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     function galacticRenderSpectrum(spec) {
       const canvas = document.getElementById('galacticSpectrumCanvas');
       if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
+      const { ctx, w, h } = galacticSetupCanvasDpi(canvas, 900, 420);
       ctx.clearRect(0, 0, w, h);
 
       const padLeft = 60;
@@ -4721,9 +4731,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     function galacticRenderDrift(curve, scans) {
       const canvas = document.getElementById('galacticDriftCanvas');
       if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
+      const { ctx, w, h } = galacticSetupCanvasDpi(canvas, 900, 260);
       ctx.clearRect(0, 0, w, h);
 
       const padLeft = 60;
