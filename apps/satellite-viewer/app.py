@@ -1731,8 +1731,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span style="font-weight:bold; color:#f1f5f9; font-size:0.92rem;">📊 21cm 水素線視線速度スペクトル</span>
                 <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">周波数スイッチング較正</span>
               </div>
-              <div id="galacticSpectrumHoverInfo" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:#38bdf8; font-weight:bold;">
-                波形をなぞると渦状腕・距離を表示
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">横軸範囲:</span>
+                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid #334155; font-size:0.72rem;">
+                  <button id="galacticRangeFullBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:#0284c7; color:#fff; font-weight:bold;" onclick="galacticSetSpectrumRange('full')">全域 ±150</button>
+                  <button id="galacticRangeArmBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:#1e293b; color:#94a3b8;" onclick="galacticSetSpectrumRange('arm')">渦状腕 -100~+50</button>
+                  <button id="galacticRangeZoomBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:#1e293b; color:#94a3b8;" onclick="galacticSetSpectrumRange('zoom')">超拡大 -70~+30</button>
+                </div>
               </div>
             </div>
 
@@ -1740,7 +1745,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:7px 10px; margin-bottom:8px; font-size:0.74rem; line-height:1.45; color:#cbd5e1;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
                 <span style="font-weight:bold; color:#38bdf8;">💡 一目でわかる！スペクトルの見方（宇宙のスピードメーター）</span>
-                <span style="font-size:0.68rem; color:#94a3b8;">電波ドップラー効果</span>
+                <div id="galacticSpectrumHoverInfo" style="font-size:0.72rem; font-family:ui-monospace,monospace; color:#38bdf8; font-weight:bold;">
+                  波形をなぞると渦状腕・距離を表示
+                </div>
               </div>
               <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; font-size:0.72rem;">
                 <div><span style="color:#fbbf24; font-weight:bold;">横軸 (速度):</span> 0=太陽系近傍、マイナス=接近する外側の腕</div>
@@ -1807,6 +1814,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">自転＆銀河公転アニメーション</span>
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
+                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid #334155; font-size:0.72rem;">
+                  <button id="galacticSpeedSlowBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:#0284c7; color:#fff; font-weight:bold;" onclick="galacticSetSpeed(0.25)">🐢 悠久 (0.25x)</button>
+                  <button id="galacticSpeedNormalBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:#1e293b; color:#94a3b8;" onclick="galacticSetSpeed(1.0)">標準 (1x)</button>
+                </div>
                 <button id="galacticAnimToggleBtn" class="copy-btn" style="padding:2px 8px; font-size:0.75rem; background:#1e293b; border:1px solid #475569;" onclick="galacticToggleAnimation()">⏸ 一時停止</button>
                 <div id="galacticBeamHeading" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:#34d399; font-weight:bold;">
                   ビーム照射角: l = --°
@@ -3924,6 +3935,65 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let galacticAnimRunning = false;
     let galacticAnimFrameId = null;
     let galacticAnimTime = 0;
+    let galacticAnimSpeedMultiplier = 0.25;
+    let galacticSpectrumRangeMode = 'full';
+
+    function galacticSetSpeed(speed) {
+      galacticAnimSpeedMultiplier = speed;
+      const slowBtn = document.getElementById('galacticSpeedSlowBtn');
+      const normalBtn = document.getElementById('galacticSpeedNormalBtn');
+      if (slowBtn && normalBtn) {
+        if (speed < 0.5) {
+          slowBtn.style.background = '#0284c7';
+          slowBtn.style.color = '#fff';
+          slowBtn.style.fontWeight = 'bold';
+          normalBtn.style.background = '#1e293b';
+          normalBtn.style.color = '#94a3b8';
+          normalBtn.style.fontWeight = 'normal';
+        } else {
+          normalBtn.style.background = '#0284c7';
+          normalBtn.style.color = '#fff';
+          normalBtn.style.fontWeight = 'bold';
+          slowBtn.style.background = '#1e293b';
+          slowBtn.style.color = '#94a3b8';
+          slowBtn.style.fontWeight = 'normal';
+        }
+      }
+    }
+
+    function galacticSetSpectrumRange(mode) {
+      galacticSpectrumRangeMode = mode;
+      ['galacticRangeFullBtn', 'galacticRangeArmBtn', 'galacticRangeZoomBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.style.background = '#1e293b';
+        btn.style.color = '#94a3b8';
+        btn.style.fontWeight = 'normal';
+      });
+      const activeMap = {
+        full: 'galacticRangeFullBtn',
+        arm: 'galacticRangeArmBtn',
+        zoom: 'galacticRangeZoomBtn'
+      };
+      const activeBtn = document.getElementById(activeMap[mode]);
+      if (activeBtn) {
+        activeBtn.style.background = '#0284c7';
+        activeBtn.style.color = '#fff';
+        activeBtn.style.fontWeight = 'bold';
+      }
+      if (galacticData && galacticData.latest_spectrum) {
+        galacticRenderSpectrum(galacticData.latest_spectrum);
+      }
+    }
+
+    function galacticGetSpectrumRange() {
+      const vRanges = {
+        full: { min: -150.0, max: 150.0, step: 50 },
+        arm:  { min: -100.0, max: 50.0,  step: 25 },
+        zoom: { min: -70.0,  max: 30.0,  step: 10 }
+      };
+      return vRanges[galacticSpectrumRangeMode] || vRanges.full;
+    }
 
     function openGalacticModal() {
       const modal = document.getElementById('galacticModal');
@@ -4155,8 +4225,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.fillStyle = '#040711';
       ctx.fillRect(0, 0, w, h);
 
-      // Rotation angle: 1 galactic revolution every ~45 seconds (visually smooth and clear)
-      const rotAngle = animTime ? (animTime * 0.00014) : 0;
+      // Rotation angle: 1 galactic revolution adjusted by galacticAnimSpeedMultiplier (default 0.25x for ~3 min/rev)
+      const rotAngle = animTime ? (animTime * 0.00014 * galacticAnimSpeedMultiplier) : 0;
 
       // 1. Concentric Distance Grid & Cosmic Scales
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
@@ -4344,8 +4414,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const ratio = mouseX / rect.width;
       const padLeftRatio = 60 / 900;
       const chartRatio = (900 - 90) / 900;
-      const vMin = -150.0;
-      const vMax = 150.0;
+      const r = galacticGetSpectrumRange();
+      const vMin = r.min;
+      const vMax = r.max;
       const v = vMin + ((ratio - padLeftRatio) / chartRatio) * (vMax - vMin);
       if (v >= vMin && v <= vMax) {
         galacticHoverV = v;
@@ -4403,15 +4474,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const padLeft = 60;
       const padRight = 30;
       const padTop = 32;
-      const padBottom = 40;
+      const padBottom = 54;
       const chartW = w - padLeft - padRight;
       const chartH = h - padTop - padBottom;
 
       ctx.fillStyle = '#080d1a';
       ctx.fillRect(0, 0, w, h);
 
-      const vMin = -150.0;
-      const vMax = 150.0;
+      const r = galacticGetSpectrumRange();
+      const vMin = r.min;
+      const vMax = r.max;
+      const vStep = r.step;
       const tempMin = -1.0;
       const tempMax = 25.0;
 
@@ -4422,7 +4495,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         return padTop + chartH - ((t - tempMin) / (tempMax - tempMin)) * chartH;
       }
 
-      // Shaded Spiral Arm Zones
+      // 1. Shaded Spiral Arm Zones (Clipped inside chart)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padLeft, padTop, chartW, chartH);
+      ctx.clip();
+
       const lx1 = xForV(-20);
       const lx2 = xForV(20);
       ctx.fillStyle = 'rgba(251, 191, 36, 0.08)';
@@ -4437,13 +4515,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const ox2 = xForV(-75);
       ctx.fillStyle = 'rgba(129, 140, 248, 0.05)';
       ctx.fillRect(ox1, padTop, ox2 - ox1, chartH);
+      ctx.restore();
 
+      // 2. Grid lines
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 4]);
 
+      // Y-axis grid & labels
       ctx.font = '10px ui-monospace, monospace';
-      ctx.fillStyle = '#64748b';
+      ctx.fillStyle = '#94a3b8';
       ctx.textAlign = 'right';
       for (let t = 0; t <= 20; t += 5) {
         const y = yForT(t);
@@ -4454,14 +4535,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         ctx.fillText(t + ' K', padLeft - 8, y + 3);
       }
 
+      // X-axis grid & labels (Dynamic range)
       ctx.textAlign = 'center';
-      for (let v = -150; v <= 150; v += 50) {
+      ctx.fillStyle = '#cbd5e1';
+      for (let v = vMin; v <= vMax + 0.1; v += vStep) {
         const x = xForV(v);
         ctx.beginPath();
         ctx.moveTo(x, padTop);
         ctx.lineTo(x, padTop + chartH);
         ctx.stroke();
-        ctx.fillText((v > 0 ? '+' : '') + v + ' km/s', x, h - 14);
+        ctx.fillText((v > 0 ? '+' : '') + Math.round(v) + ' km/s', x, padTop + chartH + 18);
       }
       ctx.setLineDash([]);
 
@@ -4478,33 +4561,46 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'left';
       ctx.fillText('相対アンテナ温度 ΔT_A [K]', padLeft, padTop - 14);
-      ctx.textAlign = 'right';
-      ctx.fillText('LSR 視線速度 v_LSR [km/s]', w - padRight, h - 14);
 
-      // Arm guide lines
-      const orionX = xForV(0);
-      ctx.strokeStyle = '#fbbf24';
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(orionX, padTop);
-      ctx.lineTo(orionX, padTop + chartH);
-      ctx.stroke();
-      ctx.fillStyle = '#fbbf24';
+      // Centered X-axis label with redshift/blueshift indicators
+      ctx.fillStyle = '#38bdf8';
       ctx.textAlign = 'center';
-      ctx.font = '10px sans-serif';
-      ctx.fillText('🌟 局所腕 (0 km/s)', orionX, padTop + 14);
+      ctx.fillText('← 地球接近 (青方偏移) ── LSR 視線速度 [km/s] ── 遠ざかる (赤方偏移) →', padLeft + chartW / 2, h - 8);
+
+      // 3. Spiral Arm Guide Indicators (Clipped inside chart)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padLeft, padTop, chartW, chartH);
+      ctx.clip();
+
+      const orionX = xForV(0);
+      if (orionX >= padLeft && orionX <= padLeft + chartW) {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(orionX, padTop);
+        ctx.lineTo(orionX, padTop + chartH);
+        ctx.stroke();
+        ctx.fillStyle = '#fbbf24';
+        ctx.textAlign = 'center';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('🌟 局所腕 (0 km/s)', orionX, padTop + 14);
+      }
 
       const perseusX = xForV(-45);
-      ctx.strokeStyle = '#06b6d4';
-      ctx.beginPath();
-      ctx.moveTo(perseusX, padTop);
-      ctx.lineTo(perseusX, padTop + chartH);
-      ctx.stroke();
-      ctx.fillStyle = '#06b6d4';
-      ctx.textAlign = 'center';
-      ctx.fillText('🌀 ペルセウス腕 (-45 km/s)', perseusX, padTop + 28);
-      ctx.setLineDash([]);
+      if (perseusX >= padLeft && perseusX <= padLeft + chartW) {
+        ctx.strokeStyle = '#06b6d4';
+        ctx.beginPath();
+        ctx.moveTo(perseusX, padTop);
+        ctx.lineTo(perseusX, padTop + chartH);
+        ctx.stroke();
+        ctx.fillStyle = '#06b6d4';
+        ctx.textAlign = 'center';
+        ctx.fillText('🌀 ペルセウス腕 (-45 km/s)', perseusX, padTop + 28);
+        ctx.setLineDash([]);
+      }
 
+      // 4. Spectrum curve & peaks (Clipped inside chart)
       if (spec && spec.v_lsr_km_s && spec.relative_temp_k && spec.v_lsr_km_s.length > 0) {
         const vs = spec.v_lsr_km_s;
         const ts = spec.relative_temp_k;
@@ -4578,6 +4674,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         ctx.textAlign = 'center';
         ctx.fillText('観測スペクトル待機中 (SDR アイドル時に周波数スイッチング自動積算)', w / 2, h / 2);
       }
+      ctx.restore();
     }
 
     function galacticRenderDrift(curve, scans) {
