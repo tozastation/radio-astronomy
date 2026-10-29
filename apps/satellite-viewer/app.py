@@ -1783,15 +1783,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
                 <div style="background:rgba(0,0,0,0.25); padding:4px; border-radius:4px;">
                   <div style="color:var(--text-muted); font-size:0.7rem;">ケプラー予測 V_k</div>
-                  <div id="galacticDmKeplerV" style="color:#f43f5e; font-weight:bold;">141.2 km/s</div>
+                  <div id="galacticDmKeplerV" style="color:#f43f5e; font-weight:bold;">196.3 km/s</div>
                 </div>
                 <div style="background:rgba(0,0,0,0.25); padding:4px; border-radius:4px;">
                   <div style="color:var(--text-muted); font-size:0.7rem;">暗黒物質超過比</div>
-                  <div id="galacticDmRatio" style="color:#fbbf24; font-weight:bold;">2.43 倍</div>
+                  <div id="galacticDmRatio" style="color:#fbbf24; font-weight:bold;">1.26 倍</div>
                 </div>
               </div>
               <div id="galacticDmNote" style="font-size:0.73rem; color:var(--text-muted); line-height:1.4;">
-                中心から約 32,900 光年離れたペルセウス腕が減速せず秒速 220km を維持しているのは、目に見える恒星質量の 2.4 倍以上の暗黒物質ハローが存在する証拠です。
+                中心から約 33,600 光年 (10.3 kpc) 離れたペルセウス腕がケプラー予測 (196.3 km/s) に対し秒速 220km を維持（局所超過比 1.26倍）。最外縁部 (約 20 kpc, 予測 141.2 km/s) では 2.43 倍以上の暗黒物質ハローが存在する証拠です。
               </div>
             </div>
 
@@ -1954,8 +1954,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
               <div id="guideItem3" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
                 天体が銀河の重力に引き込まれず円軌道を保つ条件は、万有引力と遠心力の釣り合い <b>V² / R = G M(R) / R²</b>（∴ M(R) = R V² / G）です。<br>
-                もし銀河の質量が目に見える星だけに集中していれば、太陽系（R₀ = 8.2 kpc, V₀ = 220 km/s）より外側にあるペルセウス腕（R ≈ 10.3 kpc）はケプラーの法則に従って <b>V_kepler = V₀ √(R₀ / R) ≈ 141.2 km/s</b> まで減速するはずです。<br>
-                しかし受信した電波のドップラー偏移を解析すると、外側でも <b>V_obs ≈ 220.0 km/s と全く減速していません（フラット回転曲線）</b>。この速度を維持するためには <b>(220.0 / 141.2)² ≈ 2.43 倍もの未知の質量</b> が必要です。この「目に見えない巨大な重力源」こそがダークマターの正体です。
+                もし銀河の質量が目に見える星だけに集中していれば、太陽系（R₀ = 8.2 kpc, V₀ = 220 km/s）より外側にあるペルセウス腕（R ≈ 10.3 kpc）はケプラーの法則に従って <b>V_kepler = V₀ √(R₀ / R) ≈ 196.3 km/s</b> まで減速するはずです。<br>
+                しかし受信した電波のドップラー偏移を解析すると、外側でも <b>V_obs ≈ 220.0 km/s と全く減速していません（フラット回転曲線）</b>。このペルセウス腕位置で既に <b>(220.0 / 196.3)² ≈ 1.26 倍</b> の質量超過があり、さらに銀河最外縁部（R ≈ 20 kpc）ではケプラー予測 141.2 km/s に対し <b>(220.0 / 141.2)² ≈ 2.43 倍もの未知の質量</b> が必要となります。この「目に見えない巨大な重力源」こそがダークマターの正体です。
               </div>
             </div>
 
@@ -4195,14 +4195,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       const V_measured = 220.0;
-      const V_kepler = 141.2;
+      const V_kepler = 196.3;
       const ratio = Math.pow(V_measured / V_kepler, 2);
 
       if (dmMV) dmMV.textContent = V_measured.toFixed(1) + ' km/s';
       if (dmKV) dmKV.textContent = V_kepler.toFixed(1) + ' km/s';
       if (dmRatio) dmRatio.textContent = ratio.toFixed(2) + ' 倍';
       if (dmNote) {
-        dmNote.textContent = '中心から約 33,600 光年離れたペルセウス腕のガスが減速せず秒速 220km を維持しているのは、銀河全体に目に見える恒星質量の ' + ratio.toFixed(1) + ' 倍以上の暗黒物質（ダークマター）ハローが存在する決定的な証拠です。';
+        dmNote.textContent = '中心から約 33,600 光年 (10.3 kpc) 離れたペルセウス腕のガスがケプラー予測 (196.3 km/s) に対し秒速 220km を維持（局所超過比 ' + ratio.toFixed(2) + ' 倍）。最外縁部 (約 20 kpc, 予測 141.2 km/s) では 2.43 倍以上の暗黒物質ハローが存在する証拠です。';
       }
 
       const discArmsEl = document.getElementById('galacticDiscoveredArms');

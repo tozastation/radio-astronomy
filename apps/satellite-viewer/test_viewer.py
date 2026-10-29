@@ -570,6 +570,16 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('.galactic-viz-grid {', HTML_TEMPLATE)
         self.assertIn('grid-template-columns: 1fr;', HTML_TEMPLATE)
 
+    def test_dark_matter_kepler_velocity_consistency(self):
+        # ペルセウス腕（R=10.3 kpc）でのケプラー速度が 196.3 km/s と計算・表示されていること
+        self.assertIn('id="galacticDmKeplerV" style="color:#f43f5e; font-weight:bold;">196.3 km/s</div>', HTML_TEMPLATE)
+        # JS側でも V_kepler = 196.3 が定義されていること
+        self.assertIn('const V_kepler = 196.3;', HTML_TEMPLATE)
+        # 解説文でペルセウス腕（10.3 kpc）の 196.3 km/s と、銀河外縁部（約 20 kpc）の 141.2 km/s / 2.43倍の比較が両立していること
+        self.assertIn('196.3 km/s', HTML_TEMPLATE)
+        self.assertIn('141.2 km/s', HTML_TEMPLATE)
+        self.assertIn('2.43', HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()
