@@ -588,6 +588,18 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('galacticErrorBanner', HTML_TEMPLATE)
         self.assertIn('errBanner.style.display', HTML_TEMPLATE)
 
+    def test_files_accordion_collapsed_by_default(self):
+        p = {
+            "satellite": "METEOR-M2 4",
+            "pass_id": "pass_99999",
+            "files": {"file1.txt": "key1", "file2.json": "key2"},
+            "summary": {"status": "completed"},
+        }
+        card_html = render_card_html(p)
+        # 生成ファイル一覧アコーディオンが open 属性を持たず、初期状態で折りたたまれていること
+        self.assertIn('<details class="data-accordion files-accordion">', card_html)
+        self.assertNotIn('<details class="data-accordion files-accordion" open>', card_html)
+
 
 if __name__ == "__main__":
     unittest.main()

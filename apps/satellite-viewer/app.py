@@ -5628,7 +5628,7 @@ def render_card_html(p: dict) -> str:
 
     files_grid_html = "".join(file_rows)
     files_accordion = f"""
-    <details class="data-accordion files-accordion" open>
+    <details class="data-accordion files-accordion">
       <summary>📁 生成ファイル一覧 ({len(file_rows)} 件: 中身プレビュー ＆ ダウンロード)</summary>
       <div class="accordion-content">
         <div class="files-grid">
