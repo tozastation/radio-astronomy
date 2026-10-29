@@ -1735,10 +1735,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 波形をなぞると渦状腕・距離を表示
               </div>
             </div>
+
+            <!-- Intuitive Quick Reading Guide -->
+            <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:7px 10px; margin-bottom:8px; font-size:0.74rem; line-height:1.45; color:#cbd5e1;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                <span style="font-weight:bold; color:#38bdf8;">💡 一目でわかる！スペクトルの見方（宇宙のスピードメーター）</span>
+                <span style="font-size:0.68rem; color:#94a3b8;">電波ドップラー効果</span>
+              </div>
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; font-size:0.72rem;">
+                <div><span style="color:#fbbf24; font-weight:bold;">横軸 (速度):</span> 0=太陽系近傍、マイナス=接近する外側の腕</div>
+                <div><span style="color:#38bdf8; font-weight:bold;">縦軸 (強度):</span> 山が高いほど濃密な水素ガス雲が存在</div>
+                <div><span style="color:#34d399; font-weight:bold;">山の数:</span> 貫通した渦状腕の層数（銀河のミルフィーユ構造）</div>
+              </div>
+            </div>
+
             <!-- Spectrum Canvas with interactive hover cursor -->
             <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; min-height:220px; background:#080d1a; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); cursor:crosshair;">
               <canvas id="galacticSpectrumCanvas" width="900" height="420" style="width:100%; height:100%; display:block;" onmousemove="galacticHandleSpectrumHover(event)" onmouseleave="galacticClearSpectrumHover()" ontouchmove="galacticHandleSpectrumTouch(event)"></canvas>
             </div>
+
             <!-- Dark Matter & Galactic Rotation Analysis Panel -->
             <div id="galacticDarkMatterPanel" style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; font-size:0.78rem;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -1763,6 +1778,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 中心から約 32,900 光年離れたペルセウス腕が減速せず秒速 220km を維持しているのは、目に見える恒星質量の 2.4 倍以上の暗黒物質ハローが存在する証拠です。
               </div>
             </div>
+
+            <!-- 3 Major Discoveries Summary Cards -->
+            <div style="margin-top:8px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-size:0.75rem; text-align:center;">
+              <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 4px;">
+                <div style="color:var(--text-muted); font-size:0.68rem;">貫通した渦状腕</div>
+                <div id="galacticDiscoveredArms" style="color:#38bdf8; font-weight:bold; font-size:0.83rem; margin-top:1px;">2層 (局所腕+ペルセウス腕)</div>
+                <div style="color:#94a3b8; font-size:0.65rem;">多層渦巻の動かぬ証拠</div>
+              </div>
+              <div style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.25); border-radius:6px; padding:6px 4px;">
+                <div style="color:var(--text-muted); font-size:0.68rem;">最遠検出距離</div>
+                <div id="galacticMaxDist" style="color:#34d399; font-weight:bold; font-size:0.83rem; margin-top:1px;">約 6,200 光年</div>
+                <div style="color:#94a3b8; font-size:0.65rem;">古代縄文・メソポタミアの光</div>
+              </div>
+              <div style="background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.25); border-radius:6px; padding:6px 4px;">
+                <div style="color:var(--text-muted); font-size:0.68rem;">銀河の回転速度</div>
+                <div id="galacticRotV" style="color:#a855f7; font-weight:bold; font-size:0.83rem; margin-top:1px;">秒速 220 km</div>
+                <div style="color:#94a3b8; font-size:0.65rem;">暗黒物質の存在実証</div>
+              </div>
+            </div>
           </div>
 
           <!-- Right: Milky Way Top-Down 2D Map & Line-of-Sight Beam Plot -->
@@ -1770,22 +1804,47 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
               <div>
                 <span style="font-weight:bold; color:#f1f5f9; font-size:0.92rem;">🗺️ 天の川銀河 2D 俯瞰鳥瞰図 (Top-Down Map)</span>
-                <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">銀経 l 方向照射</span>
+                <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">自転＆銀河公転アニメーション</span>
               </div>
-              <div id="galacticBeamHeading" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:#34d399; font-weight:bold;">
-                ビーム照射角: l = --°
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button id="galacticAnimToggleBtn" class="copy-btn" style="padding:2px 8px; font-size:0.75rem; background:#1e293b; border:1px solid #475569;" onclick="galacticToggleAnimation()">⏸ 一時停止</button>
+                <div id="galacticBeamHeading" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:#34d399; font-weight:bold;">
+                  ビーム照射角: l = --°
+                </div>
               </div>
             </div>
             <!-- Top-Down Map Canvas -->
             <div style="position:relative; width:100%; aspect-ratio: 1 / 1; max-height:360px; height:auto; background:#040711; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); margin:auto 0;">
               <canvas id="galacticTopDownCanvas" width="600" height="600" style="width:100%; height:100%; display:block;"></canvas>
             </div>
-            <div style="margin-top:8px; display:flex; justify-content:space-around; font-size:0.72rem; color:var(--text-muted); flex-wrap:wrap; gap:4px;">
+            <div style="margin-top:8px; display:flex; justify-content:space-around; font-size:0.72rem; color:var(--text-muted); flex-wrap:gap; gap:4px;">
               <span><span style="color:#fbbf24;">●</span> 銀河中心 (Sgr A*)</span>
-              <span><span style="color:#34d399;">⊙</span> 太陽系 (8.2 kpc)</span>
+              <span><span style="color:#34d399;">⊙</span> 太陽系 (V=220km/s)</span>
+              <span><span style="color:#ef4444;">🔴</span> 人類電波バブル (~100光年)</span>
               <span><span style="color:#38bdf8;">―</span> ペルセウス腕</span>
-              <span><span style="color:#a855f7;">―</span> 局所腕 (Orion)</span>
               <span><span style="color:rgba(56,189,248,0.5);">▲</span> 照射ビーム</span>
+            </div>
+
+            <!-- Immensity of Cosmic Distance & Scales Panel -->
+            <div style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 12px; font-size:0.75rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span style="font-weight:bold; color:#38bdf8;">📏 銀河のスケール感と人類の電波バブル</span>
+                <span style="font-size:0.7rem; color:#fbbf24; font-family:ui-monospace,monospace;">1銀河年 = 約2.3億年</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px; line-height:1.4; color:#cbd5e1; font-size:0.73rem;">
+                <div style="display:flex; align-items:flex-start; gap:6px;">
+                  <span style="color:#ef4444; font-weight:bold; white-space:nowrap;">🔴 人類の電波バブル (~100光年):</span>
+                  <span>1900年以降に人類が放った電波の到達限界球。直径10万光年の銀河では<b>1画素未満（微小な点）</b>にすぎません。</span>
+                </div>
+                <div style="display:flex; align-items:flex-start; gap:6px;">
+                  <span style="color:#38bdf8; font-weight:bold; white-space:nowrap;">🌀 ペルセウス腕 (~6,200光年):</span>
+                  <span>今受信している電波は、<b>古代縄文・メソポタミア黎明期</b>に放たれ、光速で宇宙を旅してベランダに届いた光です。</span>
+                </div>
+                <div style="display:flex; align-items:flex-start; gap:6px;">
+                  <span style="color:#fbbf24; font-weight:bold; white-space:nowrap;">🦕 太陽系公転周期 (2.3億年):</span>
+                  <span>太陽系が銀河を1周する時間。前回太陽系がこの位置にいた頃、<b>地球には恐竜が現れたばかり（三畳紀）</b>でした。</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -3862,6 +3921,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let galacticData = null;
     let galacticPollTimer = null;
     let galacticHoverV = null;
+    let galacticAnimRunning = false;
+    let galacticAnimFrameId = null;
+    let galacticAnimTime = 0;
 
     function openGalacticModal() {
       const modal = document.getElementById('galacticModal');
@@ -3870,6 +3932,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (!galacticPollTimer) {
         galacticPollTimer = setInterval(galacticFetchObservations, 10000);
       }
+      galacticStartAnimation();
     }
 
     function closeGalacticModal(e) {
@@ -3879,6 +3942,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (galacticPollTimer) {
         clearInterval(galacticPollTimer);
         galacticPollTimer = null;
+      }
+      galacticStopAnimation();
+    }
+
+    function galacticStartAnimation() {
+      if (galacticAnimFrameId) {
+        cancelAnimationFrame(galacticAnimFrameId);
+        galacticAnimFrameId = null;
+      }
+      galacticAnimRunning = true;
+      const btn = document.getElementById('galacticAnimToggleBtn');
+      if (btn) btn.textContent = '⏸ 一時停止';
+      function step(now) {
+        if (!galacticAnimRunning) return;
+        galacticAnimTime = now;
+        const pt = (galacticData && galacticData.current_pointing) ? galacticData.current_pointing : null;
+        galacticRenderTopDownMap(pt, now);
+        galacticAnimFrameId = requestAnimationFrame(step);
+      }
+      galacticAnimFrameId = requestAnimationFrame(step);
+    }
+
+    function galacticStopAnimation() {
+      galacticAnimRunning = false;
+      if (galacticAnimFrameId) {
+        cancelAnimationFrame(galacticAnimFrameId);
+        galacticAnimFrameId = null;
+      }
+      const btn = document.getElementById('galacticAnimToggleBtn');
+      if (btn) btn.textContent = '▶ 再生';
+    }
+
+    function galacticToggleAnimation() {
+      if (galacticAnimRunning) {
+        galacticStopAnimation();
+      } else {
+        galacticStartAnimation();
       }
     }
 
@@ -3928,7 +4028,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (countEl) countEl.textContent = data.scan_count || 0;
 
       galacticUpdateInsights(data);
-      galacticRenderTopDownMap(data.current_pointing);
+      if (!galacticAnimRunning) {
+        galacticRenderTopDownMap(data.current_pointing, galacticAnimTime);
+      }
       galacticRenderSpectrum(data.latest_spectrum);
       galacticRenderDrift(data.drift_curve_24h, data.scans);
       galacticRenderScansTable(data.scans);
@@ -4023,9 +4125,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (dmNote) {
         dmNote.textContent = '中心から約 33,600 光年離れたペルセウス腕のガスが減速せず秒速 220km を維持しているのは、銀河全体に目に見える恒星質量の ' + ratio.toFixed(1) + ' 倍以上の暗黒物質（ダークマター）ハローが存在する決定的な証拠です。';
       }
+
+      const discArmsEl = document.getElementById('galacticDiscoveredArms');
+      const maxDistEl = document.getElementById('galacticMaxDist');
+      const rotVEl = document.getElementById('galacticRotV');
+      if (discArmsEl) {
+        discArmsEl.textContent = isPlane ? '2層 (局所腕+ペルセウス腕)' : '0層 (銀河ハロー透過中)';
+      }
+      if (maxDistEl) {
+        maxDistEl.textContent = isPlane ? '約 6,200 光年' : '--';
+      }
+      if (rotVEl) {
+        rotVEl.textContent = '秒速 ' + V_measured.toFixed(0) + ' km';
+      }
     }
 
-    function galacticRenderTopDownMap(pt) {
+    function galacticRenderTopDownMap(pt, animTime) {
       const canvas = document.getElementById('galacticTopDownCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -4040,28 +4155,41 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.fillStyle = '#040711';
       ctx.fillRect(0, 0, w, h);
 
+      // Rotation angle: 1 galactic revolution every ~45 seconds (visually smooth and clear)
+      const rotAngle = animTime ? (animTime * 0.00014) : 0;
+
+      // 1. Concentric Distance Grid & Cosmic Scales
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 4]);
-      [5, 10, 15].forEach(r => {
+      const distanceRings = [
+        { r: 5, label: '5 kpc (1.6万光年)' },
+        { r: 10, label: '10 kpc (3.3万光年)' },
+        { r: 15, label: '15 kpc (4.9万光年)' }
+      ];
+      distanceRings.forEach(item => {
         ctx.beginPath();
-        ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+        ctx.arc(cx, cy, item.r * scale, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.font = '9px ui-monospace, monospace';
-        ctx.fillText(r + ' kpc', cx + r * scale - 14, cy - 3);
+        ctx.textAlign = 'right';
+        ctx.fillText(item.label, cx + item.r * scale - 6, cy - 4);
       });
       ctx.setLineDash([]);
 
-      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 3.5 * scale);
-      coreGrad.addColorStop(0, 'rgba(251, 191, 36, 0.8)');
-      coreGrad.addColorStop(0.3, 'rgba(245, 158, 11, 0.3)');
+      // 2. Galactic Center Core (Sgr A* Supermassive Black Hole & Bulge)
+      const corePulse = animTime ? (1.0 + 0.08 * Math.sin(animTime * 0.003)) : 1.0;
+      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 3.8 * scale * corePulse);
+      coreGrad.addColorStop(0, 'rgba(251, 191, 36, 0.9)');
+      coreGrad.addColorStop(0.25, 'rgba(245, 158, 11, 0.35)');
       coreGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
       ctx.fillStyle = coreGrad;
       ctx.beginPath();
-      ctx.arc(cx, cy, 3.5 * scale, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 3.8 * scale * corePulse, 0, Math.PI * 2);
       ctx.fill();
 
+      // 3. Rotating Spiral Arms
       const arms = [
         { name: 'Perseus', color: '#38bdf8', a: 3.2, b: 0.21, thStart: 0.5, thEnd: 5.2 },
         { name: 'Scutum-Centaurus', color: '#fbbf24', a: 2.4, b: 0.22, thStart: 2.1, thEnd: 6.8 },
@@ -4076,11 +4204,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         ctx.shadowBlur = 6;
         ctx.beginPath();
         let first = true;
-        for (let th = arm.thStart; th <= arm.thEnd; th += 0.05) {
+        for (let th = arm.thStart; th <= arm.thEnd; th += 0.04) {
           const r = arm.a * Math.exp(arm.b * th);
           if (r > 15.5) break;
-          const x = cx + r * scale * Math.cos(th);
-          const y = cy + r * scale * Math.sin(th);
+          const x = cx + r * scale * Math.cos(th + rotAngle);
+          const y = cy + r * scale * Math.sin(th + rotAngle);
           if (first) { ctx.moveTo(x, y); first = false; }
           else { ctx.lineTo(x, y); }
         }
@@ -4088,35 +4216,86 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       });
       ctx.shadowBlur = 0;
 
+      // Local Spur (Orion Arm)
       ctx.strokeStyle = '#a855f7';
       ctx.lineWidth = 2.5;
       ctx.shadowColor = '#a855f7';
       ctx.shadowBlur = 5;
       ctx.beginPath();
-      for (let th = 1.2; th <= 2.2; th += 0.05) {
+      for (let th = 1.2; th <= 2.2; th += 0.04) {
         const r = 8.0 + 0.6 * Math.sin((th - 1.2) * Math.PI);
-        const x = cx + r * scale * Math.cos(th + 0.1);
-        const y = cy + r * scale * Math.sin(th + 0.1);
+        const x = cx + r * scale * Math.cos(th + 0.1 + rotAngle);
+        const y = cy + r * scale * Math.sin(th + 0.1 + rotAngle);
         if (th === 1.2) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
       ctx.shadowBlur = 0;
 
+      // 4. Sun's Galactic Orbit (Dashed Line)
       const sunR = 8.2;
-      const sunX = cx;
-      const sunY = cy - sunR * scale;
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.25)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, sunR * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
+      // 5. Sun's Position & Velocity Vector
+      const sunOrbitAngle = -Math.PI / 2 + rotAngle;
+      const sunX = cx + sunR * scale * Math.cos(sunOrbitAngle);
+      const sunY = cy + sunR * scale * Math.sin(sunOrbitAngle);
+
+      // Velocity vector arrow (tangent to circle, V = 220 km/s)
+      const velAngle = sunOrbitAngle + Math.PI / 2;
+      const velLen = 22;
+      const velEndX = sunX + velLen * Math.cos(velAngle);
+      const velEndY = sunY + velLen * Math.sin(velAngle);
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(sunX, sunY);
+      ctx.lineTo(velEndX, velEndY);
+      ctx.stroke();
+
+      const headLen = 5;
+      ctx.beginPath();
+      ctx.moveTo(velEndX, velEndY);
+      ctx.lineTo(velEndX - headLen * Math.cos(velAngle - Math.PI / 6), velEndY - headLen * Math.sin(velAngle - Math.PI / 6));
+      ctx.moveTo(velEndX, velEndY);
+      ctx.lineTo(velEndX - headLen * Math.cos(velAngle + Math.PI / 6), velEndY - headLen * Math.sin(velAngle + Math.PI / 6));
+      ctx.stroke();
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = '9px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('V=220km/s', velEndX + 4, velEndY + 3);
+
+      // 6. Human Radio Bubble (~100 light years) - Dramatic scale contrast
+      const bubblePulse = animTime ? (3.0 + 2.0 * Math.sin(animTime * 0.005)) : 3.5;
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, bubblePulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 7. Earth Drift Scan Antenna Beam Cone
       const galL = pt ? pt.gal_l_deg : 30.0;
       const galLRad = (galL * Math.PI) / 180.0;
-      const beamDx = -Math.sin(galLRad);
-      const beamDy = Math.cos(galLRad);
+      const toCenterAngle = sunOrbitAngle + Math.PI;
+      const beamAngle = toCenterAngle - galLRad;
+      const beamDx = Math.cos(beamAngle);
+      const beamDy = Math.sin(beamAngle);
       const beamLen = 14.0 * scale;
 
       const halfSpread = (20.0 * Math.PI) / 180.0;
-      const angCenter = Math.atan2(beamDy, beamDx);
-      const ang1 = angCenter - halfSpread;
-      const ang2 = angCenter + halfSpread;
+      const ang1 = beamAngle - halfSpread;
+      const ang2 = beamAngle + halfSpread;
 
       const beamGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, beamLen);
       beamGrad.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
@@ -4137,12 +4316,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.lineTo(sunX + beamDx * beamLen, sunY + beamDy * beamLen);
       ctx.stroke();
 
+      // 8. Central Sgr A* & Sun markers
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
       ctx.arc(cx, cy, 4, 0, Math.PI * 2);
       ctx.fill();
       ctx.font = '10px sans-serif';
       ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'left';
       ctx.fillText('Sgr A*', cx + 6, cy + 4);
 
       ctx.fillStyle = '#34d399';
@@ -4172,17 +4353,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (infoEl) {
           let armName = '銀河間ガス / ハロー';
           let distStr = '';
-          if (v >= -15 && v <= 15) {
+          let timeTravelStr = '';
+          if (v >= -20 && v <= 20) {
             armName = '局所腕 (Local/Orion Arm)';
             distStr = '〜1,000 光年';
-          } else if (v >= -65 && v <= -35) {
+            timeTravelStr = '平安時代の光';
+          } else if (v >= -65 && v <= -30) {
             armName = 'ペルセウス腕 (Perseus Arm)';
             distStr = '約 6,200 光年';
+            timeTravelStr = '縄文・古代メソポタミアの光';
           } else if (v < -70) {
             armName = 'アウター腕 (Outer Arm)';
             distStr = '> 15,000 光年';
+            timeTravelStr = '旧石器時代の光';
           }
-          infoEl.textContent = 'v=' + v.toFixed(1) + ' km/s [' + armName + (distStr ? ' 距離:' + distStr : '') + ']';
+          infoEl.textContent = 'v=' + (v > 0 ? '+' : '') + v.toFixed(1) + ' km/s [' + armName + (distStr ? ' 距離:' + distStr : '') + (timeTravelStr ? ' (' + timeTravelStr + ')' : '') + ']';
         }
         if (galacticData && galacticData.latest_spectrum) {
           galacticRenderSpectrum(galacticData.latest_spectrum);
@@ -4217,7 +4402,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       const padLeft = 60;
       const padRight = 30;
-      const padTop = 30;
+      const padTop = 32;
       const padBottom = 40;
       const chartW = w - padLeft - padRight;
       const chartH = h - padTop - padBottom;
@@ -4236,6 +4421,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       function yForT(t) {
         return padTop + chartH - ((t - tempMin) / (tempMax - tempMin)) * chartH;
       }
+
+      // Shaded Spiral Arm Zones
+      const lx1 = xForV(-20);
+      const lx2 = xForV(20);
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.08)';
+      ctx.fillRect(lx1, padTop, lx2 - lx1, chartH);
+
+      const px1 = xForV(-65);
+      const px2 = xForV(-30);
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.08)';
+      ctx.fillRect(px1, padTop, px2 - px1, chartH);
+
+      const ox1 = xForV(-115);
+      const ox2 = xForV(-75);
+      ctx.fillStyle = 'rgba(129, 140, 248, 0.05)';
+      ctx.fillRect(ox1, padTop, ox2 - ox1, chartH);
 
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1;
@@ -4260,7 +4461,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         ctx.moveTo(x, padTop);
         ctx.lineTo(x, padTop + chartH);
         ctx.stroke();
-        ctx.fillText(v + ' km/s', x, h - 14);
+        ctx.fillText((v > 0 ? '+' : '') + v + ' km/s', x, h - 14);
       }
       ctx.setLineDash([]);
 
@@ -4272,16 +4473,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.lineTo(w - padRight, zeroY);
       ctx.stroke();
 
+      // Axis headers
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('相対アンテナ温度 ΔT_A [K]', padLeft, padTop - 14);
+      ctx.textAlign = 'right';
+      ctx.fillText('LSR 視線速度 v_LSR [km/s]', w - padRight, h - 14);
+
+      // Arm guide lines
       const orionX = xForV(0);
       ctx.strokeStyle = '#fbbf24';
-      ctx.setLineDash([4, 4]);
+      ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(orionX, padTop);
       ctx.lineTo(orionX, padTop + chartH);
       ctx.stroke();
       ctx.fillStyle = '#fbbf24';
-      ctx.textAlign = 'left';
-      ctx.fillText('局所腕 (Orion) 0 km/s', orionX + 4, padTop + 14);
+      ctx.textAlign = 'center';
+      ctx.font = '10px sans-serif';
+      ctx.fillText('🌟 局所腕 (0 km/s)', orionX, padTop + 14);
 
       const perseusX = xForV(-45);
       ctx.strokeStyle = '#06b6d4';
@@ -4290,14 +4501,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ctx.lineTo(perseusX, padTop + chartH);
       ctx.stroke();
       ctx.fillStyle = '#06b6d4';
-      ctx.fillText('ペルセウス腕 -45 km/s', perseusX + 4, padTop + 28);
+      ctx.textAlign = 'center';
+      ctx.fillText('🌀 ペルセウス腕 (-45 km/s)', perseusX, padTop + 28);
       ctx.setLineDash([]);
 
       if (spec && spec.v_lsr_km_s && spec.relative_temp_k && spec.v_lsr_km_s.length > 0) {
         const vs = spec.v_lsr_km_s;
         const ts = spec.relative_temp_k;
         ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.2;
         ctx.beginPath();
         for (let i = 0; i < vs.length; i++) {
           const x = xForV(vs[i]);
@@ -4315,6 +4527,38 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
         ctx.fillStyle = grad;
         ctx.fill();
+
+        // Pin markers on peaks
+        let localMaxT = -999, localPeakV = 0;
+        let perseusMaxT = -999, perseusPeakV = -45;
+        for (let i = 0; i < vs.length; i++) {
+          const v = vs[i];
+          const t = ts[i];
+          if (v >= -20 && v <= 20 && t > localMaxT) {
+            localMaxT = t;
+            localPeakV = v;
+          }
+          if (v >= -65 && v <= -30 && t > perseusMaxT) {
+            perseusMaxT = t;
+            perseusPeakV = v;
+          }
+        }
+        if (localMaxT > 2.0) {
+          const lx = xForV(localPeakV);
+          const ly = yForT(localMaxT);
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.arc(lx, ly, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (perseusMaxT > 2.0) {
+          const px = xForV(perseusPeakV);
+          const py = yForT(perseusMaxT);
+          ctx.fillStyle = '#06b6d4';
+          ctx.beginPath();
+          ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
         // Interactive Hover Marker
         if (galacticHoverV !== null) {
