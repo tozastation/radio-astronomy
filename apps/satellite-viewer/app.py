@@ -1688,6 +1688,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <button class="modal-close" onclick="closeGalacticModal()">&times;</button>
       </div>
       <div class="modal-body" style="padding: 16px;">
+        <!-- Error Banner (Shown on fetch error) -->
+        <div id="galacticErrorBanner" style="display:none; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; padding:10px 14px; margin-bottom:14px; color:#fca5a5; font-size:0.85rem; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span>⚠️</span>
+            <span id="galacticErrorMessage">観測データの取得に失敗しました。</span>
+          </div>
+          <button class="copy-btn" style="background:#dc2626; color:white; border:none; padding:4px 10px; font-size:0.75rem; border-radius:4px; cursor:pointer;" onclick="galacticFetchObservations()">🔄 再試行</button>
+        </div>
+
         <!-- Top Status Bar: Pointing & Preemption Banner -->
         <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
@@ -4062,14 +4071,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     async function galacticFetchObservations() {
+      const errBanner = document.getElementById('galacticErrorBanner');
+      const errMsg = document.getElementById('galacticErrorMessage');
       try {
         const res = await fetch('/api/galactic-observations');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         galacticData = data;
+        if (errBanner) errBanner.style.display = 'none';
         galacticUpdateUI(data);
       } catch (err) {
         console.error('Error fetching galactic observations:', err);
+        if (errBanner) {
+          errBanner.style.display = 'flex';
+          if (errMsg) errMsg.textContent = '観測データの取得に失敗しました: ' + (err.message || '通信エラー');
+        }
       }
     }
 

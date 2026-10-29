@@ -580,6 +580,14 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('141.2 km/s', HTML_TEMPLATE)
         self.assertIn('2.43', HTML_TEMPLATE)
 
+    def test_galactic_fetch_error_handling_ui(self):
+        # galacticErrorBanner がテンプレートに存在し、再試行ボタンがあること
+        self.assertIn('id="galacticErrorBanner"', HTML_TEMPLATE)
+        self.assertIn('galacticFetchObservations()', HTML_TEMPLATE)
+        # JSでエラー時に表示、成功時に非表示のハンドリングがあること
+        self.assertIn('galacticErrorBanner', HTML_TEMPLATE)
+        self.assertIn('errBanner.style.display', HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()
