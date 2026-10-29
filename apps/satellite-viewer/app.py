@@ -1054,6 +1054,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         grid-template-columns: 1fr;
       }
     }
+    .galactic-viz-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
     .radar-wrapper {
       display: flex;
       flex-direction: column;
@@ -1480,6 +1486,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         padding: 6px;
         font-size: 0.9rem;
       }
+      .galactic-viz-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -1723,7 +1732,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <!-- Main Visualizations: 2-Column Responsive Grid -->
-        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap:16px; margin-bottom:16px;">
+        <div class="galactic-viz-grid">
           <!-- Left: 21cm Hydrogen Line Spectrum & Dark Matter Inspector -->
           <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">

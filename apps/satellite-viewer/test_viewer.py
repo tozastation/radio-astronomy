@@ -561,5 +561,16 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertEqual(res.returncode, 0, f"JS syntax error: {res.stderr}")
 
 
+    def test_galactic_modal_responsive_grid(self):
+        # minmax(420px, 1fr) の直接インライン指定が排除され、.galactic-viz-grid クラス化されていること
+        self.assertNotIn('style="display:grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));', HTML_TEMPLATE)
+        self.assertIn('class="galactic-viz-grid"', HTML_TEMPLATE)
+        self.assertIn('.galactic-viz-grid {', HTML_TEMPLATE)
+        # @media (max-width: 640px) 内で 1 カラムに折り返されること
+        self.assertIn('.galactic-viz-grid {', HTML_TEMPLATE)
+        self.assertIn('grid-template-columns: 1fr;', HTML_TEMPLATE)
+
+
 if __name__ == "__main__":
     unittest.main()
+
