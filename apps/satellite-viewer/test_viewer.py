@@ -619,6 +619,17 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('galacticSetupCanvasDpi(canvas, 900, 420)', HTML_TEMPLATE)
         self.assertIn('galacticSetupCanvasDpi(canvas, 900, 260)', HTML_TEMPLATE)
 
+    def test_js_variable_namespace_prefixed(self):
+        # カレンダー関連のグローバル変数が orbit* プレフィックスで統一されていること
+        self.assertNotIn('let currentCalYear =', HTML_TEMPLATE)
+        self.assertNotIn('let currentCalMonth =', HTML_TEMPLATE)
+        self.assertNotIn('let calendarMonthData =', HTML_TEMPLATE)
+        self.assertNotIn('let selectedCalDate =', HTML_TEMPLATE)
+        self.assertIn('let orbitCalYear =', HTML_TEMPLATE)
+        self.assertIn('let orbitCalMonth =', HTML_TEMPLATE)
+        self.assertIn('let orbitCalendarMonthData =', HTML_TEMPLATE)
+        self.assertIn('let orbitSelectedCalDate =', HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()

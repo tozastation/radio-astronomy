@@ -2317,15 +2317,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     // --- 月間軌道予測カレンダー & 複数衛星電波アニメーション ロジック ---
-    let currentCalYear = new Date().getUTCFullYear();
-    let currentCalMonth = new Date().getUTCMonth() + 1;
-    let calendarMonthData = null;
-    let selectedCalDate = null;
+    let orbitCalYear = new Date().getUTCFullYear();
+    let orbitCalMonth = new Date().getUTCMonth() + 1;
+    let orbitCalendarMonthData = null;
+    let orbitSelectedCalDate = null;
 
     function openOrbitCalendarModal() {
       const modal = document.getElementById('orbitCalendarModal');
       modal.classList.add('active');
-      renderMonthlyCalendar(currentCalYear, currentCalMonth);
+      renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
     }
 
     function closeOrbitCalendarModal(e) {
@@ -2360,26 +2360,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     function prevCalendarMonth() {
-      currentCalMonth--;
-      if (currentCalMonth < 1) {
-        currentCalMonth = 12;
-        currentCalYear--;
+      orbitCalMonth--;
+      if (orbitCalMonth < 1) {
+        orbitCalMonth = 12;
+        orbitCalYear--;
       }
-      renderMonthlyCalendar(currentCalYear, currentCalMonth);
+      renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
     }
 
     function nextCalendarMonth() {
-      currentCalMonth++;
-      if (currentCalMonth > 12) {
-        currentCalMonth = 1;
-        currentCalYear++;
+      orbitCalMonth++;
+      if (orbitCalMonth > 12) {
+        orbitCalMonth = 1;
+        orbitCalYear++;
       }
-      renderMonthlyCalendar(currentCalYear, currentCalMonth);
+      renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
     }
 
     async function renderMonthlyCalendar(year, month) {
-      currentCalYear = year;
-      currentCalMonth = month;
+      orbitCalYear = year;
+      orbitCalMonth = month;
       const titleEl = document.getElementById('calendarMonthTitle');
       if (titleEl) titleEl.textContent = `${year}年 ${month}月`;
 
@@ -2390,7 +2390,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       try {
         const res = await fetch(`/api/calendar/passes?year=${year}&month=${month}`);
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        calendarMonthData = await res.json();
+        orbitCalendarMonthData = await res.json();
 
         const firstDayOfWeek = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
         const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -2408,7 +2408,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         for (let d = 1; d <= daysInMonth; d++) {
           const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          const dayPasses = (calendarMonthData.days && calendarMonthData.days[dateStr]) || [];
+          const dayPasses = (orbitCalendarMonthData.days && orbitCalendarMonthData.days[dateStr]) || [];
           const hasGolden = dayPasses.some(p => p.quality_score && p.quality_score.includes('EXCELLENT'));
           const isToday = dateStr === todayStr;
 
@@ -2417,8 +2417,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           let pillsHtml = '';
           const satColors = {};
-          if (calendarMonthData.satellites) {
-            calendarMonthData.satellites.forEach(s => { satColors[s.name] = s.color; });
+          if (orbitCalendarMonthData.satellites) {
+            orbitCalendarMonthData.satellites.forEach(s => { satColors[s.name] = s.color; });
           }
           dayPasses.slice(0, 5).forEach(p => {
             const color = satColors[p.satellite] || '#38bdf8';
@@ -2464,16 +2464,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     function selectCalendarDay(dateStr) {
-      selectedCalDate = dateStr;
+      orbitSelectedCalDate = dateStr;
       document.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('active'));
       const activeCell = document.getElementById(`cal-cell-${dateStr}`);
       if (activeCell) activeCell.classList.add('active');
 
       const titleEl = document.getElementById('calendarSelectedDateTitle');
       const detailsEl = document.getElementById('calendarDayDetails');
-      if (!detailsEl || !calendarMonthData) return;
+      if (!detailsEl || !orbitCalendarMonthData) return;
 
-      const passes = (calendarMonthData.days && calendarMonthData.days[dateStr]) || [];
+      const passes = (orbitCalendarMonthData.days && orbitCalendarMonthData.days[dateStr]) || [];
       if (titleEl) {
         titleEl.innerHTML = `<span>📅 ${dateStr} のパス</span><span id="calendarSelectedPassCount" style="color:var(--text-muted); font-size:0.8rem;">${passes.length} 件</span>`;
       }
@@ -3105,10 +3105,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     function skipToPass(direction) {
-      if (!calendarMonthData || !calendarMonthData.days) return;
+      if (!orbitCalendarMonthData || !orbitCalendarMonthData.days) return;
       const allPasses = [];
-      Object.keys(calendarMonthData.days).sort().forEach(d => {
-        calendarMonthData.days[d].forEach(p => allPasses.push(p));
+      Object.keys(orbitCalendarMonthData.days).sort().forEach(d => {
+        orbitCalendarMonthData.days[d].forEach(p => allPasses.push(p));
       });
       allPasses.sort((a, b) => new Date(a.aos_time) - new Date(b.aos_time));
 
