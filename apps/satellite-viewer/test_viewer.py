@@ -600,6 +600,15 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('<details class="data-accordion files-accordion">', card_html)
         self.assertNotIn('<details class="data-accordion files-accordion" open>', card_html)
 
+    def test_font_size_and_drift_axis_indicator(self):
+        # 1. 極小フォント (0.65rem, 0.68rem) が排除され、0.72rem / 0.75rem 以上に底上げされていること
+        self.assertNotIn('font-size:0.65rem;', HTML_TEMPLATE)
+        self.assertNotIn('font-size:0.68rem;', HTML_TEMPLATE)
+
+        # 2. galacticDriftCanvas の Y 軸に銀河面中心とハローの方向インジケータが描画されていること
+        self.assertIn('銀河面中心 ↑', HTML_TEMPLATE)
+        self.assertIn('深宇宙ハロー ↓', HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()

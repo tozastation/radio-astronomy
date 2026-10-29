@@ -492,7 +492,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .telemetry-panel-hint {
       color: #94a3b8;
-      font-size: 0.68rem;
+      font-size: 0.72rem;
       font-weight: 400;
       text-transform: none;
     }
@@ -531,7 +531,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .telemetry-label {
       color: #94a3b8;
-      font-size: 0.68rem;
+      font-size: 0.75rem;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: inline-flex;
       align-items: center;
@@ -545,7 +545,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: #38bdf8;
     }
     .telemetry-info-badge {
-      font-size: 0.65rem;
+      font-size: 0.72rem;
       color: #38bdf8;
       opacity: 0.8;
     }
@@ -656,7 +656,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       margin-top: 6px;
     }
     .geek-tooltip-tag {
-      font-size: 0.65rem;
+      font-size: 0.72rem;
       font-weight: 700;
       color: #fbbf24;
       margin-bottom: 2px;
@@ -1807,19 +1807,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- 3 Major Discoveries Summary Cards -->
             <div style="margin-top:8px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-size:0.75rem; text-align:center;">
               <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 4px;">
-                <div style="color:var(--text-muted); font-size:0.68rem;">貫通した渦状腕</div>
+                <div style="color:var(--text-muted); font-size:0.75rem;">貫通した渦状腕</div>
                 <div id="galacticDiscoveredArms" style="color:#38bdf8; font-weight:bold; font-size:0.83rem; margin-top:1px;">2層 (局所腕+ペルセウス腕)</div>
-                <div style="color:#94a3b8; font-size:0.65rem;">多層渦巻の動かぬ証拠</div>
+                <div style="color:#94a3b8; font-size:0.72rem;">多層渦巻の動かぬ証拠</div>
               </div>
               <div style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.25); border-radius:6px; padding:6px 4px;">
-                <div style="color:var(--text-muted); font-size:0.68rem;">最遠検出距離</div>
+                <div style="color:var(--text-muted); font-size:0.75rem;">最遠検出距離</div>
                 <div id="galacticMaxDist" style="color:#34d399; font-weight:bold; font-size:0.83rem; margin-top:1px;">約 6,200 光年</div>
-                <div style="color:#94a3b8; font-size:0.65rem;">古代縄文・メソポタミアの光</div>
+                <div style="color:#94a3b8; font-size:0.72rem;">古代縄文・メソポタミアの光</div>
               </div>
               <div style="background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.25); border-radius:6px; padding:6px 4px;">
-                <div style="color:var(--text-muted); font-size:0.68rem;">銀河の回転速度</div>
+                <div style="color:var(--text-muted); font-size:0.75rem;">銀河の回転速度</div>
                 <div id="galacticRotV" style="color:#a855f7; font-weight:bold; font-size:0.83rem; margin-top:1px;">秒速 220 km</div>
-                <div style="color:#94a3b8; font-size:0.65rem;">暗黒物質の存在実証</div>
+                <div style="color:#94a3b8; font-size:0.72rem;">暗黒物質の存在実証</div>
               </div>
             </div>
           </div>
@@ -4225,10 +4225,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const maxDistEl = document.getElementById('galacticMaxDist');
       const rotVEl = document.getElementById('galacticRotV');
       if (discArmsEl) {
-        discArmsEl.textContent = isPlane ? '2層 (局所腕+ペルセウス腕)' : '0層 (銀河ハロー透過中)';
+        if (!isPlane) {
+          discArmsEl.textContent = '0層 (銀河ハロー透過中)';
+        } else if (l >= 90 && l <= 145) {
+          discArmsEl.textContent = '2層 (局所腕+ペルセウス腕)';
+        } else if (l > 145 && l <= 190) {
+          discArmsEl.textContent = '2層 (局所腕+反中心外縁腕)';
+        } else {
+          discArmsEl.textContent = '1〜2層 (局所腕・はくちょう腕)';
+        }
       }
       if (maxDistEl) {
-        maxDistEl.textContent = isPlane ? '約 6,200 光年' : '--';
+        if (!isPlane) {
+          maxDistEl.textContent = '--';
+        } else if (l >= 90 && l <= 145) {
+          maxDistEl.textContent = '約 6,200 光年';
+        } else if (l > 145 && l <= 190) {
+          maxDistEl.textContent = '約 13,500 光年';
+        } else {
+          maxDistEl.textContent = '約 3,000〜5,000 光年';
+        }
       }
       if (rotVEl) {
         rotVEl.textContent = '秒速 ' + V_measured.toFixed(0) + ' km';
@@ -4765,6 +4781,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         ctx.stroke();
         ctx.fillText('|b|=' + b + '°', padLeft - 8, y + 3);
       }
+
+      // 軸方向インジケータ（Y軸反転の直感補助）
+      ctx.font = '9px sans-serif';
+      ctx.fillStyle = '#38bdf8';
+      ctx.textAlign = 'right';
+      ctx.fillText('銀河面中心 ↑', padLeft - 8, padTop - 6);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('深宇宙ハロー ↓', padLeft - 8, padTop + chartH + 12);
 
       ctx.textAlign = 'center';
       for (let hr = 0; hr <= 24; hr += 4) {
@@ -5504,7 +5528,7 @@ def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
     <div class="packet-preview-container">
       <div class="packet-preview-header">
         <span>📡 最新復号パケット・プレビュー ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)</span>
-        <span style="font-family: ui-monospace, monospace; font-size: 0.68rem; color: #34d399;">CRC: PASS</span>
+        <span style="font-family: ui-monospace, monospace; font-size: 0.75rem; color: #34d399;">CRC: PASS</span>
       </div>
       {content_html}
     </div>
