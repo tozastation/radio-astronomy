@@ -180,6 +180,31 @@ class TestOrbitCalculator(unittest.TestCase):
         shift_sec = (dt_drift_aos - dt_orig_aos).total_seconds()
         self.assertAlmostEqual(shift_sec, 60.0, delta=30.0)
 
+    def test_load_tle_for_satellite_prefers_latest_epoch(self):
+        """候補ファイル内に古い TLE が存在しても、最も新しい Epoch を持つ TLE が選択されること"""
+        import tempfile
+        import os
+
+        # 古い Epoch 26200 の TLE を一時ファイルに書き出す
+        old_tle = (
+            "ISS (ZARYA)\n"
+            "1 25544U 98067A   26200.00000000  .00003000  00000-0  10000-4 0  9999\n"
+            "2 25544  51.6300 200.0000 0005000 100.0000 250.0000 15.48900000500000\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+            f.write(old_tle)
+            tmp_path = f.name
+
+        try:
+            tle = load_tle_for_satellite("ISS (ZARYA)", tle_path=tmp_path)
+            self.assertIsNotNone(tle)
+            # DEFAULT_TARGET_TLES の Epoch 26294 が古い 26200 より優先されること
+            self.assertTrue(tle[0].startswith("1 25544U"))
+            self.assertIn("26294.", tle[0])
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
 
 if __name__ == "__main__":
     unittest.main()

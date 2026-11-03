@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::{info, warn};
+use log::info;
 use std::f32::consts::PI;
 
 /// 内蔵された 48kHz AX.25 APRS パケット WAV (RS0ISS) をロード
@@ -98,9 +98,9 @@ impl SdrCollector {
         if self.mock_sdr {
             Ok(self.generate_mock_samples(count))
         } else {
-            // 実機未接続環境や Docker/CI 上では自動的にモックへフォールバック
-            warn!("Physical RTL-SDR device not accessible. Falling back to synthetic IQ mode.");
-            Ok(self.generate_mock_samples(count))
+            // 現状は常駐 librtlsdr ストリームではなく rtl_sdr/rtl_fm サブプロセスで排他録音するアーキテクチャのため、
+            // 直接サンプルストリームが未接続の場合はエラーを返して呼び出し元（Galactic 合成処理等）にフォールバックさせる
+            Err(anyhow!("Physical RTL-SDR live streaming not attached; use process-based recording or synthetic fallback."))
         }
     }
 

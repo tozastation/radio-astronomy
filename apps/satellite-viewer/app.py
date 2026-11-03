@@ -5599,7 +5599,10 @@ def render_card_html(p: dict) -> str:
 
     packets_accordion = ""
     packets_data = p.get("packets") or {}
-    packet_items = packets_data.get("packets", [])
+    if isinstance(packets_data, list):
+        packet_items = packets_data
+    else:
+        packet_items = packets_data.get("packets") or packets_data.get("frames", [])
     if packet_items:
         pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
         accordion_title = f"📡 受信パケット ({len(packet_items)} 件) の中身を見る"

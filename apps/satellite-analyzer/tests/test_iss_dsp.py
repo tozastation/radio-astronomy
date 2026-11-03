@@ -62,6 +62,53 @@ def test_demodulate_synthetic_doppler_tone(tmp_path):
     assert abs(peak_freq - 1200.0) < 50.0
 
 
+def test_demodulate_noisy_iq_with_predetection_filter(tmp_path):
+    """検波前 LPF により広帯域雑音下でも FM 復調が破綻せずトーンを再生できることを検証"""
+    demod = ISSDspDemodulator()
+    sample_rate = 240000
+    duration_sec = 0.5
+    num_samples = int(sample_rate * duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    # 1200Hz FM 信号
+    mod_freq_hz = 1200.0
+    fm_dev_hz = 3000.0
+    phase = 2 * np.pi * fm_dev_hz * np.cumsum(np.sin(2 * np.pi * mod_freq_hz * t)) / sample_rate
+    sig = 40.0 * np.exp(1j * phase)
+
+    # 240kHz 広帯域複素ガウス雑音
+    np.random.seed(42)
+    noise = (np.random.randn(num_samples) + 1j * np.random.randn(num_samples)) * 15.0
+    noisy_iq = sig + noise
+
+    i_val = np.clip(np.round(127.5 + np.real(noisy_iq)), 0, 255).astype(np.uint8)
+    q_val = np.clip(np.round(127.5 + np.imag(noisy_iq)), 0, 255).astype(np.uint8)
+    raw_bytes = np.empty(num_samples * 2, dtype=np.uint8)
+    raw_bytes[0::2] = i_val
+    raw_bytes[1::2] = q_val
+
+    raw_path = str(tmp_path / "noisy_iss.raw")
+    with open(raw_path, "wb") as f:
+        f.write(raw_bytes.tobytes())
+
+    out_wav = demod.demodulate_raw_iq(
+        raw_path=raw_path,
+        sample_rate=sample_rate,
+        output_wav_path=str(tmp_path / "noisy_out.wav"),
+    )
+
+    assert os.path.exists(out_wav)
+    with wave.open(out_wav, "rb") as wf:
+        frames = wf.readframes(wf.getnframes())
+        audio = np.frombuffer(frames, dtype=np.int16)
+
+    fft_mag = np.abs(np.fft.rfft(audio.astype(float)))
+    freqs = np.fft.rfftfreq(len(audio), 1.0 / 48000)
+    peak_idx = np.argmax(fft_mag[10:]) + 10
+    peak_freq = freqs[peak_idx]
+    assert abs(peak_freq - 1200.0) < 50.0
+
+
 def test_demodulate_empty_or_small_file(tmp_path):
     demod = ISSDspDemodulator()
     empty_raw = str(tmp_path / "empty.raw")

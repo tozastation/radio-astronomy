@@ -34,10 +34,26 @@ DEFAULT_TARGET_TLES: Dict[str, Tuple[str, str]] = {
 }
 
 
+def parse_tle_epoch(line1: str) -> float:
+    """TLE Line 1 から Epoch (YYDDD.DDDDDDDD) をパースし、比較可能な float 値 (年*1000 + 通日) を返す"""
+    try:
+        parts = line1.strip().split()
+        if len(parts) >= 4 and parts[0] == "1":
+            epoch_str = parts[3]
+            yy = int(epoch_str[:2])
+            full_year = 2000 + yy if yy < 57 else 1900 + yy
+            day_fraction = float(epoch_str[2:])
+            return full_year * 1000.0 + day_fraction
+    except Exception:
+        pass
+    return 0.0
+
+
 def load_tle_for_satellite(satellite_name: str, tle_path: Optional[str] = None) -> Optional[Tuple[str, str]]:
     """
     指定された衛星名に対応する TLE 2行を取得。
-    ローカルファイル、環境変数、または組み込みの DEFAULT_TARGET_TLES から検索。
+    ローカルファイル、環境変数、または組み込みの DEFAULT_TARGET_TLES から検索し、
+    最も新しい Epoch (元期) を持つ TLE を優先採用する。
     """
     candidates = []
     if tle_path:
@@ -46,6 +62,7 @@ def load_tle_for_satellite(satellite_name: str, tle_path: Optional[str] = None) 
     if env_path:
         candidates.append(Path(env_path))
     candidates.extend([
+        Path("apps/ground-station/data/cache/tles.txt"),
         Path("/root/.config/satdump/satdump_tles.txt"),
         Path("apps/satellite-analyzer/assets/satdump_tles.txt"),
         Path("/assets/satdump_tles.txt"),
@@ -54,6 +71,15 @@ def load_tle_for_satellite(satellite_name: str, tle_path: Optional[str] = None) 
     ])
 
     norm_target = satellite_name.strip().upper()
+    found_tles: List[Tuple[float, Tuple[str, str]]] = []
+
+    # 組み込みの DEFAULT_TARGET_TLES から検索
+    for name, tles in DEFAULT_TARGET_TLES.items():
+        if name.upper() == norm_target or norm_target in name.upper() or name.upper() in norm_target:
+            ep = parse_tle_epoch(tles[0])
+            found_tles.append((ep, tles))
+
+    # 各候補ファイルから検索
     for cand in candidates:
         try:
             if cand.is_file():
@@ -67,15 +93,16 @@ def load_tle_for_satellite(satellite_name: str, tle_path: Optional[str] = None) 
                                 l1 = lines[idx + 1]
                                 l2 = lines[idx + 2]
                                 if l1.startswith("1 ") and l2.startswith("2 "):
-                                    return (l1, l2)
+                                    ep = parse_tle_epoch(l1)
+                                    found_tles.append((ep, (l1, l2)))
                         idx += 1
         except OSError:
             pass
 
-    # デフォルト辞書から検索
-    for name, tles in DEFAULT_TARGET_TLES.items():
-        if name.upper() == norm_target or norm_target in name.upper() or name.upper() in norm_target:
-            return tles
+    if found_tles:
+        # Epoch が最も大きい (最新の) TLE を選択
+        found_tles.sort(key=lambda x: x[0], reverse=True)
+        return found_tles[0][1]
 
     return None
 

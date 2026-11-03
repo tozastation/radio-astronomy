@@ -1,4 +1,4 @@
-FROM localhost:5000/satellite-analyzer-worker:v1.5.0
+FROM localhost:5000/satellite-analyzer-worker:v1.7.0
 
 WORKDIR /app
 RUN pip3 install --no-cache-dir --break-system-packages sgp4

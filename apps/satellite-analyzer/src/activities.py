@@ -299,7 +299,9 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
                 s3.upload_file(img, bucket, f"{prefix}/{img_name}")
         elif category == "cubesat_telemetry":
             decoder = FUNcubeDecoder()
-            frames = decoder.decode(local_wav)
+            pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
+            tle_lines = params.get("tle_lines")
+            frames = decoder.decode(local_wav, sample_rate=240000, pass_start_utc=pass_time, tle_lines=tle_lines)
             packets_count = len(frames)
             packets = [f.to_dict() for f in frames]
             if packets_count > 0:

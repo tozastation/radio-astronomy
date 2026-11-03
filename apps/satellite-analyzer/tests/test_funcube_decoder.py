@@ -61,6 +61,41 @@ def test_funcube_decoder_with_golden_wav():
     assert "batteryvoltage" in frames[0].telemetry or len(frames[0].telemetry) > 0
 
 
+def test_funcube_decoder_parse_output_real_format():
+    decoder = FUNcubeDecoder()
+    sample_output = """
+-> Packet from 1k2 BPSK downlink
+Container:
+    frame_type = Realtime
+    sequence_number = 1420
+    Container:
+        solar_panel_voltage = 8.24
+        battery_voltage = 7.85
+    Container:
+        eps_temperature = 14.5
+-> Packet from 1k2 BPSK downlink
+Container:
+    frame_type = WOD
+    sequence_number = 1421
+    Container:
+        solar_panel_voltage = 8.21
+        battery_voltage = 7.84
+        eps_temperature = 14.6
+"""
+    frames = decoder.parse_output(sample_output)
+    assert len(frames) == 2
+
+    assert frames[0].satellite == "FUNcube-1 (AO-73)"
+    assert frames[0].frame_type == "Realtime"
+    assert frames[0].telemetry["solar_panel_voltage"] == 8.24
+    assert frames[0].telemetry["battery_voltage"] == 7.85
+    assert frames[0].telemetry["eps_temperature"] == 14.5
+    assert frames[0].telemetry["sequence_number"] == 1420
+
+    assert frames[1].frame_type == "WOD"
+    assert frames[1].telemetry["sequence_number"] == 1421
+
+
 def test_funcube_decoder_decode_raw_invocation():
     decoder = FUNcubeDecoder(binary_path="gr_satellites")
     decoder.has_binary = True
@@ -101,7 +136,9 @@ Container:
             assert cmd[3].endswith(".cs16")
             assert cmd[4] == "--iq"
             assert cmd[5] == "--samp_rate"
-            assert cmd[6] == "240000"
+            assert cmd[6] == "48000"
+            assert cmd[7] == "--f_offset"
+            assert cmd[8] == "0"
     finally:
         if os.path.exists(raw_path):
             os.remove(raw_path)

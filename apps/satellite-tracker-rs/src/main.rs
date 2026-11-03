@@ -215,13 +215,17 @@ async fn main() -> Result<()> {
         .unwrap_or(2);
     let spool_dir = PathBuf::from(std::env::var("SPOOL_DIR").unwrap_or_else(|_| "/tmp/spool".to_string()));
     let min_meteor_el_deg: f64 = std::env::var("MIN_MAX_EL_METEOR_DEG")
+        .unwrap_or_else(|_| "32.0".to_string())
+        .parse()
+        .unwrap_or(32.0);
+    let min_default_el_deg: f64 = std::env::var("MIN_MAX_EL_DEFAULT_DEG")
         .unwrap_or_else(|_| "25.0".to_string())
         .parse()
         .unwrap_or(25.0);
-    let min_default_el_deg: f64 = std::env::var("MIN_MAX_EL_DEFAULT_DEG")
-        .unwrap_or_else(|_| "20.0".to_string())
+    let rtl_gain: f64 = std::env::var("RTL_SDR_GAIN")
+        .unwrap_or_else(|_| "48.0".to_string())
         .parse()
-        .unwrap_or(20.0);
+        .unwrap_or(48.0);
     let beam_az_deg: f64 = std::env::var("BEAM_AZ_DEG")
         .unwrap_or_else(|_| "30.0".to_string())
         .parse()
@@ -361,10 +365,10 @@ async fn main() -> Result<()> {
                             let raw_filename = format!("{}_{}.raw", chosen_sat.name, pass_id);
                             let raw_path = spool_dir.join(&raw_filename);
                             info!(
-                                "Starting rtl_sdr RAW I/Q recording (240 kSPS) for {} -> {:?}",
-                                chosen_sat.name, raw_path
+                                "Starting rtl_sdr RAW I/Q recording (240 kSPS, Gain={:.1}dB) for {} -> {:?}",
+                                rtl_gain, chosen_sat.name, raw_path
                             );
-                            let args = build_rtl_sdr_args(chosen_sat.freq_hz, 240_000, 45.0, &raw_path);
+                            let args = build_rtl_sdr_args(chosen_sat.freq_hz, 240_000, rtl_gain, &raw_path);
                             match tokio::process::Command::new("rtl_sdr")
                                 .args(&args)
                                 .spawn()
@@ -385,8 +389,8 @@ async fn main() -> Result<()> {
                             let wav_filename = format!("{}_{}.wav", chosen_sat.name, pass_id);
                             let wav_path = spool_dir.join(&wav_filename);
                             info!(
-                                "Starting rtl_fm real RF recording (48 kSPS) for {} -> {:?}",
-                                chosen_sat.name, wav_path
+                                "Starting rtl_fm real RF recording (48 kSPS, Gain={:.1}dB) for {} -> {:?}",
+                                rtl_gain, chosen_sat.name, wav_path
                             );
 
                             match tokio::fs::File::create(&wav_path).await {
@@ -394,7 +398,7 @@ async fn main() -> Result<()> {
                                     if let Err(e) = file.write_all(&create_wav_header(48_000, 0)).await {
                                         warn!("Failed to write initial WAV header for {}: {}", chosen_sat.name, e);
                                     }
-                                    let args = build_rtl_fm_args(chosen_sat.freq_hz, 48_000, 45.0);
+                                    let args = build_rtl_fm_args(chosen_sat.freq_hz, 48_000, rtl_gain);
                                     match tokio::process::Command::new("rtl_fm")
                                         .args(&args)
                                         .stdout(std::process::Stdio::piped())
