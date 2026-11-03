@@ -245,3 +245,114 @@ class ISSDspDemodulator:
 
         logger.info(f"Successfully demodulated raw IQ to 48kHz WAV: {output_wav_path}")
         return output_wav_path
+
+    def estimate_tca_drift(
+        self,
+        file_path: str,
+        pass_start_utc: Optional[datetime] = None,
+        tle_lines: Optional[Tuple[str, str]] = None,
+        center_freq_hz: float = 145825000.0,
+        sample_rate: int = 240000,
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """
+        実録音データ (生 IQ または WAV) の時間ごとの受信電力エンベロープを解析し、
+        実測 TCA と SGP4 予測 TCA のタイムドリフト Δt [秒] (t_actual - t_sgp4)
+        および推定ピーク SNR [dB] を算出する。
+        信号が有意でない場合 (SNR < 2.0 dB 等) は (None, None) を返す。
+        """
+        if not os.path.exists(file_path) or tle_lines is None or pass_start_utc is None:
+            return None, None
+
+        file_size = os.path.getsize(file_path)
+        if file_size < 100 * 1024:
+            return None, None
+
+        ext = os.path.splitext(file_path)[1].lower()
+        power_env = []
+        step_dt = 1.0  # 1秒ごとの平均電力
+
+        if ext in (".raw", ".u8", ".cu8"):
+            # 生 IQ (240kSPS uint8: 1秒あたり 480,000 bytes)
+            bytes_per_sec = sample_rate * 2
+            with open(file_path, "rb") as f:
+                while True:
+                    buf = f.read(bytes_per_sec)
+                    if len(buf) < bytes_per_sec // 2:
+                        break
+                    u8 = np.frombuffer(buf, dtype=np.uint8)
+                    i = (u8[0::2].astype(np.float32) - 127.5) / 128.0
+                    q = (u8[1::2].astype(np.float32) - 127.5) / 128.0
+                    p = np.mean(i ** 2 + q ** 2)
+                    power_env.append(float(p))
+        elif ext == ".wav":
+            try:
+                with wave.open(file_path, "rb") as wf:
+                    n_channels = wf.getnchannels()
+                    sampwidth = wf.getsampwidth()
+                    frate = wf.getframerate()
+                    frames_per_sec = frate
+                    while True:
+                        buf = wf.readframes(frames_per_sec)
+                        if not buf:
+                            break
+                        if sampwidth == 2:
+                            audio = np.frombuffer(buf, dtype=np.int16).astype(np.float32) / 32768.0
+                        else:
+                            audio = np.frombuffer(buf, dtype=np.uint8).astype(np.float32) / 128.0 - 1.0
+                        if n_channels > 1:
+                            audio = audio[0::n_channels]
+                        p = np.mean(audio ** 2)
+                        power_env.append(float(p))
+            except Exception as e:
+                logger.warning(f"Error reading WAV for TCA drift estimation: {e}")
+                return None, None
+        else:
+            return None, None
+
+        if len(power_env) < 10:
+            return None, None
+
+        power_arr = np.array(power_env, dtype=np.float64)
+        # 移動平均スムージング (窓幅 7秒) で瞬間的なノイズスパイクを除去
+        window_len = min(7, len(power_arr))
+        if window_len >= 3:
+            kernel = np.ones(window_len) / window_len
+            smooth_power = np.convolve(power_arr, kernel, mode="same")
+        else:
+            smooth_power = power_arr
+
+        # ノイズフロア (中央値) とピーク値から推定 SNR [dB] を計算
+        noise_floor = float(np.median(smooth_power))
+        peak_power = float(np.max(smooth_power))
+        if noise_floor <= 1e-12:
+            return None, None
+
+        snr_db = 10.0 * math.log10(peak_power / noise_floor)
+        if snr_db < 2.0:
+            # 信号有意性なし (アンビエントノイズのみ)
+            return None, round(snr_db, 1)
+
+        actual_peak_sec = float(np.argmax(smooth_power))
+
+        # SGP4 理論ドップラー偏移列のゼロクロス点 (TCA) を特定
+        duration_sec = float(len(power_env))
+        d_shifts = self.compute_doppler_shifts(
+            tle_line1=tle_lines[0],
+            tle_line2=tle_lines[1],
+            start_time=pass_start_utc,
+            duration_sec=duration_sec,
+            center_freq_hz=center_freq_hz,
+            step_sec=1.0,
+        )
+        if len(d_shifts) < 2:
+            return None, round(snr_db, 1)
+
+        # ドップラー絶対値が最小となる秒数 (TCA: ゼロクロス)
+        sgp4_tca_sec = float(np.argmin(np.abs(d_shifts)))
+
+        drift_sec = actual_peak_sec - sgp4_tca_sec
+        # 物理的妥当性フィルタ: 軌道伝搬誤差が LEO で ±60秒を超えることは通常ない
+        if abs(drift_sec) > 60.0:
+            return None, round(snr_db, 1)
+
+        return round(drift_sec, 1), round(snr_db, 1)

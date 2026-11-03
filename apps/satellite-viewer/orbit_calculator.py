@@ -311,7 +311,8 @@ class OrbitCalculator:
                         if max_el >= 10.0 and pass_start_dt and tca_dt:
                             quality = self._evaluate_quality(max_el, max_el_az, window_duration)
                             prob, hist_summary = self._evaluate_success_probability(
-                                name, max_el, quality, history_stats
+                                name, max_el, quality, history_stats,
+                                max_el_az=max_el_az, window_duration=window_duration,
                             )
                             all_passes.append(
                                 FuturePass(
@@ -339,7 +340,8 @@ class OrbitCalculator:
                 cur_dt = start_time + timedelta(seconds=total_steps * step_seconds)
                 quality = self._evaluate_quality(max_el, max_el_az, window_duration)
                 prob, hist_summary = self._evaluate_success_probability(
-                    name, max_el, quality, history_stats
+                    name, max_el, quality, history_stats,
+                    max_el_az=max_el_az, window_duration=window_duration,
                 )
                 all_passes.append(
                     FuturePass(
@@ -471,7 +473,8 @@ class OrbitCalculator:
                         if max_el >= 10.0 and pass_start_dt and tca_dt:
                             quality = self._evaluate_quality(max_el, max_el_az, window_duration)
                             prob, hist_summary = self._evaluate_success_probability(
-                                name, max_el, quality, history_stats
+                                name, max_el, quality, history_stats,
+                                max_el_az=max_el_az, window_duration=window_duration,
                             )
                             day_key = pass_start_dt.astimezone(jst_offset).strftime("%Y-%m-%d")
                             pass_obj = FuturePass(
@@ -502,7 +505,8 @@ class OrbitCalculator:
                 cur_dt = start_time + timedelta(seconds=total_duration)
                 quality = self._evaluate_quality(max_el, max_el_az, window_duration)
                 prob, hist_summary = self._evaluate_success_probability(
-                    name, max_el, quality, history_stats
+                    name, max_el, quality, history_stats,
+                    max_el_az=max_el_az, window_duration=window_duration,
                 )
                 day_key = pass_start_dt.astimezone(jst_offset).strftime("%Y-%m-%d")
                 pass_obj = FuturePass(
@@ -549,12 +553,26 @@ class OrbitCalculator:
         max_el: float,
         quality_score: str,
         history_stats: Optional[Dict[str, Any]] = None,
+        max_el_az: float = 0.0,
+        window_duration: int = 0,
     ) -> Tuple[float, str]:
         """
-        過去の復調実績統計と最大仰角・品質スコアから、推定成功確率(0.0〜1.0)とサマリー文を算出。
-        ラプラス平滑化 (Laplace Smoothing) を適用。
+        過去の復調実績統計（直近優先の指数時間減衰重み）と、仰角・方位角・開口窓滞在時間から
+        導出される物理リンク事前確率を統合した経験ベイズ推定確率 (0.0〜1.0) とサマリー文を算出。
         """
         sat_stats = history_stats.get(satellite) if history_stats else None
+
+        # 物理リンク事前確率 P0 の導出
+        if window_duration >= 60 and max_el >= 35.0:
+            p0 = 0.75
+        elif window_duration > 0:
+            # 滞在時間に応じた線形補間 (1〜60秒で 0.35〜0.60)
+            ratio = min(1.0, max(0.0, window_duration / 60.0))
+            p0 = 0.35 + 0.25 * ratio
+        elif max_el >= 20.0 and (max_el_az >= 250.0 or max_el_az <= 110.0):
+            p0 = 0.20
+        else:
+            p0 = 0.04
 
         # 仰角帯の分類
         if max_el >= 35.0:
@@ -567,41 +585,49 @@ class OrbitCalculator:
             band = "low"
             band_label = "低仰角(<20°)"
 
-        # 過去実績が存在する場合
+        # 正則化パラメータ κ (事前確率の擬似サンプル重み)
+        kappa = 2.0
+
         if sat_stats and sat_stats.get("total_passes", 0) > 0:
             band_info = sat_stats.get("elevation_bands", {}).get(band, {})
             b_total = band_info.get("total", 0)
             b_success = band_info.get("success", 0)
 
-            if b_total > 0:
-                # 当該仰角帯の実績に基づくラプラス平滑化確率: (succ + 1) / (total + 2)
-                prob = (b_success + 1.0) / (b_total + 2.0)
-                raw_rate = (b_success / b_total) * 100.0
-                summary = f"同仰角帯実績: {b_success}/{b_total}回成功 ({raw_rate:.0f}%)"
+            # 指数時間減衰重み付き統計 (weighted_total / weighted_success) がある場合
+            w_total = band_info.get("weighted_total", float(b_total))
+            w_success = band_info.get("weighted_success", float(b_success))
+            recent_succ = band_info.get("recent_success", b_success)
+            recent_tot = band_info.get("recent_total", b_total)
+
+            if w_total > 0.0:
+                prob = (w_success + kappa * p0) / (w_total + kappa)
+                if recent_tot > 0:
+                    rate_pct = (recent_succ / recent_tot) * 100.0
+                    summary = f"直近同仰角帯実績: {recent_succ}/{recent_tot}回成功 ({rate_pct:.0f}%)"
+                else:
+                    rate_pct = (b_success / b_total) * 100.0 if b_total > 0 else 0.0
+                    summary = f"同仰角帯実績: {b_success}/{b_total}回成功 ({rate_pct:.0f}%)"
             else:
-                # 当該仰角帯は未観測だが全体実績がある場合
+                # 当該仰角帯の実績がない場合は全体重み付き実績を参照
+                sat_w_tot = sat_stats.get("weighted_total", float(sat_stats.get("total_passes", 0)))
+                sat_w_succ = sat_stats.get("weighted_success", float(sat_stats.get("successful_passes", 0)))
+                overall_p0 = (sat_w_succ + kappa * p0) / (sat_w_tot + kappa)
+                if band == "low":
+                    prob = max(0.04, overall_p0 * 0.6)
+                elif band == "high":
+                    prob = min(0.95, overall_p0 * 1.15)
+                else:
+                    prob = overall_p0
+
                 tot = sat_stats.get("total_passes", 0)
                 succ = sat_stats.get("successful_passes", 0)
-                prob = (succ + 1.0) / (tot + 2.0)
-                if band == "low":
-                    prob = max(0.05, prob * 0.6)
-                elif band == "high":
-                    prob = min(0.95, prob * 1.1)
-                raw_rate = (succ / tot) * 100.0
+                rate_pct = (succ / tot) * 100.0 if tot > 0 else 0.0
                 summary = f"全体実績: {succ}/{tot}回成功 ({band_label}は初観測)"
-            return round(prob, 2), summary
+
+            return round(float(prob), 2), summary
 
         # 過去実績がまだない場合の幾何学的事前確率フォールバック
-        if "EXCELLENT" in quality_score:
-            prob = 0.75
-        elif "GOOD" in quality_score:
-            prob = 0.50
-        elif "FAIR" in quality_score:
-            prob = 0.25
-        else:
-            prob = 0.05
-
-        return round(prob, 2), "実績データ収集中 (未観測)"
+        return round(float(p0), 2), "実績データ収集中 (未観測)"
 
 
     def _geodetic_to_ecef(self, lat_rad: float, lon_rad: float, alt_m: float) -> Tuple[float, float, float]:

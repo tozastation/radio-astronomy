@@ -22,6 +22,27 @@ DEFAULT_ISS_TLE = (
     "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
 )
 
+def compute_file_duration_seconds(file_path: str, default_sample_rate: int = 240000) -> float:
+    """録音ファイル (生 IQ または WAV) の正確な収録時間 [秒] を算出"""
+    if not os.path.exists(file_path):
+        return 0.0
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in (".raw", ".u8", ".cu8"):
+        size = os.path.getsize(file_path)
+        return round(size / float(default_sample_rate * 2), 1)
+    elif ext == ".wav":
+        try:
+            import wave
+            with wave.open(file_path, "rb") as wf:
+                frate = wf.getframerate()
+                nframes = wf.getnframes()
+                if frate > 0:
+                    return round(nframes / float(frate), 1)
+        except Exception:
+            pass
+    return 0.0
+
+
 
 def parse_pass_time_from_path(path_or_str: str) -> Optional[datetime]:
     """ファイル名や pass_id から YYYYMMDD_HHMMSS 形式の日時をパースして UTC datetime を返す"""
@@ -342,6 +363,34 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         if os.path.exists(out_png):
             s3.upload_file(out_png, bucket, f"{prefix}/spectrogram.png")
 
+        # 録音時間および TCA タイムドリフト・推定 SNR の算出
+        rec_duration_sec = compute_file_duration_seconds(local_wav)
+        pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
+        tle_lines = params.get("tle_lines")
+        if not tle_lines and "ISS" in satellite.upper():
+            tle_lines = DEFAULT_ISS_TLE
+
+        tca_drift_sec = None
+        snr_db = None
+        if tle_lines and pass_time:
+            try:
+                demod = ISSDspDemodulator()
+                center_freq = 145825000.0
+                if "METEOR" in satellite.upper():
+                    center_freq = 137900000.0
+                elif "FUNCUBE" in satellite.upper() or "AO-73" in satellite.upper():
+                    center_freq = 145935000.0
+
+                tca_drift_sec, snr_db = demod.estimate_tca_drift(
+                    file_path=local_wav,
+                    pass_start_utc=pass_time,
+                    tle_lines=tle_lines,
+                    center_freq_hz=center_freq,
+                    sample_rate=240000,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to estimate TCA drift for {pass_id}: {e}")
+
         summary_data = {
             "satellite": satellite,
             "pass_id": pass_id,
@@ -352,6 +401,9 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
             "packets_count": packets_count,
             "summary_text": summary_text,
             "status": "completed",
+            "duration_seconds": rec_duration_sec,
+            "actual_tca_drift_seconds": tca_drift_sec,
+            "snr_db": snr_db,
         }
         summary_tmp = os.path.join(tmp_dir, "summary.json")
         with open(summary_tmp, "w", encoding="utf-8") as f:

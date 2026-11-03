@@ -205,6 +205,43 @@ class TestOrbitCalculator(unittest.TestCase):
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    def test_bayes_monotonicity_and_decay_weight(self):
+        """直近の復調成功（指数時間減衰）と幾何学的事前確率により、単調性と直近適応性が保証されること"""
+        # 1. 過去実績なしの場合: EXCELLENT パスの事前確率が FAIR パスより高いこと
+        prob_ex, _ = OrbitCalculator._evaluate_success_probability(
+            "METEOR-M2 4", max_el=45.0, quality_score="EXCELLENT",
+            history_stats={}, max_el_az=30.0, window_duration=180
+        )
+        prob_fair, _ = OrbitCalculator._evaluate_success_probability(
+            "METEOR-M2 4", max_el=21.0, quality_score="FAIR",
+            history_stats={}, max_el_az=260.0, window_duration=0
+        )
+        self.assertGreater(prob_ex, prob_fair)
+
+        # 2. 直近成功（FUNCUBE-1等、直近連続成功）の重み付き統計が正しく反映されること
+        history_stats_weighted = {
+            "FUNCUBE-1 (AO-73)": {
+                "total_passes": 22,
+                "successful_passes": 4,
+                "weighted_total": 4.5,
+                "weighted_success": 4.0,  # 直近4回成功
+                "elevation_bands": {
+                    "high": {
+                        "total": 22, "success": 4,
+                        "weighted_total": 4.5, "weighted_success": 4.0,
+                        "recent_total": 4, "recent_success": 4,
+                    }
+                }
+            }
+        }
+        prob_recent, summary = OrbitCalculator._evaluate_success_probability(
+            "FUNCUBE-1 (AO-73)", max_el=80.0, quality_score="EXCELLENT",
+            history_stats=history_stats_weighted, max_el_az=100.0, window_duration=90
+        )
+        # 単純な 4/22 (18%) に潰されず、直近の実力 (80%以上) が反映されていること
+        self.assertGreater(prob_recent, 0.70)
+        self.assertIn("直近同仰角帯実績", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

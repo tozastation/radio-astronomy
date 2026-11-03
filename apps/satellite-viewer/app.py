@@ -5075,6 +5075,8 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None
 
     history_stats = cache.get_satellite_history_stats() if cache else None
     time_drifts = cache.compute_satellite_time_drifts() if cache else None
+    heatmap_data = cache.compute_sky_heatmap() if cache else None
+    empirical_mask = heatmap_data.get("empirical_mask") if heatmap_data else None
 
     targets = []
     for sat_name in DEFAULT_TARGET_TLES.keys():
@@ -5090,6 +5092,7 @@ def generate_future_passes_data(now_dt=None, horizon_hours: int = 24, cache=None
         step_seconds=30,
         history_stats=history_stats,
         time_drifts=time_drifts,
+        empirical_mask=empirical_mask,
     )
 
     return {
@@ -5152,6 +5155,8 @@ def get_month_passes_cached(year: int, month: int, cache=None) -> dict:
 
     history_stats = cache.get_satellite_history_stats() if cache else None
     time_drifts = cache.compute_satellite_time_drifts() if cache else None
+    heatmap_data = cache.compute_sky_heatmap() if cache else None
+    empirical_mask = heatmap_data.get("empirical_mask") if heatmap_data else None
 
     calc = OrbitCalculator()
     data = calc.find_month_passes(
@@ -5159,6 +5164,7 @@ def get_month_passes_cached(year: int, month: int, cache=None) -> dict:
         month=month,
         history_stats=history_stats,
         time_drifts=time_drifts,
+        empirical_mask=empirical_mask,
     )
     _calendar_passes_cache[cache_key] = (now, data)
     return data
@@ -6149,6 +6155,8 @@ class PassDataCache:
     def get_satellite_history_stats(self) -> dict:
         """
         キャッシュされた全パス情報から、衛星別・仰角帯別の復調成功実績を集計。
+        直近のシステム改善（アンテナ・DSP）を迅速に反映するため、
+        半減期 7 日の指数時間減衰重み (exponential decay weight) を適用。
         """
         if not self._passes and self.s3_client:
             try:
@@ -6156,6 +6164,7 @@ class PassDataCache:
             except Exception:
                 pass
 
+        now_dt = datetime.now(timezone.utc)
         stats = {}
         for pass_id, pdata in self._passes.items():
             pid = pdata.get("pass_id") or pass_id
@@ -6169,11 +6178,13 @@ class PassDataCache:
                 stats[sat] = {
                     "total_passes": 0,
                     "successful_passes": 0,
+                    "weighted_total": 0.0,
+                    "weighted_success": 0.0,
                     "overall_success_rate": 0.0,
                     "elevation_bands": {
-                        "high": {"total": 0, "success": 0, "rate": 0.0},
-                        "mid": {"total": 0, "success": 0, "rate": 0.0},
-                        "low": {"total": 0, "success": 0, "rate": 0.0},
+                        "high": {"total": 0, "success": 0, "weighted_total": 0.0, "weighted_success": 0.0, "recent_total": 0, "recent_success": 0, "rate": 0.0},
+                        "mid": {"total": 0, "success": 0, "weighted_total": 0.0, "weighted_success": 0.0, "recent_total": 0, "recent_success": 0, "rate": 0.0},
+                        "low": {"total": 0, "success": 0, "weighted_total": 0.0, "weighted_success": 0.0, "recent_total": 0, "recent_success": 0, "rate": 0.0},
                     }
                 }
 
@@ -6184,16 +6195,24 @@ class PassDataCache:
             has_images = any(f.lower().endswith(".png") and "spectrogram" not in f.lower() for f in files)
             is_success = (packets_count > 0) or has_images
 
+            # パスの観測時刻と経過日数・指数忘却重み (半減期 7.0日)
+            parsed_sat, parsed_dt = parse_pass_id(pass_id)
+            pass_time = parsed_dt or pdata.get("last_modified_dt") or now_dt
+            if hasattr(pass_time, "tzinfo") and pass_time.tzinfo is None:
+                pass_time = pass_time.replace(tzinfo=timezone.utc)
+            delta_days = max(0.0, (now_dt - pass_time).total_seconds() / 86400.0)
+            weight = float(2.0 ** (-delta_days / 7.0))
+            is_recent_14d = delta_days <= 14.0
+
             # 最大仰角の判定
             max_el = pdata.get("max_elevation")
             if max_el is None:
                 max_el = summary.get("max_elevation")
             if max_el is None:
-                parsed_sat, parsed_dt = parse_pass_id(pass_id)
                 tle = load_tle_for_satellite(sat)
                 if parsed_dt and tle:
                     try:
-                        dur = int(float(summary.get("duration_seconds", 406.0)))
+                        dur = int(float(summary.get("duration_seconds") or summary.get("recording_duration_sec") or 240.0))
                         calc = OrbitCalculator()
                         pts = calc.calculate_trajectory(tle[0], tle[1], parsed_dt, dur, step_seconds=15)
                         if pts:
@@ -6214,13 +6233,21 @@ class PassDataCache:
 
             s_entry = stats[sat]
             s_entry["total_passes"] += 1
+            s_entry["weighted_total"] += weight
             if is_success:
                 s_entry["successful_passes"] += 1
+                s_entry["weighted_success"] += weight
 
             b_entry = s_entry["elevation_bands"][band]
             b_entry["total"] += 1
+            b_entry["weighted_total"] += weight
+            if is_recent_14d:
+                b_entry["recent_total"] += 1
             if is_success:
                 b_entry["success"] += 1
+                b_entry["weighted_success"] += weight
+                if is_recent_14d:
+                    b_entry["recent_success"] += 1
 
         for sat, s_entry in stats.items():
             tot = s_entry["total_passes"]
@@ -6272,7 +6299,10 @@ class PassDataCache:
             if not start_time:
                 continue
 
-            dur = int(float(summary.get("duration_seconds", 406.0)))
+            dur = int(float(summary.get("duration_seconds") or summary.get("recording_duration_sec") or 240.0))
+            # 異常な長大パス (406秒等) に対し、北向きベランダの上限滞在時間 (300秒) で安全ガード
+            dur = min(300, max(30, dur))
+
             tle = load_tle_for_satellite(sat)
             if not tle:
                 continue
@@ -6280,7 +6310,12 @@ class PassDataCache:
             try:
                 calc = OrbitCalculator()
                 pts = calc.calculate_trajectory(tle[0], tle[1], start_time, dur, step_seconds=5)
-                valid_pts = [p for p in pts if p.el >= 10.0]
+                # 北向きベランダ開口部 (西 240° 〜 北 0° 〜 東 120°、仰角 10°以上) に限定
+                # 鉄筋コンクリート壁裏 (南側: 120°〜240°) のゴースト点群を除外
+                valid_pts = [
+                    p for p in pts
+                    if p.el >= 10.0 and ((p.az >= 240.0) or (p.az <= 120.0))
+                ]
                 if not valid_pts:
                     continue
 

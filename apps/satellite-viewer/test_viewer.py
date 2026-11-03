@@ -729,6 +729,74 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertNotIn('<details class="data-accordion" open>', card_html_failure)
         self.assertIn('📻 BPSK テレメトリフレーム (0 件)', card_html_failure)
 
+    def test_pass_data_cache_exponential_decay_stats(self):
+        from datetime import datetime, timezone, timedelta
+        from app import PassDataCache
+        cache = PassDataCache(s3_client=None, s3_bucket="test")
+        now_utc = datetime.now(timezone.utc)
+        
+        # 14日前のパス (重み 2^(-2) = 0.25)
+        old_time = now_utc - timedelta(days=14)
+        # 本日のパス (重み 1.0)
+        recent_time = now_utc
+
+        cache._passes = {
+            "p_old_fail": {
+                "satellite": "FUNCUBE-1 (AO-73)",
+                "pass_id": "FUNCUBE-1 (AO-73)_" + old_time.strftime("%Y%m%d_%H%M%S"),
+                "summary": {"packets_count": 0, "max_elevation": 45.0},
+                "last_modified_dt": old_time,
+                "files": {},
+            },
+            "p_new_succ": {
+                "satellite": "FUNCUBE-1 (AO-73)",
+                "pass_id": "FUNCUBE-1 (AO-73)_" + recent_time.strftime("%Y%m%d_%H%M%S"),
+                "summary": {"packets_count": 10, "max_elevation": 45.0},
+                "last_modified_dt": recent_time,
+                "files": {},
+            },
+        }
+
+        stats = cache.get_satellite_history_stats()
+        sat_stats = stats.get("FUNCUBE-1 (AO-73)")
+        self.assertIsNotNone(sat_stats)
+        self.assertEqual(sat_stats["total_passes"], 2)
+        self.assertEqual(sat_stats["successful_passes"], 1)
+
+        # 指数時間減衰重み: weighted_total = 1.0 + 0.25 = 1.25, weighted_success = 1.0
+        self.assertAlmostEqual(sat_stats["weighted_total"], 1.25, delta=0.05)
+        self.assertAlmostEqual(sat_stats["weighted_success"], 1.0, delta=0.05)
+        # 高仰角帯の直近14日内成功数
+        b_high = sat_stats["elevation_bands"]["high"]
+        self.assertEqual(b_high["recent_total"], 1)
+        self.assertEqual(b_high["recent_success"], 1)
+
+    def test_compute_sky_heatmap_excludes_south_wall_ghosts(self):
+        from app import PassDataCache
+        cache = PassDataCache(s3_client=None, s3_bucket="test")
+        start_dt = datetime(2026, 10, 25, 12, 0, 0, tzinfo=timezone.utc)
+
+        # 成功パスをモック登録
+        cache._passes = {
+            "succ_pass": {
+                "satellite": "METEOR-M2 4",
+                "pass_id": "METEOR-M2 4_20261025_120000",
+                "summary": {"packets_count": 5, "duration_seconds": 200},
+                "last_modified_dt": start_dt,
+                "files": {"decoded.png": "results/METEOR-M2 4/pass/decoded.png"},
+            }
+        }
+
+        heatmap = cache.compute_sky_heatmap()
+        self.assertIn("horizon_polygon", heatmap)
+        self.assertIn("cells", heatmap)
+
+        # 南側鉄筋コンクリート壁方向 (Az 130°〜230°) に点群やポリゴンが存在しないこと
+        south_cells = [c for c in heatmap["cells"] if 130 <= c["az"] <= 230]
+        self.assertEqual(len(south_cells), 0)
+        south_polys = [p for p in heatmap["horizon_polygon"] if 130 <= p["az"] <= 230]
+        self.assertEqual(len(south_polys), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
