@@ -422,9 +422,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 0.75rem;
       padding: 2px 8px;
       border-radius: 999px;
+      font-weight: 500;
+    }
+    .badge-status-success {
       background: rgba(52, 211, 153, 0.15);
       color: var(--success);
       border: 1px solid rgba(52, 211, 153, 0.3);
+    }
+    .badge-status-failure {
+      background: rgba(148, 163, 184, 0.12);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .summary-box-muted {
+      background: rgba(255, 255, 255, 0.03) !important;
+      border-color: rgba(255, 255, 255, 0.08) !important;
+      color: #94a3b8 !important;
     }
     .card-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
     .spectrogram-container {
@@ -5576,10 +5589,13 @@ def render_card_html(p: dict) -> str:
 
     sat_type, signal_type, freq_label, icon, summary_text = resolve_card_metadata(p)
 
+    is_success = is_demod_successful(p)
+
     summary_box_html = ""
     if summary_text:
+        sbox_class = "summary-box" if is_success else "summary-box summary-box-muted"
         summary_box_html = f"""
-        <div class="summary-box">
+        <div class="{sbox_class}">
           <span>{icon}</span>
           <span>{summary_text}</span>
         </div>
@@ -5673,7 +5689,12 @@ def render_card_html(p: dict) -> str:
     </details>
     """ if file_rows else ""
     badge_class = f"badge-{sat_type.lower()}"
-    has_data_val = "true" if is_demod_successful(p) else "false"
+    has_data_val = "true" if is_success else "false"
+
+    if is_success:
+        status_badge_html = '<span class="badge-status badge-status-success">✅ 復調成功</span>'
+    else:
+        status_badge_html = '<span class="badge-status badge-status-failure">⚠️ 未復調 (0件)</span>'
 
     # 地上局テレメトリ諸元 & パケットプレビューの生成
     metrics = resolve_pass_telemetry_metrics(p)
@@ -5709,7 +5730,7 @@ def render_card_html(p: dict) -> str:
         <div class="sat-header-right">
           <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">🛰️ 天球リプレイ</button>
           <button class="btn-sm btn-grafana" onclick="openGrafanaPass({from_ms}, {to_ms})">📊 Grafana</button>
-          <span class="badge-status">{status}</span>
+          {status_badge_html}
         </div>
       </div>
       <div class="card-body">
