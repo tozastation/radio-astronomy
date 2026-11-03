@@ -631,6 +631,106 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn('let orbitSelectedCalDate =', HTML_TEMPLATE)
 
 
+    def test_extract_telemetry_fields_cubesat(self):
+        from app import extract_telemetry_fields
+
+        pkt = {
+            "timestamp": "2026-11-03T01:50:58+00:00",
+            "telemetry": {
+                "batteryvoltage": 7886,
+                "batterytemp": 23,
+                "photocurrent": 261,
+                "systemcurrent": 224,
+                "fwdpwr": 324.0,
+                "eclipse": "False",
+                "seqnumber": 1001931,
+                "safemode": "False",
+                "rebootcount": 1475,
+            }
+        }
+        res = extract_telemetry_fields(pkt)
+        self.assertEqual(res["battery_voltage"], "7.89 V")
+        self.assertEqual(res["battery_temp"], "23.0 ℃")
+        self.assertEqual(res["solar_current"], "261 mA")
+        self.assertEqual(res["system_current"], "224 mA")
+        self.assertEqual(res["tx_power"], "324 mW")
+        self.assertIn("☀️ 日照中", res["orbit_sunlight"])
+        self.assertEqual(res["sequence_number"], "#1001931")
+        self.assertEqual(res["safe_mode"], "NORMAL")
+        self.assertEqual(res["reboot_count"], "1,475")
+
+    def test_render_packet_preview_html_cubesat_hud(self):
+        from app import render_packet_preview_html
+
+        packets = [{
+            "timestamp": "2026-11-03T01:50:58+00:00",
+            "frame_type": "AO-73 Telemetry",
+            "telemetry": {
+                "batteryvoltage": 7886,
+                "batterytemp": 23,
+                "photocurrent": 261,
+                "systemcurrent": 224,
+                "fwdpwr": 324.0,
+                "eclipse": "False",
+                "seqnumber": 1001931,
+                "safemode": "False",
+            }
+        }]
+        html_out = render_packet_preview_html(packets, sat_type="CubeSat")
+        self.assertIn("cubesat-telemetry-hud", html_out)
+        self.assertIn("Batt Voltage", html_out)
+        self.assertIn("7.89 V", html_out)
+        self.assertIn("Solar Gen", html_out)
+        self.assertIn("261 mA", html_out)
+        self.assertIn("Orbit Illum", html_out)
+        self.assertIn("#1001931", html_out)
+        # 空の > SRC>DST: 表記が含まれないこと
+        self.assertNotIn("&gt; SRC&gt;DST:", html_out)
+
+    def test_render_packet_preview_html_aprs(self):
+        from app import render_packet_preview_html
+
+        packets = [{
+            "from": "RS0ISS",
+            "to": "CQ",
+            "route": ["WIDE1-1"],
+            "comment": "Hello from ISS",
+        }]
+        html_out = render_packet_preview_html(packets, sat_type="SpaceStation")
+        self.assertIn("RS0ISS", html_out)
+        self.assertIn("CQ", html_out)
+        self.assertIn("Hello from ISS", html_out)
+        self.assertIn("WIDE1-1", html_out)
+
+    def test_render_card_html_packets_accordion_open_on_success(self):
+        from app import render_card_html
+
+        # 1. 復調成功（packetあり）のパス -> details open が付与されること
+        p_success = {
+            "satellite": "FUNCUBE-1 (AO-73)",
+            "pass_id": "FUNCUBE-1 (AO-73)_20261025_191231",
+            "summary": {"status": "completed", "packets_count": 12},
+            "packets": [{"seqnumber": 1001931}],
+            "files": {"summary.json": "key1", "packets.json": "key2"},
+        }
+        card_html_success = render_card_html(p_success)
+        self.assertIn('<details class="data-accordion" open>', card_html_success)
+        self.assertIn('📻 受信テレメトリ (1 件) の中身を見る', card_html_success)
+
+        # 2. 未復調（0件）のパス -> details open が付与されないこと
+        p_failure = {
+            "satellite": "FUNCUBE-1 (AO-73)",
+            "pass_id": "FUNCUBE-1 (AO-73)_20261025_000000",
+            "summary": {"status": "completed", "packets_count": 0},
+            "packets": [],
+            "files": {"summary.json": "key1"},
+        }
+        card_html_failure = render_card_html(p_failure)
+        self.assertNotIn('<details class="data-accordion" open>', card_html_failure)
+        self.assertIn('📻 BPSK テレメトリフレーム (0 件)', card_html_failure)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

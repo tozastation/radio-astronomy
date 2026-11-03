@@ -729,6 +729,47 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: #cbd5e1;
     }
 
+    /* CubeSat 宇宙機生体テレメトリ HUD グリッド */
+    .cubesat-telemetry-hud {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px 12px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+    }
+    @media (max-width: 680px) {
+      .cubesat-telemetry-hud {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px 8px;
+      }
+    }
+    .hud-stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .hud-stat-label {
+      font-size: 0.68rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .hud-stat-val {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: #38bdf8;
+      line-height: 1.3;
+    }
+    .hud-stat-val.status-good {
+      color: #34d399;
+    }
+    .hud-stat-val.status-warn {
+      color: #fbbf24;
+    }
+
     /* JSON Details & Code View */
     details.data-accordion {
       background: rgba(0, 0, 0, 0.25);
@@ -5517,38 +5558,286 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
     """
 
 
+def extract_telemetry_fields(pkt: dict) -> dict:
+    """
+    CubeSat 等のテレメトリフレームから主要な生体諸元（電圧・電流・温度・日照等）を安全に抽出。
+    """
+    if not isinstance(pkt, dict):
+        return {}
+
+    t = pkt.get("telemetry")
+    if not isinstance(t, dict):
+        t = pkt
+
+    # 小文字化・記号除去キーのマッピングを作成
+    t_lower = {}
+    for k, v in t.items():
+        clean_key = str(k).lower().replace("_", "").replace("-", "")
+        t_lower[clean_key] = v
+
+    res = {}
+
+    # 1. バッテリ電圧 (batteryvoltage / battery_voltage / battvolt)
+    for k in ["batteryvoltage", "battvolt", "vbatt", "batteryv"]:
+        if k in t_lower and t_lower[k] not in ("", None):
+            try:
+                val = float(t_lower[k])
+                if val > 100:  # mV 単位
+                    res["battery_voltage"] = f"{val / 1000.0:.2f} V"
+                else:
+                    res["battery_voltage"] = f"{val:.2f} V"
+                break
+            except (ValueError, TypeError):
+                pass
+
+    # 2. バッテリ温度 (batterytemp / epstemperature / boardtemp)
+    for k in ["batterytemp", "epstemperature", "batttemp", "boardtemp"]:
+        if k in t_lower and t_lower[k] not in ("", None):
+            try:
+                val = float(t_lower[k])
+                res["battery_temp"] = f"{val:.1f} ℃"
+                break
+            except (ValueError, TypeError):
+                pass
+
+    # 3. 太陽電池発電電流 / 電圧 (photocurrent / solar_panel_voltage / photovoltage)
+    for k in ["photocurrent", "solarcurrent"]:
+        if k in t_lower and t_lower[k] not in ("", None):
+            try:
+                val = float(t_lower[k])
+                res["solar_current"] = f"{val:.0f} mA"
+                break
+            except (ValueError, TypeError):
+                pass
+    if "solar_current" not in res:
+        for k in ["solarpanelvoltage", "photovoltage"]:
+            if k in t_lower and t_lower[k] not in ("", None):
+                try:
+                    val = float(t_lower[k])
+                    res["solar_current"] = f"{val:.2f} V"
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+    # 4. システム消費電流 (systemcurrent / syscurrent)
+    for k in ["systemcurrent", "syscurrent", "buscurrent"]:
+        if k in t_lower and t_lower[k] not in ("", None):
+            try:
+                val = float(t_lower[k])
+                res["system_current"] = f"{val:.0f} mA"
+                break
+            except (ValueError, TypeError):
+                pass
+
+    # 5. RF 送信出力 (fwdpwr / txpower)
+    for k in ["fwdpwr", "txpwr", "rfpower", "txpower"]:
+        if k in t_lower and t_lower[k] not in ("", None):
+            try:
+                val = float(t_lower[k])
+                res["tx_power"] = f"{val:.0f} mW"
+                break
+            except (ValueError, TypeError):
+                pass
+
+    # 6. 日照 / 蝕環境 (eclipse)
+    if "eclipse" in t_lower:
+        e_val = str(t_lower["eclipse"]).strip().lower()
+        if e_val in ("false", "0", "no"):
+            res["orbit_sunlight"] = "☀️ 日照中 (Sun)"
+        elif e_val in ("true", "1", "yes"):
+            res["orbit_sunlight"] = "🌑 蝕・日陰 (Eclipse)"
+
+    # 7. シーケンス番号 (seqnumber / sequencenumber / seq)
+    for k in ["seqnumber", "sequencenumber", "seq"]:
+        if k in t_lower and t_lower[k] not in ("", None):
+            res["sequence_number"] = f"#{t_lower[k]}"
+            break
+    if "sequence_number" not in res and isinstance(pkt.get("sequence_number"), (int, str)):
+        res["sequence_number"] = f"#{pkt['sequence_number']}"
+
+    # 8. セーフモード (safemode)
+    if "safemode" in t_lower:
+        s_val = str(t_lower["safemode"]).strip().lower()
+        res["safe_mode"] = "⚠️ SAFE MODE" if s_val in ("true", "1", "yes") else "NORMAL"
+
+    # 9. リブート回数 (rebootcount)
+    if "rebootcount" in t_lower and t_lower["rebootcount"] not in ("", None):
+        try:
+            res["reboot_count"] = f"{int(t_lower['rebootcount']):,}"
+        except (ValueError, TypeError):
+            res["reboot_count"] = str(t_lower["rebootcount"])
+
+    return res
+
+
 def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
     """
-    受信したパケット（APRS 等）の最新フレームをインラインでターミナル風にチラ見せ表示。
+    受信したパケット（CubeSat 宇宙機生体テレメトリ / APRS 等）をインラインでチラ見せ表示。
     """
     if not packet_items:
         return ""
 
     # 最新の最大2件を表示
     recent_pkts = packet_items[-2:]
-    lines_html = []
 
-    for pkt in recent_pkts:
-        src = html.escape(pkt.get("from") or pkt.get("source") or "SRC")
-        dst = html.escape(pkt.get("to") or pkt.get("destination") or "DST")
-        route = pkt.get("route") or []
-        route_str = f" via {html.escape(','.join(route))}" if route else ""
+    # CubeSat テレメトリかどうかの判定
+    has_telemetry = any(
+        isinstance(p, dict) and (
+            "telemetry" in p
+            or "batteryvoltage" in p
+            or "photocurrent" in p
+            or "battery_voltage" in p
+            or "eps_temperature" in p
+            or "seqnumber" in p
+        )
+        for p in recent_pkts
+    ) or (sat_type == "CubeSat")
 
-        payload = pkt.get("comment") or pkt.get("message") or pkt.get("data") or pkt.get("raw") or ""
-        payload_esc = html.escape(str(payload))
+    if has_telemetry:
+        # 最新フレームから HUD 諸元を抽出
+        latest_pkt = recent_pkts[-1] if recent_pkts else {}
+        hud_fields = extract_telemetry_fields(latest_pkt)
 
-        line = f"""
-        <div class="packet-preview-line">
-          <span class="packet-preview-src">&gt; {src}</span><span class="packet-preview-dst">&gt;{dst}{route_str}:</span> {payload_esc}
-        </div>
-        """
-        lines_html.append(line)
+        hud_grid_html = ""
+        if hud_fields:
+            hud_items = []
+            if "sequence_number" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Frame Seq</span>
+                  <span class="hud-stat-val status-good">{html.escape(hud_fields['sequence_number'])}</span>
+                </div>
+                """)
+            if "battery_voltage" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Batt Voltage</span>
+                  <span class="hud-stat-val">{html.escape(hud_fields['battery_voltage'])}</span>
+                </div>
+                """)
+            if "battery_temp" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Batt Temp</span>
+                  <span class="hud-stat-val">{html.escape(hud_fields['battery_temp'])}</span>
+                </div>
+                """)
+            if "solar_current" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Solar Gen</span>
+                  <span class="hud-stat-val status-good">{html.escape(hud_fields['solar_current'])}</span>
+                </div>
+                """)
+            if "system_current" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Bus Current</span>
+                  <span class="hud-stat-val">{html.escape(hud_fields['system_current'])}</span>
+                </div>
+                """)
+            if "tx_power" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">RF Tx Power</span>
+                  <span class="hud-stat-val">{html.escape(hud_fields['tx_power'])}</span>
+                </div>
+                """)
+            if "orbit_sunlight" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Orbit Illum</span>
+                  <span class="hud-stat-val">{html.escape(hud_fields['orbit_sunlight'])}</span>
+                </div>
+                """)
+            if "safe_mode" in hud_fields:
+                is_warn = "SAFE" in hud_fields["safe_mode"]
+                val_cls = "status-warn" if is_warn else "status-good"
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">System Mode</span>
+                  <span class="hud-stat-val {val_cls}">{html.escape(hud_fields['safe_mode'])}</span>
+                </div>
+                """)
+            if "reboot_count" in hud_fields:
+                hud_items.append(f"""
+                <div class="hud-stat-item">
+                  <span class="hud-stat-label">Reboot Count</span>
+                  <span class="hud-stat-val">{html.escape(hud_fields['reboot_count'])}</span>
+                </div>
+                """)
 
-    content_html = "".join(lines_html)
+            hud_grid_html = f"""
+            <div class="cubesat-telemetry-hud">
+              {''.join(hud_items)}
+            </div>
+            """
+
+        # フレームごとのサマリ行
+        lines_html = []
+        for pkt in recent_pkts:
+            f_fields = extract_telemetry_fields(pkt)
+            seq = f_fields.get("sequence_number", "")
+            ftype = pkt.get("frame_type") or pkt.get("satellite") or "Telemetry"
+            ts = pkt.get("timestamp", "")
+            ts_short = ts.split("T")[-1][:8] if "T" in ts else ts
+
+            parts = []
+            if "battery_voltage" in f_fields:
+                parts.append(f"Batt: {f_fields['battery_voltage']}")
+            if "solar_current" in f_fields:
+                parts.append(f"Solar: {f_fields['solar_current']}")
+            if "battery_temp" in f_fields:
+                parts.append(f"Temp: {f_fields['battery_temp']}")
+            if "tx_power" in f_fields:
+                parts.append(f"Tx: {f_fields['tx_power']}")
+            if "orbit_sunlight" in f_fields:
+                parts.append(f_fields["orbit_sunlight"])
+
+            summary_info = " | ".join(parts) if parts else html.escape(str(pkt.get("telemetry") or pkt.get("raw_frame", ""))[:80])
+            seq_part = f"""<span class="packet-preview-src">{html.escape(seq or ftype)}</span>"""
+            ts_part = f"""<span style="color: #64748b; font-size: 0.7rem; margin-right: 4px;">[{html.escape(ts_short)}]</span>""" if ts_short else ""
+
+            line = f"""
+            <div class="packet-preview-line">
+              {ts_part}{seq_part}: {summary_info}
+            </div>
+            """
+            lines_html.append(line)
+
+        content_html = hud_grid_html + "".join(lines_html)
+        title_text = f"🛰️ 宇宙機生体テレメトリ・プレビュー ({len(packet_items)} フレーム中 直近 {len(recent_pkts)} 件)"
+    else:
+        # APRS / パケット通信
+        lines_html = []
+        for pkt in recent_pkts:
+            src = html.escape(str(pkt.get("from") or pkt.get("source") or ""))
+            dst = html.escape(str(pkt.get("to") or pkt.get("destination") or ""))
+            route = pkt.get("route") or []
+            route_str = f" via {html.escape(','.join(route))}" if route else ""
+
+            payload = pkt.get("comment") or pkt.get("message") or pkt.get("data") or pkt.get("raw") or ""
+            payload_esc = html.escape(str(payload))
+
+            if src or dst:
+                prefix = f"""<span class="packet-preview-src">&gt; {src or 'SRC'}</span><span class="packet-preview-dst">&gt;{dst or 'DST'}{route_str}:</span>"""
+            else:
+                prefix = f"""<span class="packet-preview-src">&gt; FRAME:</span>"""
+
+            line = f"""
+            <div class="packet-preview-line">
+              {prefix} {payload_esc}
+            </div>
+            """
+            lines_html.append(line)
+
+        content_html = "".join(lines_html)
+        title_text = f"📡 最新復号パケット・プレビュー ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)"
+
     return f"""
     <div class="packet-preview-container">
       <div class="packet-preview-header">
-        <span>📡 最新復号パケット・プレビュー ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)</span>
+        <span>{title_text}</span>
         <span style="font-family: ui-monospace, monospace; font-size: 0.75rem; color: #34d399;">CRC: PASS</span>
       </div>
       {content_html}
@@ -5624,8 +5913,9 @@ def render_card_html(p: dict) -> str:
         accordion_title = f"📡 受信パケット ({len(packet_items)} 件) の中身を見る"
         if "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
             accordion_title = f"📻 受信テレメトリ ({len(packet_items)} 件) の中身を見る"
+        open_attr = " open" if is_success else ""
         packets_accordion = f"""
-        <details class="data-accordion">
+        <details class="data-accordion"{open_attr}>
           <summary>{accordion_title}</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>{pretty_packets}</code></pre>
