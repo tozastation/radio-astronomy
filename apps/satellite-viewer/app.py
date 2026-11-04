@@ -6395,9 +6395,13 @@ class PassDataCache:
                 continue
 
             summary = pdata.get("summary") or {}
-            if "actual_tca_drift_seconds" in summary:
-                drifts[sat] = float(summary["actual_tca_drift_seconds"])
-                continue
+            drift_val = summary.get("actual_tca_drift_seconds")
+            if drift_val is not None:
+                try:
+                    drifts[sat] = float(drift_val)
+                    continue
+                except (ValueError, TypeError):
+                    pass
 
             actual_tca_str = summary.get("actual_tca") or summary.get("tca_time")
             if actual_tca_str:
@@ -6408,7 +6412,7 @@ class PassDataCache:
                     _, parsed_dt = parse_pass_id(pid)
                     tle = load_tle_for_satellite(sat)
                     if parsed_dt and tle:
-                        dur = int(float(summary.get("duration_seconds", 406.0)))
+                        dur = int(float(summary.get("duration_seconds") or summary.get("recording_duration_sec") or 406.0))
                         calc = OrbitCalculator()
                         pts = calc.calculate_trajectory(tle[0], tle[1], parsed_dt, dur, step_seconds=5)
                         if pts:
@@ -6643,15 +6647,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/future-passes":
-            data = generate_future_passes_data(cache=pass_cache)
-            body = json.dumps(data).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "public, max-age=60")
-            self.end_headers()
-            self.wfile.write(body)
-            return
+            try:
+                data = generate_future_passes_data(cache=pass_cache)
+                body = json.dumps(data).encode("utf-8")
+                self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="public, max-age=60")
+                return
+            except Exception as e:
+                print(f"Error generating future passes: {e}", flush=True)
+                err_body = json.dumps({"error": str(e), "passes": []}).encode("utf-8")
+                self.send_bytes_response(500, "application/json; charset=utf-8", err_body, cache_control="no-cache")
+                return
 
         if path == "/api/galactic-observations":
             data = fetch_galactic_observations(s3_client, S3_BUCKET)
@@ -6674,12 +6679,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(parsed.query)
             now_dt = datetime.now(timezone.utc)
-            year = int(qs.get("year", [now_dt.year])[0])
-            month = int(qs.get("month", [now_dt.month])[0])
-            data = get_month_passes_cached(year, month, cache=pass_cache)
-            body = json.dumps(data).encode("utf-8")
-            self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="public, max-age=300")
-            return
+            try:
+                year = int(qs.get("year", [now_dt.year])[0])
+                month = int(qs.get("month", [now_dt.month])[0])
+                data = get_month_passes_cached(year, month, cache=pass_cache)
+                body = json.dumps(data).encode("utf-8")
+                self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="public, max-age=300")
+                return
+            except Exception as e:
+                print(f"Error generating calendar passes: {e}", flush=True)
+                err_body = json.dumps({"error": str(e), "year": now_dt.year, "month": now_dt.month, "days": {}}).encode("utf-8")
+                self.send_bytes_response(500, "application/json; charset=utf-8", err_body, cache_control="no-cache")
+                return
 
         if path == "/api/sky-mask/heatmap":
             data = pass_cache.compute_sky_heatmap()

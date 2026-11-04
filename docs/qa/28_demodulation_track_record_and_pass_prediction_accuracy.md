@@ -239,3 +239,16 @@ SGP4 理論ドップラー偏移 $\Delta f_{\text{sgp4}}(t) = -f_0 \frac{v_r(t)}
 $$\Delta t_{\text{drift}} = t_{\text{peak}} - t_{\text{sgp4\_tca}}$$
 
 ピーク SNR（$\text{SNR}_{\text{peak}} = 10 \log_{10} \frac{P_{\text{peak}}}{P_{\text{median}}}$）が $2.0\text{ dB}$ 未満の微弱・雑音パスについてはタイムドリフト推定を安全に除外し、物理的妥当性（$|\Delta t_{\text{drift}}| \le 60\text{ s}$）を満たす有意な実測値のみを `actual_tca_drift_seconds` として `summary.json` へ永続化し、通過予測へとフィードバックしている。
+
+### 9.4 未同定パス（`actual_tca_drift_seconds: null`）に対するフォールトトレラント設計と多層防御
+
+電波状態の悪いパスや衛星が無送信だったパスでは、前述の通り `estimate_tca_drift` が `(None, None)` を返し、`summary.json` には `"actual_tca_drift_seconds": null` が記録される。
+
+このとき、ビューア側のキャッシュ集計（[`PassDataCache.compute_satellite_time_drifts`](file:///home/tozastation/ghq/github.com/tozastation/radio-astronomy/apps/satellite-viewer/app.py)）において、キーの存在確認（`"actual_tca_drift_seconds" in summary`）のみで `float()` を呼ぶと、値が `None` の場合に `TypeError` が発生する。また、HTTP ハンドラ層で例外が捕捉されない場合、Python の `socketserver` がクライアントとの接続を切断し、フロントエンド側で `fetch error (TypeError: Failed to fetch)` を引き起こす。
+
+この障害を防ぐため、以下の多層防御（Defense-in-depth）を適用している：
+
+1. **安全な型変換と過去パスへのフォールバック**:
+   `summary.get("actual_tca_drift_seconds")` が `None` でない場合のみ `float()` 変換を試みる。最新パスのドリフトが未同定（`None`）である場合はそのパスをスキップし、時系列で直近の有効なドリフト値を持つ過去パスを自動探索して採用する。
+2. **API エンドポイントの例外保護 & Gzip 圧縮レスポンス**:
+   `/api/future-passes` および `/api/calendar/passes` において `try...except` で例外を確実に捕捉し、サーバ切断を防いで適切な HTTP 500 JSON レスポンスを返却する。また、[`send_bytes_response`](file:///home/tozastation/ghq/github.com/tozastation/radio-astronomy/apps/satellite-viewer/app.py) を介して配信することで、通信帯域の削減（HTTP レスポンス Gzip 圧縮規約）を徹底する。

@@ -326,6 +326,41 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("METEOR-M2 3", drifts)
         self.assertEqual(drifts["METEOR-M2 3"], 3.5)
 
+    def test_pass_data_cache_compute_satellite_time_drifts_handles_none_and_fallback(self):
+        # 1. actual_tca_drift_seconds が None (SNR不足等) の場合でも例外を出さずに空dictを返すこと
+        self.cache._passes = {
+            "p_none": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261104_002052",
+                "last_modified_dt": datetime(2026, 11, 4, 0, 20, 52, tzinfo=timezone.utc),
+                "summary": {"packets_count": 0, "status": "completed", "actual_tca_drift_seconds": None},
+                "files": {},
+            }
+        }
+        drifts = self.cache.compute_satellite_time_drifts()
+        self.assertEqual(drifts, {})
+
+        # 2. 最新パスが None でも、過去の有効なドリフト値を持つパスへとフォールバックできること
+        self.cache._passes = {
+            "p_latest": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261104_002052",
+                "last_modified_dt": datetime(2026, 11, 4, 0, 20, 52, tzinfo=timezone.utc),
+                "summary": {"packets_count": 0, "status": "completed", "actual_tca_drift_seconds": None},
+                "files": {},
+            },
+            "p_earlier": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261103_120000",
+                "last_modified_dt": datetime(2026, 11, 3, 12, 0, 0, tzinfo=timezone.utc),
+                "summary": {"packets_count": 15, "status": "completed", "actual_tca_drift_seconds": 2.4},
+                "files": {},
+            },
+        }
+        drifts = self.cache.compute_satellite_time_drifts()
+        self.assertIn("METEOR-M2 3", drifts)
+        self.assertEqual(drifts["METEOR-M2 3"], 2.4)
+
     def test_generate_future_passes_data(self):
         now_dt = datetime(2026, 10, 25, 0, 0, 0, tzinfo=timezone.utc)
         result = generate_future_passes_data(now_dt=now_dt, horizon_hours=24)
@@ -344,6 +379,21 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("success_probability", p)
         self.assertIn("history_summary", p)
         self.assertIn("time_drift_seconds", p)
+
+    def test_generate_future_passes_data_with_none_drift_in_cache(self):
+        self.cache._passes = {
+            "p_none": {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261104_002052",
+                "last_modified_dt": datetime(2026, 11, 4, 0, 20, 52, tzinfo=timezone.utc),
+                "summary": {"packets_count": 0, "status": "completed", "actual_tca_drift_seconds": None},
+                "files": {},
+            }
+        }
+        now_dt = datetime(2026, 11, 4, 0, 0, 0, tzinfo=timezone.utc)
+        result = generate_future_passes_data(now_dt=now_dt, horizon_hours=24, cache=self.cache)
+        self.assertIn("passes", result)
+        self.assertIsInstance(result["passes"], list)
 
     def test_static_gifenc_file_exists_and_valid(self):
         import os
