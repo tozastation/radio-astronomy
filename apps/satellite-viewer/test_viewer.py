@@ -63,7 +63,7 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("WeatherSatellite", card_html)
         self.assertIn("spectrogram.png", card_html)
         self.assertIn("openReplayModal", card_html)
-        self.assertIn("天球リプレイ", card_html)
+        self.assertIn("REPLAY", card_html)
 
     def test_mobile_responsive_template_and_card(self):
         # 1. Viewport & media queries
@@ -94,12 +94,12 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("env(safe-area-inset-top", HTML_TEMPLATE)
         self.assertIn("env(safe-area-inset-bottom", HTML_TEMPLATE)
 
-        # 2. Header actions responsive labels & spacious mobile 2-row layout
+        # 2. Header actions responsive labels & workspace navigation
         self.assertIn("btn-label-long", HTML_TEMPLATE)
         self.assertIn("btn-label-short", HTML_TEMPLATE)
-        self.assertIn("📦 バックアップ", HTML_TEMPLATE)
-        self.assertIn("📅 通過予測", HTML_TEMPLATE)
-        self.assertIn("🔄 最新取得", HTML_TEMPLATE)
+        self.assertIn("04 / ARCHIVE", HTML_TEMPLATE)
+        self.assertIn("24H SCHEDULE", HTML_TEMPLATE)
+        self.assertIn("SYNC", HTML_TEMPLATE)
         self.assertIn("grid-column: span 2", HTML_TEMPLATE)
         self.assertIn("modal-title-long", HTML_TEMPLATE)
         self.assertIn("modal-title-short", HTML_TEMPLATE)
@@ -622,7 +622,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
 
     def test_dark_matter_kepler_velocity_consistency(self):
         # ペルセウス腕（R=10.3 kpc）でのケプラー速度が 196.3 km/s と計算・表示されていること
-        self.assertIn('id="galacticDmKeplerV" style="color:#f43f5e; font-weight:bold;">196.3 km/s</div>', HTML_TEMPLATE)
+        self.assertIn('id="galacticDmKeplerV" style="color:var(--status-err); font-weight:bold;">196.3 km/s</div>', HTML_TEMPLATE)
         # JS側でも V_kepler = 196.3 が定義されていること
         self.assertIn('const V_kepler = 196.3;', HTML_TEMPLATE)
         # 解説文でペルセウス腕（10.3 kpc）の 196.3 km/s と、銀河外縁部（約 20 kpc）の 141.2 km/s / 2.43倍の比較が両立していること
@@ -765,7 +765,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
         }
         card_html_success = render_card_html(p_success)
         self.assertIn('<details class="data-accordion" open>', card_html_success)
-        self.assertIn('📻 受信テレメトリ (1 件) の中身を見る', card_html_success)
+        self.assertIn('TELEMETRY FRAMES (1 件)', card_html_success)
 
         # 2. 未復調（0件）のパス -> details open が付与されないこと
         p_failure = {
@@ -777,7 +777,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
         }
         card_html_failure = render_card_html(p_failure)
         self.assertNotIn('<details class="data-accordion" open>', card_html_failure)
-        self.assertIn('📻 BPSK テレメトリフレーム (0 件)', card_html_failure)
+        self.assertIn('BPSK TELEMETRY FRAMES (0 件)', card_html_failure)
 
     def test_pass_data_cache_exponential_decay_stats(self):
         from datetime import datetime, timezone, timedelta

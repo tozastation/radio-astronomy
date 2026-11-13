@@ -67,103 +67,238 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🛰️ 衛星電波観測ダッシュボード (Garage S3)</title>
+  <title>VERANDA OBSERVATORY // 衛星電波観測コンソール</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --border: #334155;
-      --accent: #38bdf8;
-      --accent-glow: rgba(56, 189, 248, 0.2);
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --success: #34d399;
-      --warning: #fbbf24;
-      --code-bg: #0b1120;
+      --bg-canvas: #141413;
+      --bg-surface: #1C1C1A;
+      --bg-inset: #0E0E0D;
+      --bg-elevated: #252522;
+      --text-primary: #EAE8E1;
+      --text-secondary: #9E9B93;
+      --text-muted: #6B6963;
+      --border-hairline: rgba(234, 232, 225, 0.12);
+      --border-strong: rgba(234, 232, 225, 0.24);
+      --accent: #E07A38;
+      --status-ok: #4E9F76;
+      --status-warn: #D4A039;
+      --status-err: #C9534B;
+
+      /* Legacy token aliases mapped to Dark Instrument Palette */
+      --bg: var(--bg-canvas);
+      --card-bg: var(--bg-surface);
+      --border: var(--border-hairline);
+      --text: var(--text-primary);
+      --success: var(--status-ok);
+      --warning: var(--status-warn);
+      --code-bg: var(--bg-inset);
+
+      --font-serif: "Shippori Mincho", "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --ease-instrument: cubic-bezier(0.22, 1, 0.36, 1);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background-color: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      padding: 16px;
-      padding-top: max(16px, env(safe-area-inset-top, 16px));
-      padding-bottom: max(60px, env(safe-area-inset-bottom, 60px));
-      padding-left: max(16px, env(safe-area-inset-left, 16px));
-      padding-right: max(16px, env(safe-area-inset-right, 16px));
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      padding: 0;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: max(48px, env(safe-area-inset-bottom, 48px));
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
       -webkit-font-smoothing: antialiased;
+    }
+    .mono-num {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
     }
     .btn-label-long { display: inline; }
     .btn-label-short { display: none; }
     .modal-title-long { display: inline; }
     .modal-title-short { display: none; }
+
+    /* Global Telemetry Topbar & Workspace Navigation */
     header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-hairline);
+      padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 20px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
       gap: 12px;
     }
     .header-title-block {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      align-items: baseline;
+      gap: 12px;
       flex-wrap: wrap;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .station-meta {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.03em;
+    }
+    .badge-bucket {
+      background: var(--bg-inset);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 2px;
+      font-weight: 500;
+    }
+    .workspace-nav {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-inset);
+      padding: 2px;
+      border-radius: 2px;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    .ws-tab-btn {
+      background: transparent;
+      color: var(--text-secondary);
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 6px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.18s var(--ease-instrument), background-color 0.18s var(--ease-instrument), border-color 0.18s var(--ease-instrument);
+    }
+    .ws-tab-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+    }
+    .ws-tab-btn.active {
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border-bottom-color: var(--accent);
     }
     .header-actions {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
-    }
-    h1 {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--accent);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .badge-bucket {
-      background: #0284c7;
-      color: white;
-      font-size: 0.75rem;
-      padding: 3px 8px;
-      border-radius: 999px;
-      font-weight: 600;
     }
     .btn-refresh {
-      background: var(--card-bg);
-      color: var(--text);
-      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      color: var(--text-primary);
+      border: 1px solid var(--border-hairline);
       padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
+      border-radius: 2px;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
       cursor: pointer;
       white-space: nowrap;
-      transition: all 0.15s ease;
+      transition: background-color 0.18s var(--ease-instrument), border-color 0.18s var(--ease-instrument), color 0.18s var(--ease-instrument);
       touch-action: manipulation;
     }
-    .btn-refresh:active { background: var(--border); }
+    .btn-refresh:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-strong);
+    }
+    .btn-refresh:active { background: var(--bg-surface); }
     .btn-backup {
-      background: #059669;
-      color: white;
-      border-color: #34d399;
+      background: var(--bg-inset);
+      color: var(--status-ok);
+      border-color: var(--border-hairline);
     }
-    .btn-backup:active { background: #047857; }
     .btn-passes {
-      background: #0284c7;
-      color: white;
-      border-color: #38bdf8;
+      background: var(--bg-inset);
+      color: var(--text-primary);
+      border-color: var(--border-hairline);
     }
-    .btn-passes:active { background: #0369a1; }
+    .btn-passes.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
     .btn-orbit {
-      background: linear-gradient(135deg, #7c3aed, #0284c7);
-      color: white;
-      border-color: #a855f7;
+      background: var(--bg-inset);
+      color: var(--text-primary);
+      border-color: var(--border-hairline);
     }
-    .btn-orbit:active { opacity: 0.85; }
+    .workspace-shell {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 16px 20px;
+    }
+    .workspace-pane {
+      display: none;
+    }
+    .workspace-pane.active {
+      display: block;
+    }
+    .workspace-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 2px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .workspace-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border-hairline);
+    }
+    .workspace-panel-title {
+      font-family: var(--font-serif);
+      font-size: 1.08rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+    .workspace-panel-code {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      letter-spacing: 0.06em;
+      margin-right: 8px;
+    }
+    .future-passes-dock {
+      display: none;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-left: 2px solid var(--accent);
+      border-radius: 2px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .future-passes-dock.active {
+      display: block;
+    }
     .modal-box-extra-large {
       max-width: 1200px;
       width: 96vw;
@@ -171,24 +306,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .orbit-tabs {
       display: flex;
-      gap: 8px;
-      border-bottom: 1px solid var(--border);
+      gap: 4px;
+      border-bottom: 1px solid var(--border-hairline);
       margin-bottom: 14px;
       padding-bottom: 8px;
     }
     .orbit-tab-btn {
       background: transparent;
       border: 1px solid transparent;
-      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
       padding: 6px 14px;
-      border-radius: 6px;
+      border-radius: 2px;
       cursor: pointer;
-      font-size: 0.88rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
       font-weight: 600;
+      transition: color 0.18s var(--ease-instrument), background-color 0.18s var(--ease-instrument);
+    }
+    .orbit-tab-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
     }
     .orbit-tab-btn.active {
-      background: rgba(56, 189, 248, 0.15);
-      border-color: var(--accent);
+      background: var(--bg-inset);
+      border-color: var(--border-hairline);
+      border-bottom-color: var(--accent);
       color: var(--accent);
     }
     .calendar-container {
@@ -220,39 +363,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       padding: 4px 0;
     }
     .calendar-cell {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      border-radius: 2px;
       min-height: 60px;
       padding: 6px;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: border-color 0.15s var(--ease-instrument), background-color 0.15s var(--ease-instrument);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
     }
     .calendar-cell:hover {
-      border-color: var(--accent);
-      background: rgba(56, 189, 248, 0.05);
+      border-color: var(--border-strong);
+      background: var(--bg-elevated);
     }
     .calendar-cell.active {
       border-color: var(--accent);
-      background: rgba(56, 189, 248, 0.15);
-      box-shadow: 0 0 0 1px var(--accent);
+      background: var(--bg-elevated);
     }
     .calendar-cell.is-today {
-      border-color: #38bdf8;
+      border-color: var(--text-secondary);
     }
     .calendar-cell.has-golden {
-      border-color: #10b981;
-      background: rgba(16, 185, 129, 0.08);
-      box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+      border-color: var(--status-ok);
+      background: rgba(78, 159, 118, 0.08);
     }
     .calendar-cell.is-other-month {
       opacity: 0.25;
       cursor: default;
     }
     .calendar-day-num {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
       font-size: 0.8rem;
       font-weight: 700;
       display: flex;
@@ -260,8 +403,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
     }
     .calendar-day-golden-star {
-      color: #fbbf24;
-      font-size: 0.75rem;
+      color: var(--status-warn);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
     }
     .calendar-pills {
       display: flex;
@@ -270,23 +414,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       margin-top: 4px;
     }
     .cal-pill {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
+      width: 6px;
+      height: 6px;
+      border-radius: 1px;
       display: inline-block;
     }
     .calendar-details-panel {
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      border-radius: 2px;
       padding: 12px;
       max-height: 480px;
       overflow-y: auto;
     }
     .cal-pass-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 2px;
       padding: 10px;
       margin-bottom: 8px;
       display: flex;
@@ -294,43 +438,49 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       gap: 6px;
     }
     .cal-pass-card:hover {
-      border-color: var(--accent);
+      border-color: var(--border-strong);
     }
     .btn-observe-pass {
-      background: #0284c7;
-      color: white;
-      border: none;
+      background: var(--bg-inset);
+      color: var(--accent);
+      border: 1px solid var(--accent);
       padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 0.75rem;
+      border-radius: 2px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
       font-weight: 600;
       cursor: pointer;
       align-self: flex-start;
       margin-top: 4px;
+      transition: background-color 0.15s var(--ease-instrument), color 0.15s var(--ease-instrument);
     }
     .btn-observe-pass:hover {
-      background: #0369a1;
+      background: var(--accent);
+      color: var(--bg-inset);
     }
     .btn-reload {
-      background: var(--card-bg);
-      color: var(--text);
-      border-color: var(--border);
+      background: var(--bg-inset);
+      color: var(--text-primary);
+      border-color: var(--border-hairline);
     }
     .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 2px;
       overflow: hidden;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-      margin-bottom: 16px;
+      margin-bottom: 14px;
+      transition: border-color 0.18s var(--ease-instrument);
+    }
+    .card:hover {
+      border-color: var(--border-strong);
     }
     .card-header {
       padding: 12px 16px;
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--bg-inset);
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-hairline);
       gap: 12px;
     }
     .sat-header-left {
@@ -340,10 +490,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       min-width: 0;
       flex: 1 1 auto;
     }
-    .sat-name { font-weight: 700; font-size: 1.1rem; color: #38bdf8; word-break: break-word; }
+    .sat-name {
+      font-family: var(--font-serif);
+      font-weight: 700;
+      font-size: 1.08rem;
+      letter-spacing: -0.01em;
+      color: var(--text-primary);
+      word-break: break-word;
+    }
     .sat-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
     .pass-id {
-      font-family: monospace;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
       font-size: 0.72rem;
       color: var(--text-muted);
       word-break: break-all;
@@ -351,101 +509,112 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .sat-header-right {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
       flex-shrink: 0;
     }
     .btn-replay {
-      background: linear-gradient(135deg, #0284c7, #0369a1);
-      color: white;
-      border: 1px solid #38bdf8;
-      font-weight: bold;
-      padding: 5px 12px;
-      border-radius: 6px;
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-strong);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 2px;
       cursor: pointer;
-      font-size: 0.8rem;
+      font-size: 0.74rem;
       white-space: nowrap;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 4px;
       touch-action: manipulation;
+      transition: border-color 0.15s var(--ease-instrument), color 0.15s var(--ease-instrument);
     }
     .btn-replay:hover {
-      background: linear-gradient(135deg, #0369a1, #0284c7);
+      border-color: var(--accent);
+      color: var(--accent);
     }
     .btn-grafana {
-      background: linear-gradient(135deg, #ea580c, #c2410c);
-      color: white;
-      border: 1px solid #fb923c;
-      font-weight: bold;
-      padding: 5px 12px;
-      border-radius: 6px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 2px;
       cursor: pointer;
-      font-size: 0.8rem;
+      font-size: 0.74rem;
       white-space: nowrap;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 4px;
       touch-action: manipulation;
-      transition: all 0.15s ease;
+      transition: border-color 0.15s var(--ease-instrument), color 0.15s var(--ease-instrument);
     }
     .btn-grafana:hover {
-      background: linear-gradient(135deg, #f97316, #ea580c);
-      box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
     }
     .badge-tag {
-      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
       padding: 2px 6px;
-      border-radius: 4px;
+      border-radius: 2px;
       font-weight: 600;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
     }
-    .badge-spacestation { background: #0369a1; color: #e0f2fe; }
-    .badge-weathersatellite { background: #047857; color: #d1fae5; }
-    .badge-cubesat { background: #6d28d9; color: #ede9fe; }
-    .badge-genericsatellite { background: #334155; color: #f1f5f9; }
-    .badge-freq { background: #1e1b4b; color: #c7d2fe; border: 1px solid #3730a3; }
-    .badge-signal { background: #312e81; color: #e0e7ff; }
+    .badge-spacestation { color: var(--text-primary); border-color: var(--border-strong); }
+    .badge-weathersatellite { color: var(--status-ok); border-color: rgba(78, 159, 118, 0.35); }
+    .badge-cubesat { color: var(--accent); border-color: rgba(224, 122, 56, 0.35); }
+    .badge-genericsatellite { color: var(--text-secondary); }
+    .badge-freq { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+    .badge-signal { color: var(--text-muted); }
     .summary-box {
-      background: rgba(56, 189, 248, 0.08);
-      border-left: 3px solid var(--accent);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      border-left: 2px solid var(--accent);
       padding: 8px 12px;
-      border-radius: 4px;
+      border-radius: 2px;
       font-size: 0.82rem;
-      color: #bae6fd;
+      color: var(--text-primary);
       display: flex;
       gap: 8px;
       align-items: center;
     }
     .badge-status {
-      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
       padding: 2px 8px;
-      border-radius: 999px;
-      font-weight: 500;
+      border-radius: 2px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
     }
     .badge-status-success {
-      background: rgba(52, 211, 153, 0.15);
-      color: var(--success);
-      border: 1px solid rgba(52, 211, 153, 0.3);
+      background: rgba(78, 159, 118, 0.12);
+      color: var(--status-ok);
+      border: 1px solid rgba(78, 159, 118, 0.35);
     }
     .badge-status-failure {
-      background: rgba(148, 163, 184, 0.12);
-      color: #94a3b8;
-      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border-hairline);
     }
     .summary-box-muted {
-      background: rgba(255, 255, 255, 0.03) !important;
-      border-color: rgba(255, 255, 255, 0.08) !important;
-      color: #94a3b8 !important;
+      background: var(--bg-inset) !important;
+      border-color: var(--border-hairline) !important;
+      color: var(--text-muted) !important;
     }
     .card-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
     .spectrogram-container {
       position: relative;
-      border-radius: 8px;
+      border-radius: 2px;
       overflow: hidden;
-      border: 1px solid var(--border);
-      background: #000;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-inset);
       text-align: center;
     }
     .spectrogram-img {
@@ -460,20 +629,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       position: absolute;
       bottom: 6px;
       right: 8px;
-      background: rgba(0,0,0,0.7);
-      color: #fff;
-      font-size: 0.7rem;
-      padding: 3px 8px;
-      border-radius: 4px;
+      background: rgba(14, 14, 13, 0.85);
+      border: 1px solid var(--border-hairline);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 2px;
       pointer-events: none;
     }
     .meta-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 8px;
-      background: rgba(0, 0, 0, 0.2);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
       padding: 10px;
-      border-radius: 8px;
+      border-radius: 2px;
       font-size: 0.85rem;
     }
     .meta-item { display: flex; flex-direction: column; }
@@ -486,10 +658,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       flex-direction: column;
       gap: 6px;
       background: rgba(8, 14, 26, 0.75);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 10px;
+      border: 1px solid rgba(224, 122, 56, 0.25);
+      border-radius: 2px;
       padding: 12px;
-      box-shadow: inset 0 0 15px rgba(56, 189, 248, 0.04);
     }
     .telemetry-panel-header {
       display: flex;
@@ -497,14 +668,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       font-size: 0.74rem;
       font-weight: 700;
-      color: #38bdf8;
+      color: var(--accent);
       letter-spacing: 0.05em;
       text-transform: uppercase;
       padding-bottom: 6px;
-      border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+      border-bottom: 1px solid rgba(224, 122, 56, 0.15);
     }
     .telemetry-panel-hint {
-      color: #94a3b8;
+      color: var(--text-secondary);
       font-size: 0.72rem;
       font-weight: 400;
       text-transform: none;
@@ -528,13 +699,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       position: relative;
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
+      border-radius: 2px;
       padding: 6px 8px;
       transition: background 0.15s ease, border-color 0.15s ease;
     }
     .telemetry-item:hover {
-      background: rgba(56, 189, 248, 0.05);
-      border-color: rgba(56, 189, 248, 0.3);
+      background: rgba(224, 122, 56, 0.05);
+      border-color: rgba(224, 122, 56, 0.3);
     }
     .telemetry-label-row {
       display: flex;
@@ -543,23 +714,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       gap: 4px;
     }
     .telemetry-label {
-      color: #94a3b8;
+      color: var(--text-secondary);
       font-size: 0.75rem;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: inline-flex;
       align-items: center;
       gap: 4px;
       cursor: help;
-      border-bottom: 1px dotted rgba(56, 189, 248, 0.5);
+      border-bottom: 1px dotted rgba(224, 122, 56, 0.5);
       user-select: none;
       touch-action: manipulation;
     }
     .telemetry-label:hover {
-      color: #38bdf8;
+      color: var(--accent);
     }
     .telemetry-info-badge {
       font-size: 0.72rem;
-      color: #38bdf8;
+      color: var(--accent);
       opacity: 0.8;
     }
     .telemetry-val {
@@ -574,7 +745,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .telemetry-subval {
       font-size: 0.72rem;
       font-weight: 400;
-      color: #38bdf8;
+      color: var(--accent);
       margin-left: 4px;
     }
 
@@ -586,16 +757,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       width: 290px;
       max-width: 86vw;
       background: #081024;
-      border: 1px solid #0284c7;
-      border-radius: 8px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(56, 189, 248, 0.25);
+      border: 1px solid var(--accent);
+      border-radius: 2px;
       padding: 10px 12px;
       z-index: 1000;
       text-align: left;
       line-height: 1.4;
       color: #e2e8f0;
       pointer-events: auto;
-      backdrop-filter: blur(8px);
     }
     .geek-tooltip::after {
       content: "";
@@ -603,7 +772,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       top: 100%;
       border-width: 6px;
       border-style: solid;
-      border-color: #0284c7 transparent transparent transparent;
+      border-color: var(--accent) transparent transparent transparent;
     }
     /* 列ごとの見切れ防止位置調整 */
     .telemetry-col-left .geek-tooltip {
@@ -660,10 +829,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .geek-tooltip-title {
       font-size: 0.8rem;
       font-weight: 700;
-      color: #38bdf8;
+      color: var(--accent);
       margin-bottom: 6px;
       padding-bottom: 4px;
-      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+      border-bottom: 1px solid rgba(224, 122, 56, 0.2);
     }
     .geek-tooltip-section {
       margin-top: 6px;
@@ -671,7 +840,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .geek-tooltip-tag {
       font-size: 0.72rem;
       font-weight: 700;
-      color: #fbbf24;
+      color: var(--status-warn);
       margin-bottom: 2px;
       display: flex;
       align-items: center;
@@ -697,10 +866,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     /* 最新パケット・インラインプレビュー */
     .packet-preview-container {
       background: #020617;
-      border: 1px solid rgba(52, 211, 153, 0.3);
-      border-radius: 8px;
+      border: 1px solid rgba(78, 159, 118, 0.3);
+      border-radius: 2px;
       padding: 10px 12px;
-      box-shadow: inset 0 0 10px rgba(52, 211, 153, 0.05);
     }
     .packet-preview-header {
       display: flex;
@@ -708,9 +876,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       font-size: 0.72rem;
       font-weight: 700;
-      color: #34d399;
+      color: var(--status-ok);
       margin-bottom: 6px;
-      border-bottom: 1px dashed rgba(52, 211, 153, 0.2);
+      border-bottom: 1px dashed rgba(78, 159, 118, 0.2);
       padding-bottom: 4px;
     }
     .packet-preview-line {
@@ -722,7 +890,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       line-height: 1.4;
     }
     .packet-preview-src {
-      color: #38bdf8;
+      color: var(--accent);
       font-weight: bold;
     }
     .packet-preview-dst {
@@ -734,9 +902,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 6px 12px;
-      background: rgba(15, 23, 42, 0.75);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 6px;
+      background: rgba(20, 20, 19, 0.75);
+      border: 1px solid rgba(224, 122, 56, 0.25);
+      border-radius: 2px;
       padding: 8px 12px;
       margin-bottom: 8px;
     }
@@ -751,8 +919,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       flex-direction: column;
     }
     .hud-stat-label {
-      font-size: 0.68rem;
-      color: #94a3b8;
+      font-size: 0.72rem;
+      color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
@@ -760,21 +928,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.84rem;
       font-weight: 700;
-      color: #38bdf8;
+      color: var(--accent);
       line-height: 1.3;
     }
     .hud-stat-val.status-good {
-      color: #34d399;
+      color: var(--status-ok);
     }
     .hud-stat-val.status-warn {
-      color: #fbbf24;
+      color: var(--status-warn);
     }
 
     /* JSON Details & Code View */
     details.data-accordion {
       background: rgba(0, 0, 0, 0.25);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 2px;
       overflow: hidden;
     }
     details.data-accordion summary {
@@ -799,7 +967,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     pre.code-block {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.75rem;
-      color: #38bdf8;
+      color: var(--accent);
       overflow-x: auto;
       white-space: pre-wrap;
       word-break: break-all;
@@ -836,7 +1004,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid rgba(255, 255, 255, 0.08);
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: 2px;
       font-size: 0.8rem;
       gap: 8px;
       min-width: 0;
@@ -871,7 +1039,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .action-btn {
       padding: 5px 8px;
-      border-radius: 6px;
+      border-radius: 2px;
       font-size: 0.75rem;
       font-weight: 600;
       cursor: pointer;
@@ -884,12 +1052,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       touch-action: manipulation;
     }
     .btn-view {
-      background: #0284c7;
+      background: var(--accent);
       color: white;
     }
-    .btn-view:active { background: #0369a1; }
+    .btn-view:active { background: var(--accent); }
     .btn-download {
-      background: #334155;
+      background: var(--border-hairline);
       color: #e2e8f0;
     }
     .btn-download:active { background: #475569; }
@@ -900,7 +1068,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.85);
-      backdrop-filter: blur(4px);
       z-index: 9999;
       justify-content: center;
       align-items: center;
@@ -910,13 +1077,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .modal-box {
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 2px;
       width: 100%;
       max-width: 650px;
       max-height: 85vh;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
       overflow: hidden;
     }
     .modal-header {
@@ -930,7 +1096,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 0.95rem;
       font-weight: 700;
       color: var(--accent);
-      font-family: monospace;
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
     }
     .modal-close {
       background: transparent;
@@ -960,11 +1126,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       gap: 8px;
     }
     .copy-btn {
-      background: #334155;
+      background: var(--border-hairline);
       color: white;
       border: 1px solid var(--border);
       padding: 6px 12px;
-      border-radius: 6px;
+      border-radius: 2px;
       font-size: 0.8rem;
       cursor: pointer;
     }
@@ -979,7 +1145,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text-muted);
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 2px;
       margin-bottom: 20px;
       display: none;
     }
@@ -988,13 +1154,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .toolbar-section {
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 2px;
       padding: 14px 16px;
       margin-bottom: 20px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
     }
     .filter-chips {
       display: flex;
@@ -1006,7 +1171,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text-muted);
       border: 1px solid var(--border);
       padding: 6px 14px;
-      border-radius: 999px;
+      border-radius: 2px;
       font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
@@ -1019,14 +1184,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text);
     }
     .chip.active {
-      background: #0284c7;
+      background: var(--accent);
       color: #fff;
       border-color: var(--accent);
-      box-shadow: 0 0 10px var(--accent-glow);
     }
     .chip.chip-toggle {
       border-color: rgba(16, 185, 129, 0.4);
-      color: #34d399;
+      color: var(--status-ok);
       background: rgba(16, 185, 129, 0.08);
       margin-left: auto;
     }
@@ -1035,10 +1199,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: #6ee7b7;
     }
     .chip.chip-toggle.active {
-      background: linear-gradient(135deg, #059669, #10b981);
+      background: var(--status-ok); color: var(--bg-inset);
       color: #ffffff;
-      border-color: #34d399;
-      box-shadow: 0 0 12px rgba(16, 185, 129, 0.45);
+      border-color: var(--status-ok);
     }
     .chip-group-toggles {
       display: flex;
@@ -1064,9 +1227,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .filter-search-input {
       width: 100%;
-      background: rgba(15, 23, 42, 0.7);
+      background: rgba(20, 20, 19, 0.7);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 2px;
       color: var(--text);
       padding: 7px 30px 7px 30px;
       font-size: 0.84rem;
@@ -1075,7 +1238,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .filter-search-input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
     }
     .filter-search-icon {
       position: absolute;
@@ -1100,9 +1262,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: inline-block;
     }
     .filter-select {
-      background: rgba(15, 23, 42, 0.7);
+      background: rgba(20, 20, 19, 0.7);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 2px;
       color: var(--text);
       padding: 7px 10px;
       font-size: 0.82rem;
@@ -1115,7 +1277,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .filter-reset-btn {
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 2px;
       color: var(--text-muted);
       padding: 7px 12px;
       font-size: 0.8rem;
@@ -1130,7 +1292,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .filter-reset-btn.has-active {
       border-color: rgba(245, 158, 11, 0.5);
-      color: #fbbf24;
+      color: var(--status-warn);
       background: rgba(245, 158, 11, 0.1);
     }
     .filter-active-summary {
@@ -1140,12 +1302,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     /* Stats Minibar */
     .stats-minibar {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.95));
+      background: var(--bg-surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 2px;
       padding: 10px 16px;
       margin-bottom: 14px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
     }
     .stats-summary-row {
       display: flex;
@@ -1173,13 +1334,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-variant-numeric: tabular-nums;
     }
     .stats-kpi-item .kpi-accent {
-      color: #34d399;
+      color: var(--status-ok);
     }
     .stats-toggle-btn {
-      background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(224, 122, 56, 0.1);
+      border: 1px solid rgba(224, 122, 56, 0.35);
       color: var(--accent);
-      border-radius: 8px;
+      border-radius: 2px;
       padding: 5px 11px;
       font-size: 0.78rem;
       font-weight: 600;
@@ -1188,7 +1349,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       white-space: nowrap;
     }
     .stats-toggle-btn:hover {
-      background: rgba(56, 189, 248, 0.2);
+      background: rgba(224, 122, 56, 0.2);
     }
     .stats-details-panel {
       display: none;
@@ -1202,9 +1363,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: grid;
     }
     .stats-detail-box {
-      background: rgba(15, 23, 42, 0.55);
+      background: rgba(20, 20, 19, 0.55);
       border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 10px;
+      border-radius: 2px;
       padding: 10px 12px;
     }
     .stats-detail-title {
@@ -1235,17 +1396,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       transition: background 0.15s ease;
     }
     .stats-sat-row:hover {
-      background: rgba(56, 189, 248, 0.08);
+      background: rgba(224, 122, 56, 0.08);
     }
     .stats-best-pass-btn {
       display: inline-flex;
       flex-direction: column;
       align-items: flex-start;
       gap: 1px;
-      background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.25);
+      background: rgba(224, 122, 56, 0.1);
+      border: 1px solid rgba(224, 122, 56, 0.25);
       color: var(--text);
-      border-radius: 6px;
+      border-radius: 2px;
       padding: 3px 6px;
       font-size: 0.72rem;
       line-height: 1.25;
@@ -1254,7 +1415,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       transition: background 0.15s ease, border-color 0.15s ease;
     }
     .stats-best-pass-btn:hover {
-      background: rgba(56, 189, 248, 0.22);
+      background: rgba(224, 122, 56, 0.22);
       border-color: var(--accent);
     }
     .stats-best-pass-btn.is-golden {
@@ -1262,7 +1423,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-color: rgba(245, 158, 11, 0.45);
     }
     .stats-best-pass-sub {
-      font-size: 0.68rem;
+      font-size: 0.72rem;
       color: var(--text-muted);
     }
     .timeline-jump-banner {
@@ -1273,9 +1434,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       max-width: 1120px;
       margin: 0 auto 12px auto;
       padding: 8px 14px;
-      border-radius: 10px;
-      background: rgba(56, 189, 248, 0.12);
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 2px;
+      background: rgba(224, 122, 56, 0.12);
+      border: 1px solid rgba(224, 122, 56, 0.3);
       font-size: 0.82rem;
       color: var(--text);
     }
@@ -1283,25 +1444,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: flex;
     }
     .timeline-jump-reset-btn {
-      background: rgba(56, 189, 248, 0.2);
-      border: 1px solid rgba(56, 189, 248, 0.4);
+      background: rgba(224, 122, 56, 0.2);
+      border: 1px solid rgba(224, 122, 56, 0.4);
       color: var(--accent);
-      border-radius: 6px;
+      border-radius: 2px;
       padding: 4px 10px;
       font-size: 0.78rem;
       font-weight: 600;
       cursor: pointer;
     }
     .timeline-jump-reset-btn:hover {
-      background: rgba(56, 189, 248, 0.32);
+      background: rgba(224, 122, 56, 0.32);
     }
     .timeline-scrubber {
       position: fixed;
-      right: 6px;
-      top: 132px;
+      right: 12px;
+      top: 84px;
       bottom: 24px;
-      width: 28px;
-      z-index: 900;
+      width: 24px;
+      z-index: 35;
       display: none;
       align-items: stretch;
       justify-content: center;
@@ -1317,13 +1478,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       width: 4px;
       height: 100%;
       background: rgba(148, 163, 184, 0.22);
-      border-radius: 999px;
+      border-radius: 2px;
       transition: width 0.15s ease, background 0.15s ease;
     }
     .timeline-scrubber:hover .timeline-track,
     .timeline-scrubber.is-dragging .timeline-track {
       width: 6px;
-      background: rgba(56, 189, 248, 0.35);
+      background: rgba(224, 122, 56, 0.35);
     }
     .timeline-thumb {
       position: absolute;
@@ -1332,9 +1493,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       transform: translate(-50%, -50%);
       width: 12px;
       height: 22px;
-      border-radius: 999px;
+      border-radius: 2px;
       background: var(--accent);
-      box-shadow: 0 0 8px rgba(56, 189, 248, 0.65);
       pointer-events: none;
       transition: transform 0.1s ease;
     }
@@ -1348,7 +1508,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       transform: translateY(-50%);
       font-size: 0.64rem;
       color: var(--text-muted);
-      background: rgba(15, 23, 42, 0.78);
+      background: rgba(20, 20, 19, 0.78);
       padding: 1px 5px;
       border-radius: 4px;
       white-space: nowrap;
@@ -1365,15 +1525,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       right: 34px;
       top: 0%;
       transform: translateY(-50%);
-      background: rgba(15, 23, 42, 0.94);
-      border: 1px solid rgba(56, 189, 248, 0.55);
+      background: rgba(20, 20, 19, 0.94);
+      border: 1px solid rgba(224, 122, 56, 0.55);
       color: #f8fafc;
       padding: 5px 10px;
-      border-radius: 999px;
+      border-radius: 2px;
       font-size: 0.78rem;
       font-weight: 700;
       white-space: nowrap;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
       pointer-events: none;
       opacity: 0;
       transition: opacity 0.15s ease;
@@ -1403,13 +1562,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .stats-bar-track {
       height: 6px;
       background: rgba(255, 255, 255, 0.08);
-      border-radius: 999px;
+      border-radius: 2px;
       overflow: hidden;
     }
     .stats-bar-fill {
       height: 100%;
-      background: linear-gradient(90deg, #0284c7, #34d399);
-      border-radius: 999px;
+      background: var(--accent);
+      border-radius: 2px;
       transition: width 0.3s ease;
     }
     .stats-trend-bars {
@@ -1441,8 +1600,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .stats-trend-bar-total {
       width: 100%;
-      background: rgba(56, 189, 248, 0.35);
-      border-radius: 4px 4px 0 0;
+      background: rgba(224, 122, 56, 0.35);
+      border-radius: 2px 2px 0 0;
       position: relative;
     }
     .stats-trend-bar-success {
@@ -1450,8 +1609,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       bottom: 0;
       left: 0;
       right: 0;
-      background: #10b981;
-      border-radius: 4px 4px 0 0;
+      background: var(--status-ok);
+      border-radius: 2px 2px 0 0;
     }
     .stats-trend-label {
       font-size: 0.72rem;
@@ -1484,7 +1643,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .matched-count {
       color: var(--text-muted);
       font-size: 0.8rem;
-      font-family: monospace;
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
     }
     .scroll-loader {
       text-align: center;
@@ -1502,7 +1661,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .spinner {
       width: 20px;
       height: 20px;
-      border: 3px solid rgba(56, 189, 248, 0.2);
+      border: 3px solid rgba(224, 122, 56, 0.2);
       border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
@@ -1543,9 +1702,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       max-width: 440px;
       aspect-ratio: 1 / 1;
       background: #080e1a;
-      border-radius: 12px;
-      border: 1px solid #334155;
-      box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+      border-radius: 2px;
+      border: 1px solid var(--border-hairline);
       display: block;
       margin: 0 auto;
     }
@@ -1569,7 +1727,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .telemetry-card {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 2px;
       padding: 12px;
       margin-bottom: 12px;
     }
@@ -1590,13 +1748,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .telemetry-val {
       font-weight: 700;
       color: var(--text);
-      font-family: monospace;
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
       font-size: 0.95rem;
     }
     .spectrogram-wrapper {
       position: relative;
       cursor: crosshair;
-      border-radius: 6px;
+      border-radius: 2px;
       overflow: hidden;
       border: 1px solid var(--border);
       background: #000;
@@ -1611,8 +1769,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       top: 0;
       bottom: 0;
       width: 2px;
-      background: #ef4444;
-      box-shadow: 0 0 8px #ef4444;
+      background: var(--status-err);
       pointer-events: none;
       left: 0%;
       transition: left 0.05s linear;
@@ -1620,7 +1777,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .clipper-card {
       background: rgba(6, 182, 212, 0.05);
       border: 1px solid rgba(6, 182, 212, 0.3);
-      border-radius: 8px;
+      border-radius: 2px;
       padding: 12px;
       margin-top: 12px;
     }
@@ -1651,17 +1808,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 0.82rem;
       background: rgba(0, 0, 0, 0.2);
       padding: 4px 8px;
-      border-radius: 6px;
+      border-radius: 2px;
       border: 1px solid rgba(255, 255, 255, 0.05);
     }
     .clipper-input-group input[type="number"] {
-      background: #0b1120;
+      background: var(--bg-inset);
       border: 1px solid var(--border);
       color: var(--text);
       padding: 4px 6px;
       border-radius: 4px;
       width: 50px;
-      font-family: monospace;
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
       flex: 1;
     }
     .btn-auto-window {
@@ -1670,7 +1827,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-weight: bold;
       width: 100%;
       padding: 6px 10px;
-      border-radius: 6px;
+      border-radius: 2px;
       border: 1px solid #06b6d4;
       font-size: 0.8rem;
       cursor: pointer;
@@ -1679,12 +1836,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: #0e7490;
     }
     .btn-generate-gif {
-      background: linear-gradient(135deg, #059669, #047857);
+      background: var(--status-ok);
       color: white;
       font-weight: bold;
       width: 100%;
       padding: 8px;
-      border-radius: 6px;
+      border-radius: 2px;
       font-size: 0.88rem;
       cursor: pointer;
       border: none;
@@ -1693,7 +1850,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       filter: brightness(0.9);
     }
     .btn-sm {
-      background: #334155;
+      background: var(--border-hairline);
       color: var(--text);
       border: 1px solid var(--border);
       padding: 4px 8px;
@@ -1704,7 +1861,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .btn-sm:hover { background: #475569; }
     .progress-bar-container {
       margin-top: 8px;
-      background: #0b1120;
+      background: var(--bg-inset);
       border-radius: 4px;
       overflow: hidden;
       height: 8px;
@@ -1712,7 +1869,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .progress-bar-fill {
       height: 100%;
-      background: #10b981;
+      background: var(--status-ok);
       width: 0%;
       transition: width 0.1s linear;
     }
@@ -1782,7 +1939,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         font-weight: 700;
         min-height: 42px;
         padding: 10px 14px;
-        border-color: #38bdf8;
+        border-color: var(--accent);
       }
       .toolbar-section {
         padding: 12px;
@@ -1927,7 +2084,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       .modal-box {
         max-height: 94vh;
-        border-radius: 10px;
+        border-radius: 2px;
       }
       .modal-header {
         padding: 10px 12px;
@@ -1985,138 +2142,157 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
   <header>
     <div class="header-title-block">
-      <h1>🛰️ 衛星電波観測ビューア</h1>
-      <span class="badge-bucket">Garage S3: __BUCKET__</span>
+      <h1>ベランダ電波観測所</h1>
+      <span class="station-meta">35.6895N 139.6917E // AZ 270–090°</span>
+      <span class="badge-bucket">S3: __BUCKET__</span>
     </div>
+    <nav class="workspace-nav" aria-label="ワークスペース切り替え">
+      <button type="button" id="wsTabConsole" class="ws-tab-btn active" onclick="switchWorkspace('console')">01 / CONSOLE</button>
+      <button type="button" id="wsTabOrbit" class="ws-tab-btn" onclick="switchWorkspace('orbit')">02 / ORBIT &amp; MAP</button>
+      <button type="button" id="wsTabGalactic" class="ws-tab-btn" onclick="switchWorkspace('galactic')">03 / GALACTIC 21CM</button>
+      <button type="button" id="wsTabArchive" class="ws-tab-btn" onclick="switchWorkspace('archive')">04 / ARCHIVE</button>
+    </nav>
     <div class="header-actions">
-      <button class="btn-refresh btn-orbit" onclick="openGalacticModal()">
-        <span class="btn-label-long">🌌 銀河観測</span>
-        <span class="btn-label-short">🌌 銀河</span>
+      <button type="button" id="btnFuturePassesToggle" class="btn-refresh btn-passes" onclick="openFuturePassesModal()">
+        <span class="btn-label-long">24H SCHEDULE</span>
+        <span class="btn-label-short">24H</span>
       </button>
-      <button class="btn-refresh btn-orbit" onclick="openOrbitCalendarModal()">
-        <span class="btn-label-long">🌍 軌道・電波アニメ</span>
-        <span class="btn-label-short">🌍 軌道</span>
-      </button>
-      <button class="btn-refresh btn-backup" onclick="openBackupModal()">
-        <span class="btn-label-long">📦 バックアップ ＆ 復元</span>
-        <span class="btn-label-short">📦 バックアップ</span>
-      </button>
-      <button class="btn-refresh btn-passes" onclick="openFuturePassesModal()">
-        <span class="btn-label-long">📅 通過予測 (24h)</span>
-        <span class="btn-label-short">📅 通過予測</span>
-      </button>
-      <button class="btn-refresh btn-reload" onclick="refreshAllDashboardData()">
-        <span class="btn-label-long">🔄 最新データ取得</span>
-        <span class="btn-label-short">🔄 最新取得</span>
+      <button type="button" class="btn-refresh btn-reload" onclick="refreshAllDashboardData()">
+        <span class="btn-label-long">SYNC</span>
+        <span class="btn-label-short">SYNC</span>
       </button>
     </div>
   </header>
 
-  <!-- Observation Stats Minibar -->
-  <section id="statsMinibar" class="stats-minibar" aria-label="観測統計サマリー">
-    <div class="stats-summary-row">
-      <div class="stats-kpis">
-        <span class="stats-kpi-item">📊 総観測: <strong id="statTotalPasses">-</strong> 件</span>
-        <span class="stats-kpi-item">✨ 復調成功率: <strong id="statSuccessRate" class="kpi-accent">-</strong>% (<span id="statSuccessCount">-</span>件)</span>
-        <span class="stats-kpi-item">📦 総パケット: <strong id="statTotalPackets">-</strong></span>
-        <span class="stats-kpi-item">🖼️ 気象画像: <strong id="statTotalImages">-</strong> 枚</span>
-        <span class="stats-kpi-item">⏱️ 総受信時間: <strong id="statTotalHours">-</strong> h</span>
-      </div>
-      <button type="button" id="statsToggleBtn" class="stats-toggle-btn" onclick="statsToggleDetails()">詳細内訳 ▼</button>
-    </div>
-    <div id="statsDetailsPanel" class="stats-details-panel">
-      <div class="stats-detail-box">
-        <div class="stats-detail-title">
-          <span>🛰️ 衛星別実績 (クリックで絞込)</span>
-          <span id="statDateRange" style="color:var(--text-muted); font-weight:normal;"></span>
+  <div class="workspace-shell">
+    <!-- 01 / CONSOLE Workspace -->
+    <div id="wsConsole" class="workspace-pane active">
+      <!-- Inline 24h Future Passes Dock -->
+      <section id="futurePassesModal" class="future-passes-dock" aria-label="24時間通過予測">
+        <div class="workspace-panel-header">
+          <div>
+            <span class="workspace-panel-code">SCH-24H</span>
+            <span class="workspace-panel-title">
+              <span class="modal-title-long">北向きベランダ通過予測（今後 24 時間）</span>
+              <span class="modal-title-short">通過予測 (24h)</span>
+            </span>
+          </div>
+          <button type="button" class="btn-refresh" onclick="closeFuturePassesModal()">CLOSE</button>
         </div>
-        <div id="statsBySatelliteBody" style="max-height:160px; overflow-y:auto;">読み込み中...</div>
-      </div>
-      <div class="stats-detail-box">
-        <div class="stats-detail-title"><span>📐 仰角帯別の復調成功率</span></div>
-        <div id="statsByElevationBody">読み込み中...</div>
-      </div>
-      <div class="stats-detail-box">
-        <div class="stats-detail-title">
-          <span>📈 直近7日間の推移 (JST)</span>
-          <span style="color:var(--text-muted); font-weight:normal; font-size:0.7rem;">緑: 成功 / 青: 全体</span>
+        <div style="background:var(--bg-inset); border:1px solid var(--border-hairline); border-left:2px solid var(--accent); padding:8px 12px; font-size:0.8rem; margin-bottom:12px; color:var(--text-secondary);">
+          <strong style="color:var(--text-primary);">WINDOW:</strong> 方位角 250°–110°（西〜北〜東）、仰角 25°–60°（手すり下限〜上階庇上限）。南側遮蔽を避けた開口窓通過を SGP4 で予測。
         </div>
-        <div id="statsDailyTrendBody">読み込み中...</div>
+        <div id="futurePassesList">
+          <div style="text-align:center; color:var(--text-secondary); padding:16px;">SGP4 軌道伝搬を計算中...</div>
+        </div>
+      </section>
+
+      <!-- Observation Stats Minibar -->
+      <section id="statsMinibar" class="stats-minibar" aria-label="観測統計サマリー">
+        <div class="stats-summary-row">
+          <div class="stats-kpis mono-num">
+            <span class="stats-kpi-item">PASSES: <strong id="statTotalPasses">-</strong></span>
+            <span class="stats-kpi-item">DECODED: <strong id="statSuccessRate" class="kpi-accent">-</strong>% (<span id="statSuccessCount">-</span>)</span>
+            <span class="stats-kpi-item">PACKETS: <strong id="statTotalPackets">-</strong></span>
+            <span class="stats-kpi-item">IMAGES: <strong id="statTotalImages">-</strong></span>
+            <span class="stats-kpi-item">RX TIME: <strong id="statTotalHours">-</strong> h</span>
+          </div>
+          <button type="button" id="statsToggleBtn" class="stats-toggle-btn" onclick="statsToggleDetails()">DETAILS +</button>
+        </div>
+        <div id="statsDetailsPanel" class="stats-details-panel">
+          <div class="stats-detail-box">
+            <div class="stats-detail-title">
+              <span>衛星別実績 (クリックで絞込)</span>
+              <span id="statDateRange" class="mono-num" style="color:var(--text-muted); font-weight:normal;"></span>
+            </div>
+            <div id="statsBySatelliteBody" style="max-height:160px; overflow-y:auto;">読み込み中...</div>
+          </div>
+          <div class="stats-detail-box">
+            <div class="stats-detail-title"><span>仰角帯別の復調成功率</span></div>
+            <div id="statsByElevationBody">読み込み中...</div>
+          </div>
+          <div class="stats-detail-box">
+            <div class="stats-detail-title">
+              <span>直近7日間の推移 (JST)</span>
+              <span style="color:var(--text-muted); font-weight:normal; font-size:0.7rem;">OK / TOTAL</span>
+            </div>
+            <div id="statsDailyTrendBody">読み込み中...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filter & Search Toolbar -->
+      <div class="toolbar-section">
+        <div class="filter-chips">
+          <button class="chip active" data-category="all" onclick="setCategoryFilter('all', this)">ALL (<span id="count-all" class="mono-num">0</span>)</button>
+          <button class="chip" data-category="SpaceStation" onclick="setCategoryFilter('SpaceStation', this)">ISS (<span id="count-spacestation" class="mono-num">0</span>)</button>
+          <button class="chip" data-category="WeatherSatellite" onclick="setCategoryFilter('WeatherSatellite', this)">METEOR (<span id="count-weathersatellite" class="mono-num">0</span>)</button>
+          <button class="chip" data-category="CubeSat" onclick="setCategoryFilter('CubeSat', this)">FUNCUBE (<span id="count-cubesat" class="mono-num">0</span>)</button>
+          <button class="chip" data-category="GenericSatellite" onclick="setCategoryFilter('GenericSatellite', this)">OTHER (<span id="count-genericsatellite" class="mono-num">0</span>)</button>
+          <div class="chip-group-toggles">
+            <button class="chip chip-toggle" id="btnDemodOnly" onclick="toggleDemodFilter(this)">
+              DECODED ONLY (<span id="count-demod-success" class="mono-num">0</span>)
+            </button>
+            <button class="chip chip-toggle" id="btnHasImage" onclick="toggleHasImageFilter(this)">
+              HAS IMAGE (<span id="count-has-image" class="mono-num">0</span>)
+            </button>
+            <button class="chip chip-toggle" id="btnHighEl" onclick="toggleHighElFilter(this)">
+              EL 30°+
+            </button>
+          </div>
+        </div>
+        <div class="filter-controls">
+          <div class="filter-search-wrap">
+            <span class="filter-search-icon mono-num">/</span>
+            <input type="text" id="filterSearchInput" class="filter-search-input" placeholder="衛星名・パスID・パケット内容で検索..." oninput="onFilterSearchInput(this.value)">
+            <button type="button" id="filterSearchClear" class="filter-search-clear" title="検索をクリア" onclick="clearFilterSearch()">&times;</button>
+          </div>
+          <select id="filterSatellite" class="filter-select" onchange="onFilterSelectChange()" aria-label="衛星で絞り込み">
+            <option value="all">すべての衛星</option>
+          </select>
+          <select id="filterPeriod" class="filter-select" onchange="onFilterSelectChange()" aria-label="期間で絞り込み">
+            <option value="all">全期間</option>
+            <option value="24h">直近 24時間</option>
+            <option value="7d">直近 7日間</option>
+            <option value="30d">直近 30日間</option>
+          </select>
+          <select id="filterSort" class="filter-select" onchange="onFilterSelectChange()" aria-label="並び替え">
+            <option value="newest">新しい順</option>
+            <option value="oldest">古い順</option>
+            <option value="max_el_desc">最大仰角が高い順</option>
+            <option value="packets_desc">パケット数が多い順</option>
+          </select>
+          <button type="button" id="filterResetBtn" class="filter-reset-btn" onclick="resetAllFilters()">RESET</button>
+        </div>
+        <div class="filter-options">
+          <span class="matched-count mono-num" id="matchedCount">LOADING...</span>
+          <span class="filter-active-summary" id="filterActiveSummary"></span>
+        </div>
       </div>
-    </div>
-  </section>
 
-  <!-- Filter & Search Toolbar -->
-  <div class="toolbar-section">
-    <div class="filter-chips">
-      <button class="chip active" data-category="all" onclick="setCategoryFilter('all', this)">すべて (<span id="count-all">0</span>)</button>
-      <button class="chip" data-category="SpaceStation" onclick="setCategoryFilter('SpaceStation', this)">🚀 ISS (<span id="count-spacestation">0</span>)</button>
-      <button class="chip" data-category="WeatherSatellite" onclick="setCategoryFilter('WeatherSatellite', this)">🛰️ METEOR (<span id="count-weathersatellite">0</span>)</button>
-      <button class="chip" data-category="CubeSat" onclick="setCategoryFilter('CubeSat', this)">📻 FUNcube (<span id="count-cubesat">0</span>)</button>
-      <button class="chip" data-category="GenericSatellite" onclick="setCategoryFilter('GenericSatellite', this)">📡 その他 (<span id="count-genericsatellite">0</span>)</button>
-      <div class="chip-group-toggles">
-        <button class="chip chip-toggle" id="btnDemodOnly" onclick="toggleDemodFilter(this)">
-          ✨ 復調成功のみ (<span id="count-demod-success">0</span>)
-        </button>
-        <button class="chip chip-toggle" id="btnHasImage" onclick="toggleHasImageFilter(this)">
-          🖼️ 画像あり (<span id="count-has-image">0</span>)
-        </button>
-        <button class="chip chip-toggle" id="btnHighEl" onclick="toggleHighElFilter(this)">
-          ⛰️ 仰角30°+
-        </button>
+      <div id="noMatchState" class="no-match-state">条件に一致する観測データがありません。</div>
+
+      <div id="timelineJumpBanner" class="timeline-jump-banner" aria-live="polite">
+        <span id="timelineJumpLabel" class="mono-num">TIMELINE JUMP</span>
+        <button type="button" class="timeline-jump-reset-btn" onclick="timelineResetToTop()">TOP</button>
       </div>
-    </div>
-    <div class="filter-controls">
-      <div class="filter-search-wrap">
-        <span class="filter-search-icon">🔍</span>
-        <input type="text" id="filterSearchInput" class="filter-search-input" placeholder="衛星名・パスID・パケット内容で検索..." oninput="onFilterSearchInput(this.value)">
-        <button type="button" id="filterSearchClear" class="filter-search-clear" title="検索をクリア" onclick="clearFilterSearch()">&times;</button>
+
+      <main id="cardsContainer"></main>
+      <div id="scrollSentinel" style="height: 20px; margin: 10px 0;"></div>
+      <div id="scrollLoader" class="scroll-loader">
+        <div class="spinner"></div>
+        <span>観測データを読み込み中...</span>
       </div>
-      <select id="filterSatellite" class="filter-select" onchange="onFilterSelectChange()" aria-label="衛星で絞り込み">
-        <option value="all">🛰️ すべての衛星</option>
-      </select>
-      <select id="filterPeriod" class="filter-select" onchange="onFilterSelectChange()" aria-label="期間で絞り込み">
-        <option value="all">🕒 全期間</option>
-        <option value="24h">直近 24時間</option>
-        <option value="7d">直近 7日間</option>
-        <option value="30d">直近 30日間</option>
-      </select>
-      <select id="filterSort" class="filter-select" onchange="onFilterSelectChange()" aria-label="並び替え">
-        <option value="newest">⬇️ 新しい順</option>
-        <option value="oldest">⬆️ 古い順</option>
-        <option value="max_el_desc">📐 最大仰角が高い順</option>
-        <option value="packets_desc">📦 パケット数が多い順</option>
-      </select>
-      <button type="button" id="filterResetBtn" class="filter-reset-btn" onclick="resetAllFilters()">↺ リセット</button>
-    </div>
-    <div class="filter-options">
-      <span class="matched-count" id="matchedCount">読み込み中...</span>
-      <span class="filter-active-summary" id="filterActiveSummary"></span>
-    </div>
-  </div>
 
-  <div id="noMatchState" class="no-match-state">条件に一致する観測データがありません。</div>
-
-  <div id="timelineJumpBanner" class="timeline-jump-banner" aria-live="polite">
-    <span id="timelineJumpLabel">📅 ジャンプ表示中</span>
-    <button type="button" class="timeline-jump-reset-btn" onclick="timelineResetToTop()">⬆️ 先頭へ戻る</button>
-  </div>
-
-  <main id="cardsContainer"></main>
-  <div id="scrollSentinel" style="height: 20px; margin: 10px 0;"></div>
-  <div id="scrollLoader" class="scroll-loader">
-    <div class="spinner"></div>
-    <span>観測データを読み込み中...</span>
-  </div>
-
-  <!-- Google Photos style Timeline Scrubber -->
-  <div id="timelineScrubber" class="timeline-scrubber" aria-label="期間タイムラインジャンプ">
-    <div id="timelineTrack" class="timeline-track">
-      <div id="timelineTicks"></div>
-      <div id="timelineThumb" class="timeline-thumb"></div>
-    </div>
-    <div id="timelineFloatingPill" class="timeline-floating-pill"></div>
-  </div>
+      <!-- Timeline Scrubber -->
+      <div id="timelineScrubber" class="timeline-scrubber" aria-label="期間タイムラインジャンプ">
+        <div id="timelineTrack" class="timeline-track">
+          <div id="timelineTicks"></div>
+          <div id="timelineThumb" class="timeline-thumb"></div>
+        </div>
+        <div id="timelineFloatingPill" class="timeline-floating-pill"></div>
+      </div>
+    </div><!-- /#wsConsole -->
 
   <!-- Image Modal -->
   <div id="imageModal" class="modal" onclick="closeImageModal(event)">
@@ -2145,20 +2321,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- Orbit Calendar & Multi-Satellite Animation Modal -->
-  <div id="orbitCalendarModal" class="modal" onclick="closeOrbitCalendarModal(event)">
-    <div class="modal-box modal-box-extra-large" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span class="modal-title">
-          <span class="modal-title-long">🌍 月間軌道予測カレンダー ＆ 複数衛星電波伝搬アニメーション</span>
-          <span class="modal-title-short">🌍 軌道予測・電波アニメ</span>
-        </span>
-        <button class="modal-close" onclick="closeOrbitCalendarModal()">&times;</button>
+  <!-- 02 / ORBIT & MAP Workspace -->
+  <div id="wsOrbit" class="workspace-pane">
+    <div id="orbitCalendarModal" class="workspace-panel">
+      <div class="workspace-panel-header">
+        <div>
+          <span class="workspace-panel-code">02 / ORBIT</span>
+          <span class="workspace-panel-title">
+            <span class="modal-title-long">月間軌道予測カレンダー ＆ 複数衛星電波伝搬アニメーション</span>
+            <span class="modal-title-short">軌道予測・電波アニメ</span>
+          </span>
+        </div>
+        <button type="button" class="btn-refresh" onclick="closeOrbitCalendarModal()">CONSOLE</button>
       </div>
-      <div class="modal-body">
+      <div>
         <div class="orbit-tabs">
-          <button id="tabBtnCalendar" class="orbit-tab-btn active" onclick="switchOrbitTab('calendar')">📅 月間カレンダー</button>
-          <button id="tabBtnAnimation" class="orbit-tab-btn" onclick="switchOrbitTab('animation')">🌍 世界地図 ＆ 電波伝搬アニメ</button>
+          <button id="tabBtnCalendar" class="orbit-tab-btn active" onclick="switchOrbitTab('calendar')">MONTHLY CALENDAR</button>
+          <button id="tabBtnAnimation" class="orbit-tab-btn" onclick="switchOrbitTab('animation')">WORLD MAP &amp; PROPAGATION</button>
         </div>
 
         <!-- Tab 1: Calendar View -->
@@ -2202,30 +2381,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div id="orbitAnimationTabContent" style="display:none;">
           <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; max-height:60vh; background:#080d1a; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
             <canvas id="orbitWorldCanvas" width="960" height="480" style="width:100%; height:100%; display:block;"></canvas>
-            <div id="canvasOverlayTelemetries" style="position:absolute; top:10px; left:10px; pointer-events:none; font-family:ui-monospace,monospace; font-size:0.75rem; color:#94a3b8; background:rgba(15,23,42,0.85); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
+            <div id="canvasOverlayTelemetries" style="position:absolute; top:10px; left:10px; pointer-events:none; font-family:ui-monospace,monospace; font-size:0.75rem; color:var(--text-secondary); background:rgba(15,23,42,0.85); padding:8px 12px; border-radius:2px; border:1px solid var(--border-hairline);">
               <div id="overlaySimTime" style="color:#f1f5f9; font-weight:bold; margin-bottom:4px;">UTC: 2026-10-28 12:00:00</div>
-              <div id="overlayRadioStatus" style="color:#38bdf8;">📡 BEAM: IDLE</div>
+              <div id="overlayRadioStatus" style="color:var(--accent);">📡 BEAM: IDLE</div>
             </div>
-            <div id="canvasLegend" style="position:absolute; bottom:10px; left:10px; pointer-events:none; font-size:0.72rem; color:#cbd5e1; background:rgba(15,23,42,0.85); padding:6px 12px; border-radius:6px; border:1px solid #334155; display:flex; gap:12px; flex-wrap:wrap;">
-              <span><span style="color:#38bdf8;">●</span> METEOR-M2 3</span>
+            <div id="canvasLegend" style="position:absolute; bottom:10px; left:10px; pointer-events:none; font-size:0.72rem; color:var(--text-primary); background:rgba(15,23,42,0.85); padding:6px 12px; border-radius:2px; border:1px solid var(--border-hairline); display:flex; gap:12px; flex-wrap:wrap;">
+              <span><span style="color:var(--accent);">●</span> METEOR-M2 3</span>
               <span><span style="color:#06b6d4;">●</span> METEOR-M2 4</span>
-              <span><span style="color:#f43f5e;">●</span> ISS</span>
+              <span><span style="color:var(--status-err);">●</span> ISS</span>
               <span><span style="color:#eab308;">●</span> AO-73</span>
-              <span><span style="color:#10b981;">▲</span> 東京観測所 (Az 250°-110°)</span>
+              <span><span style="color:var(--status-ok);">▲</span> 東京観測所 (Az 250°-110°)</span>
             </div>
           </div>
           <!-- Time Controller UI -->
-          <div id="animationTimeControllerArea" style="margin-top:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
+          <div id="animationTimeControllerArea" style="margin-top:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:2px; padding:10px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
               <div style="display:flex; align-items:center; gap:8px;">
                 <button id="btnOrbitPlayPause" class="btn-refresh" onclick="toggleOrbitPlayPause()" style="min-width:75px;">▶ 再生</button>
                 <button id="btnPrevPass" class="btn-refresh" onclick="skipToPass(-1)" title="前のパスへ">⏮️ 前パス</button>
                 <button id="btnNextPass" class="btn-refresh" onclick="skipToPass(1)" title="次のパスへ">⏭️ 次パス</button>
-                <button id="btnLiveTime" class="btn-refresh" onclick="resetToLiveTime()" style="border-color:#10b981; color:#34d399;">⏱️ LIVE</button>
+                <button id="btnLiveTime" class="btn-refresh" onclick="resetToLiveTime()" style="border-color:var(--status-ok); color:var(--status-ok);">⏱️ LIVE</button>
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:0.8rem; color:var(--text-muted);">速度:</span>
-                <select id="orbitSpeedSelect" onchange="changeSimSpeed(this.value)" style="background:var(--card-bg); color:var(--text); border:1px solid var(--border); padding:5px 8px; border-radius:6px; font-size:0.82rem;">
+                <select id="orbitSpeedSelect" onchange="changeSimSpeed(this.value)" style="background:var(--card-bg); color:var(--text); border:1px solid var(--border); padding:5px 8px; border-radius:2px; font-size:0.82rem;">
                   <option value="1">1x (等倍・LIVE)</option>
                   <option value="10">10x (10倍速)</option>
                   <option value="60" selected>60x (1分/秒)</option>
@@ -2242,71 +2421,71 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="copy-btn" onclick="closeOrbitCalendarModal()">閉じる</button>
-      </div>
     </div>
-  </div>
+  </div><!-- /#wsOrbit -->
 
-  <!-- Galactic Drift Scan & 21cm Hydrogen Line Monitor Modal -->
-  <div id="galacticModal" class="modal" onclick="closeGalacticModal(event)">
-    <div class="modal-box modal-box-extra-large" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span class="modal-title">
-          <span class="modal-title-long">🌌 天の川銀河21cmドリフトスキャン ＆ 水素線分光モニター</span>
-          <span class="modal-title-short">🌌 銀河観測モニター</span>
-        </span>
-        <button class="modal-close" onclick="closeGalacticModal()">&times;</button>
+  <!-- 03 / GALACTIC 21CM Workspace -->
+  <div id="wsGalactic" class="workspace-pane">
+    <div id="galacticModal" class="workspace-panel">
+      <div class="workspace-panel-header">
+        <div>
+          <span class="workspace-panel-code">03 / GALACTIC</span>
+          <span class="workspace-panel-title">
+            <span class="modal-title-long">天の川銀河 21cm ドリフトスキャン ＆ 水素線分光モニター</span>
+            <span class="modal-title-short">銀河観測モニター</span>
+          </span>
+        </div>
+        <button type="button" class="btn-refresh" onclick="closeGalacticModal()">CONSOLE</button>
       </div>
-      <div class="modal-body" style="padding: 16px;">
+      <div>
         <!-- Error Banner (Shown on fetch error) -->
-        <div id="galacticErrorBanner" style="display:none; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; padding:10px 14px; margin-bottom:14px; color:#fca5a5; font-size:0.85rem; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div id="galacticErrorBanner" style="display:none; background:rgba(239,68,68,0.15); border:1px solid var(--status-err); border-radius:2px; padding:10px 14px; margin-bottom:14px; color:#fca5a5; font-size:0.85rem; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
           <div style="display:flex; align-items:center; gap:8px;">
             <span>⚠️</span>
             <span id="galacticErrorMessage">観測データの取得に失敗しました。</span>
           </div>
-          <button class="copy-btn" style="background:#dc2626; color:white; border:none; padding:4px 10px; font-size:0.75rem; border-radius:4px; cursor:pointer;" onclick="galacticFetchObservations()">🔄 再試行</button>
+          <button class="copy-btn" style="background:var(--status-err); color:white; border:none; padding:4px 10px; font-size:0.75rem; border-radius:4px; cursor:pointer;" onclick="galacticFetchObservations()">🔄 再試行</button>
         </div>
 
         <!-- Top Status Bar: Pointing & Preemption Banner -->
-        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+        <div style="background: var(--bg-inset); border: 1px solid var(--border); border-radius: 2px; padding: 12px 16px; margin-bottom: 16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
             <div style="display:flex; align-items:center; gap:10px;">
               <span style="font-weight:bold; color:var(--accent); font-size:1.05rem;">📡 アンテナ固定ビーム: 北東ベランダ (Az 30.0°, El 35.0°)</span>
-              <span id="galacticRegionBadge" style="padding:3px 10px; border-radius:999px; font-size:0.75rem; font-weight:bold; background:#0284c7; color:white;">判定中...</span>
+              <span id="galacticRegionBadge" style="padding:3px 10px; border-radius:2px; font-size:0.75rem; font-weight:bold; background:var(--accent); color:white;">判定中...</span>
             </div>
             <div style="font-size:0.8rem; color:var(--text-muted);">
               S3スキャン蓄積: <span id="galacticScanCount" style="color:var(--text); font-weight:bold;">0</span> 件
             </div>
           </div>
           <!-- Telemetry parameters grid -->
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; font-family:ui-monospace,monospace; font-size:0.82rem; background:rgba(15,23,42,0.6); padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
-            <div><span style="color:var(--text-muted);">銀経 l:</span> <span id="galacticL" style="color:#38bdf8; font-weight:bold;">--</span>°</div>
-            <div><span style="color:var(--text-muted);">銀緯 b:</span> <span id="galacticB" style="color:#38bdf8; font-weight:bold;">--</span>°</div>
-            <div><span style="color:var(--text-muted);">赤経 α:</span> <span id="galacticRa" style="color:#e2e8f0;">--</span>°</div>
-            <div><span style="color:var(--text-muted);">赤緯 δ:</span> <span id="galacticDec" style="color:#e2e8f0;">--</span>°</div>
-            <div><span style="color:var(--text-muted);">LST:</span> <span id="galacticLst" style="color:#e2e8f0;">--</span>°</div>
-            <div><span style="color:var(--text-muted);">Δv_LSR:</span> <span id="galacticLsr" style="color:#34d399; font-weight:bold;">--</span> km/s</div>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; font-family:ui-monospace,monospace; font-size:0.82rem; background:rgba(15,23,42,0.6); padding:10px; border-radius:2px; border:1px solid rgba(255,255,255,0.05);">
+            <div><span style="color:var(--text-muted);">銀経 l:</span> <span id="galacticL" style="color:var(--accent); font-weight:bold;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">銀緯 b:</span> <span id="galacticB" style="color:var(--accent); font-weight:bold;">--</span>°</div>
+            <div><span style="color:var(--text-muted);">赤経 α:</span> <span id="galacticRa" style="color:var(--text-primary);">--</span>°</div>
+            <div><span style="color:var(--text-muted);">赤緯 δ:</span> <span id="galacticDec" style="color:var(--text-primary);">--</span>°</div>
+            <div><span style="color:var(--text-muted);">LST:</span> <span id="galacticLst" style="color:var(--text-primary);">--</span>°</div>
+            <div><span style="color:var(--text-muted);">Δv_LSR:</span> <span id="galacticLsr" style="color:var(--status-ok); font-weight:bold;">--</span> km/s</div>
           </div>
           <!-- Pass Gating Policy Notice -->
-          <div style="margin-top:10px; font-size:0.78rem; background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); border-radius:6px; padding:6px 12px; color:#cbd5e1; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+          <div style="margin-top:10px; font-size:0.78rem; background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); border-radius:2px; padding:6px 12px; color:var(--text-primary); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <span>🛡️ <b>衛星スマート足切り (Pass Gating)</b>: METEOR ≥ 25.0° / ISS・CubeSat ≥ 20.0° のみ最優先プリエンプション（低仰角パス時は銀河観測を継続）</span>
-            <span style="color:#34d399; font-weight:bold;">SDRアイドル時 周波数スイッチング自律積算</span>
+            <span style="color:var(--status-ok); font-weight:bold;">SDRアイドル時 周波数スイッチング自律積算</span>
           </div>
         </div>
 
         <!-- Scientific Interpretation & Insight Summary Card -->
-        <div id="galacticInsightCard" style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9)); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);">
+        <div id="galacticInsightCard" style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9)); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 2px; padding: 12px 16px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:0.95rem; font-weight:bold; color:#38bdf8;">✨ 天文学・物理学的インサイト要約</span>
-              <span id="galacticTargetArmBadge" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:bold;">ペルセウス腕 捕捉中</span>
+              <span style="font-size:0.95rem; font-weight:bold; color:var(--accent);">✨ 天文学・物理学的インサイト要約</span>
+              <span id="galacticTargetArmBadge" style="background:rgba(56,189,248,0.2); border:1px solid var(--accent); color:var(--accent); padding:2px 8px; border-radius:2px; font-size:0.75rem; font-weight:bold;">ペルセウス腕 捕捉中</span>
             </div>
-            <div id="galacticCountdownBadge" style="font-size:0.8rem; font-weight:bold; color:#fbbf24; background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.3); padding:3px 10px; border-radius:6px;">
+            <div id="galacticCountdownBadge" style="font-size:0.8rem; font-weight:bold; color:var(--status-warn); background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.3); padding:3px 10px; border-radius:2px;">
               ⏱️ 銀河面通過: 計算中...
             </div>
           </div>
-          <div id="galacticInsightNarrative" style="font-size:0.82rem; line-height:1.6; color:#e2e8f0;">
+          <div id="galacticInsightNarrative" style="font-size:0.82rem; line-height:1.6; color:var(--text-primary);">
             アンテナ視線は現在、太陽系（局所腕）の約 6,200 光年外側を公転する『ペルセウス腕』の濃密な中性水素ガス雲を捉えています。銀河中心を中心とした差動回転（Differential Rotation）により、外側の渦状腕が視線方向に遠ざかる（青方偏移）現象をスペクトルとして分離観測しています。
           </div>
         </div>
@@ -2314,7 +2493,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Main Visualizations: 2-Column Responsive Grid -->
         <div class="galactic-viz-grid">
           <!-- Left: 21cm Hydrogen Line Spectrum & Dark Matter Inspector -->
-          <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display:flex; flex-direction:column;">
+          <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 2px; padding: 14px; display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
               <div>
                 <span style="font-weight:bold; color:#f1f5f9; font-size:0.92rem;">📊 21cm 水素線視線速度スペクトル</span>
@@ -2322,52 +2501,52 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
               <div style="display:flex; align-items:center; gap:6px;">
                 <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">横軸範囲:</span>
-                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid #334155; font-size:0.72rem;">
-                  <button id="galacticRangeFullBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:#0284c7; color:#fff; font-weight:bold;" onclick="galacticSetSpectrumRange('full')">全域 ±150</button>
-                  <button id="galacticRangeArmBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:#1e293b; color:#94a3b8;" onclick="galacticSetSpectrumRange('arm')">渦状腕 -100~+50</button>
-                  <button id="galacticRangeZoomBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:#1e293b; color:#94a3b8;" onclick="galacticSetSpectrumRange('zoom')">超拡大 -70~+30</button>
+                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid var(--border-hairline); font-size:0.72rem;">
+                  <button id="galacticRangeFullBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--accent); color:#fff; font-weight:bold;" onclick="galacticSetSpectrumRange('full')">全域 ±150</button>
+                  <button id="galacticRangeArmBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpectrumRange('arm')">渦状腕 -100~+50</button>
+                  <button id="galacticRangeZoomBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpectrumRange('zoom')">超拡大 -70~+30</button>
                 </div>
               </div>
             </div>
 
             <!-- Intuitive Quick Reading Guide -->
-            <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:7px 10px; margin-bottom:8px; font-size:0.74rem; line-height:1.45; color:#cbd5e1;">
+            <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.25); border-radius:2px; padding:7px 10px; margin-bottom:8px; font-size:0.74rem; line-height:1.45; color:var(--text-primary);">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
-                <span style="font-weight:bold; color:#38bdf8;">💡 一目でわかる！スペクトルの見方（宇宙のスピードメーター）</span>
-                <div id="galacticSpectrumHoverInfo" style="font-size:0.72rem; font-family:ui-monospace,monospace; color:#38bdf8; font-weight:bold;">
+                <span style="font-weight:bold; color:var(--accent);">💡 一目でわかる！スペクトルの見方（宇宙のスピードメーター）</span>
+                <div id="galacticSpectrumHoverInfo" style="font-size:0.72rem; font-family:ui-monospace,monospace; color:var(--accent); font-weight:bold;">
                   波形をなぞると渦状腕・距離を表示
                 </div>
               </div>
               <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; font-size:0.72rem;">
-                <div><span style="color:#fbbf24; font-weight:bold;">横軸 (速度):</span> 0=太陽系近傍、マイナス=接近する外側の腕</div>
-                <div><span style="color:#38bdf8; font-weight:bold;">縦軸 (強度):</span> 山が高いほど濃密な水素ガス雲が存在</div>
-                <div><span style="color:#34d399; font-weight:bold;">山の数:</span> 貫通した渦状腕の層数（銀河のミルフィーユ構造）</div>
+                <div><span style="color:var(--status-warn); font-weight:bold;">横軸 (速度):</span> 0=太陽系近傍、マイナス=接近する外側の腕</div>
+                <div><span style="color:var(--accent); font-weight:bold;">縦軸 (強度):</span> 山が高いほど濃密な水素ガス雲が存在</div>
+                <div><span style="color:var(--status-ok); font-weight:bold;">山の数:</span> 貫通した渦状腕の層数（銀河のミルフィーユ構造）</div>
               </div>
             </div>
 
             <!-- Spectrum Canvas with interactive hover cursor -->
-            <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; min-height:220px; background:#080d1a; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); cursor:crosshair;">
+            <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; min-height:220px; background:#080d1a; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); cursor:crosshair;">
               <canvas id="galacticSpectrumCanvas" width="900" height="420" style="width:100%; height:100%; display:block;" onmousemove="galacticHandleSpectrumHover(event)" onmouseleave="galacticClearSpectrumHover()" ontouchmove="galacticHandleSpectrumTouch(event)"></canvas>
             </div>
 
             <!-- Dark Matter & Galactic Rotation Analysis Panel -->
-            <div id="galacticDarkMatterPanel" style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; font-size:0.78rem;">
+            <div id="galacticDarkMatterPanel" style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:2px; padding:10px 12px; font-size:0.78rem;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                 <span style="font-weight:bold; color:#a855f7;">🌌 暗黒物質（ダークマター）検証アナライザー</span>
-                <span id="galacticDmBadge" style="font-size:0.72rem; color:#34d399; font-family:ui-monospace,monospace;">フラット回転曲線実証</span>
+                <span id="galacticDmBadge" style="font-size:0.72rem; color:var(--status-ok); font-family:ui-monospace,monospace;">フラット回転曲線実証</span>
               </div>
               <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-family:ui-monospace,monospace; margin-bottom:6px; text-align:center;">
                 <div style="background:rgba(0,0,0,0.25); padding:4px; border-radius:4px;">
                   <div style="color:var(--text-muted); font-size:0.7rem;">外腕実測速度 V(R)</div>
-                  <div id="galacticDmMeasuredV" style="color:#38bdf8; font-weight:bold;">220.0 km/s</div>
+                  <div id="galacticDmMeasuredV" style="color:var(--accent); font-weight:bold;">220.0 km/s</div>
                 </div>
                 <div style="background:rgba(0,0,0,0.25); padding:4px; border-radius:4px;">
                   <div style="color:var(--text-muted); font-size:0.7rem;">ケプラー予測 V_k</div>
-                  <div id="galacticDmKeplerV" style="color:#f43f5e; font-weight:bold;">196.3 km/s</div>
+                  <div id="galacticDmKeplerV" style="color:var(--status-err); font-weight:bold;">196.3 km/s</div>
                 </div>
                 <div style="background:rgba(0,0,0,0.25); padding:4px; border-radius:4px;">
                   <div style="color:var(--text-muted); font-size:0.7rem;">暗黒物質超過比</div>
-                  <div id="galacticDmRatio" style="color:#fbbf24; font-weight:bold;">1.26 倍</div>
+                  <div id="galacticDmRatio" style="color:var(--status-warn); font-weight:bold;">1.26 倍</div>
                 </div>
               </div>
               <div id="galacticDmNote" style="font-size:0.73rem; color:var(--text-muted); line-height:1.4;">
@@ -2377,71 +2556,71 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- 3 Major Discoveries Summary Cards -->
             <div style="margin-top:8px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-size:0.75rem; text-align:center;">
-              <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 4px;">
+              <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:2px; padding:6px 4px;">
                 <div style="color:var(--text-muted); font-size:0.75rem;">貫通した渦状腕</div>
-                <div id="galacticDiscoveredArms" style="color:#38bdf8; font-weight:bold; font-size:0.83rem; margin-top:1px;">2層 (局所腕+ペルセウス腕)</div>
-                <div style="color:#94a3b8; font-size:0.72rem;">多層渦巻の動かぬ証拠</div>
+                <div id="galacticDiscoveredArms" style="color:var(--accent); font-weight:bold; font-size:0.83rem; margin-top:1px;">2層 (局所腕+ペルセウス腕)</div>
+                <div style="color:var(--text-secondary); font-size:0.72rem;">多層渦巻の動かぬ証拠</div>
               </div>
-              <div style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.25); border-radius:6px; padding:6px 4px;">
+              <div style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.25); border-radius:2px; padding:6px 4px;">
                 <div style="color:var(--text-muted); font-size:0.75rem;">最遠検出距離</div>
-                <div id="galacticMaxDist" style="color:#34d399; font-weight:bold; font-size:0.83rem; margin-top:1px;">約 6,200 光年</div>
-                <div style="color:#94a3b8; font-size:0.72rem;">古代縄文・メソポタミアの光</div>
+                <div id="galacticMaxDist" style="color:var(--status-ok); font-weight:bold; font-size:0.83rem; margin-top:1px;">約 6,200 光年</div>
+                <div style="color:var(--text-secondary); font-size:0.72rem;">古代縄文・メソポタミアの光</div>
               </div>
-              <div style="background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.25); border-radius:6px; padding:6px 4px;">
+              <div style="background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.25); border-radius:2px; padding:6px 4px;">
                 <div style="color:var(--text-muted); font-size:0.75rem;">銀河の回転速度</div>
                 <div id="galacticRotV" style="color:#a855f7; font-weight:bold; font-size:0.83rem; margin-top:1px;">秒速 220 km</div>
-                <div style="color:#94a3b8; font-size:0.72rem;">暗黒物質の存在実証</div>
+                <div style="color:var(--text-secondary); font-size:0.72rem;">暗黒物質の存在実証</div>
               </div>
             </div>
           </div>
 
           <!-- Right: Milky Way Top-Down 2D Map & Line-of-Sight Beam Plot -->
-          <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display:flex; flex-direction:column;">
+          <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 2px; padding: 14px; display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
               <div>
                 <span style="font-weight:bold; color:#f1f5f9; font-size:0.92rem;">🗺️ 天の川銀河 2D 俯瞰鳥瞰図 (Top-Down Map)</span>
                 <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">自転＆銀河公転アニメーション</span>
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
-                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid #334155; font-size:0.72rem;">
-                  <button id="galacticSpeedSlowBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:#0284c7; color:#fff; font-weight:bold;" onclick="galacticSetSpeed(0.25)">🐢 悠久 (0.25x)</button>
-                  <button id="galacticSpeedNormalBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:#1e293b; color:#94a3b8;" onclick="galacticSetSpeed(1.0)">標準 (1x)</button>
+                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid var(--border-hairline); font-size:0.72rem;">
+                  <button id="galacticSpeedSlowBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:var(--accent); color:#fff; font-weight:bold;" onclick="galacticSetSpeed(0.25)">🐢 悠久 (0.25x)</button>
+                  <button id="galacticSpeedNormalBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpeed(1.0)">標準 (1x)</button>
                 </div>
-                <button id="galacticAnimToggleBtn" class="copy-btn" style="padding:2px 8px; font-size:0.75rem; background:#1e293b; border:1px solid #475569;" onclick="galacticToggleAnimation()">⏸ 一時停止</button>
-                <div id="galacticBeamHeading" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:#34d399; font-weight:bold;">
+                <button id="galacticAnimToggleBtn" class="copy-btn" style="padding:2px 8px; font-size:0.75rem; background:var(--bg-surface); border:1px solid #475569;" onclick="galacticToggleAnimation()">⏸ 一時停止</button>
+                <div id="galacticBeamHeading" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:var(--status-ok); font-weight:bold;">
                   ビーム照射角: l = --°
                 </div>
               </div>
             </div>
             <!-- Top-Down Map Canvas -->
-            <div style="position:relative; width:100%; aspect-ratio: 1 / 1; max-height:360px; height:auto; background:#040711; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); margin:auto 0;">
+            <div style="position:relative; width:100%; aspect-ratio: 1 / 1; max-height:360px; height:auto; background:#040711; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); margin:auto 0;">
               <canvas id="galacticTopDownCanvas" width="600" height="600" style="width:100%; height:100%; display:block;"></canvas>
             </div>
             <div style="margin-top:8px; display:flex; justify-content:space-around; font-size:0.72rem; color:var(--text-muted); flex-wrap:gap; gap:4px;">
-              <span><span style="color:#fbbf24;">●</span> 銀河中心 (Sgr A*)</span>
-              <span><span style="color:#34d399;">⊙</span> 太陽系 (V=220km/s)</span>
-              <span><span style="color:#ef4444;">🔴</span> 人類電波バブル (~100光年)</span>
-              <span><span style="color:#38bdf8;">―</span> ペルセウス腕</span>
+              <span><span style="color:var(--status-warn);">●</span> 銀河中心 (Sgr A*)</span>
+              <span><span style="color:var(--status-ok);">⊙</span> 太陽系 (V=220km/s)</span>
+              <span><span style="color:var(--status-err);">🔴</span> 人類電波バブル (~100光年)</span>
+              <span><span style="color:var(--accent);">―</span> ペルセウス腕</span>
               <span><span style="color:rgba(56,189,248,0.5);">▲</span> 照射ビーム</span>
             </div>
 
             <!-- Immensity of Cosmic Distance & Scales Panel -->
-            <div style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 12px; font-size:0.75rem;">
+            <div style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:2px; padding:8px 12px; font-size:0.75rem;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <span style="font-weight:bold; color:#38bdf8;">📏 銀河のスケール感と人類の電波バブル</span>
-                <span style="font-size:0.7rem; color:#fbbf24; font-family:ui-monospace,monospace;">1銀河年 = 約2.3億年</span>
+                <span style="font-weight:bold; color:var(--accent);">📏 銀河のスケール感と人類の電波バブル</span>
+                <span style="font-size:0.7rem; color:var(--status-warn); font-family:ui-monospace,monospace;">1銀河年 = 約2.3億年</span>
               </div>
-              <div style="display:flex; flex-direction:column; gap:4px; line-height:1.4; color:#cbd5e1; font-size:0.73rem;">
+              <div style="display:flex; flex-direction:column; gap:4px; line-height:1.4; color:var(--text-primary); font-size:0.73rem;">
                 <div style="display:flex; align-items:flex-start; gap:6px;">
-                  <span style="color:#ef4444; font-weight:bold; white-space:nowrap;">🔴 人類の電波バブル (~100光年):</span>
+                  <span style="color:var(--status-err); font-weight:bold; white-space:nowrap;">🔴 人類の電波バブル (~100光年):</span>
                   <span>1900年以降に人類が放った電波の到達限界球。直径10万光年の銀河では<b>1画素未満（微小な点）</b>にすぎません。</span>
                 </div>
                 <div style="display:flex; align-items:flex-start; gap:6px;">
-                  <span style="color:#38bdf8; font-weight:bold; white-space:nowrap;">🌀 ペルセウス腕 (~6,200光年):</span>
+                  <span style="color:var(--accent); font-weight:bold; white-space:nowrap;">🌀 ペルセウス腕 (~6,200光年):</span>
                   <span>今受信している電波は、<b>古代縄文・メソポタミア黎明期</b>に放たれ、光速で宇宙を旅してベランダに届いた光です。</span>
                 </div>
                 <div style="display:flex; align-items:flex-start; gap:6px;">
-                  <span style="color:#fbbf24; font-weight:bold; white-space:nowrap;">🦕 太陽系公転周期 (2.3億年):</span>
+                  <span style="color:var(--status-warn); font-weight:bold; white-space:nowrap;">🦕 太陽系公転周期 (2.3億年):</span>
                   <span>太陽系が銀河を1周する時間。前回太陽系がこの位置にいた頃、<b>地球には恐竜が現れたばかり（三畳紀）</b>でした。</span>
                 </div>
               </div>
@@ -2450,25 +2629,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <!-- Section 2: 24h Galactic Drift Curve -->
-        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom:16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 2px; padding: 14px; margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
             <div>
               <span style="font-weight:bold; color:#f1f5f9; font-size:0.95rem;">📈 24時間 銀河面ドリフトスキャン予測 ＆ 連続波トータルパワー</span>
               <span style="font-size:0.75rem; color:var(--text-muted); margin-left:8px;">天の川銀河面 (|b| ≤ 15°) ハイライト</span>
             </div>
             <div style="display:flex; gap:12px; font-size:0.75rem; color:var(--text-muted);">
-              <span><span style="display:inline-block; width:10px; height:10px; background:rgba(56,189,248,0.25); border:1px solid #38bdf8; margin-right:4px;"></span>銀河面 (|b|≤15°)</span>
-              <span><span style="display:inline-block; width:10px; height:2px; background:#38bdf8; margin-right:4px; vertical-align:middle;"></span>銀緯 |b| 推移</span>
-              <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f43f5e; margin-right:4px;"></span>連続波 [dB]</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:rgba(56,189,248,0.25); border:1px solid var(--accent); margin-right:4px;"></span>銀河面 (|b|≤15°)</span>
+              <span><span style="display:inline-block; width:10px; height:2px; background:var(--accent); margin-right:4px; vertical-align:middle;"></span>銀緯 |b| 推移</span>
+              <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--status-err); margin-right:4px;"></span>連続波 [dB]</span>
             </div>
           </div>
-          <div style="position:relative; width:100%; aspect-ratio: 3 / 1; height:auto; max-height:260px; background:#080d1a; border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
+          <div style="position:relative; width:100%; aspect-ratio: 3 / 1; height:auto; max-height:260px; background:#080d1a; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
             <canvas id="galacticDriftCanvas" width="900" height="260" style="width:100%; height:100%; display:block;"></canvas>
           </div>
         </div>
 
         <!-- Section 3: Recent Scans Table -->
-        <div style="margin-top:16px; background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:14px;">
+        <div style="margin-top:16px; background: var(--card-bg); border:1px solid var(--border); border-radius:2px; padding:14px;">
           <div style="font-weight:bold; color:#f1f5f9; font-size:0.9rem; margin-bottom:8px;">📋 直近の銀河スキャン履歴 (Garage S3)</div>
           <div style="overflow-x:auto;">
             <table style="width:100%; border-collapse:collapse; font-size:0.8rem; font-family:ui-monospace,monospace; text-align:left;">
@@ -2491,13 +2670,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <!-- Section 4: Scientific Principles & Deep Dive Primer (Why & How We Know) -->
-        <div id="galacticScienceGuide" style="margin-top:16px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px;">
+        <div id="galacticScienceGuide" style="margin-top:16px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 2px; padding: 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;" onclick="galacticToggleGuide('galacticGuideBody')">
             <div>
-              <span style="font-weight:bold; color:#38bdf8; font-size:0.95rem;">📘 観測科学・DSP徹底解説：なぜわかったのか？どうやって計算したのか？</span>
+              <span style="font-weight:bold; color:var(--accent); font-size:0.95rem;">📘 観測科学・DSP徹底解説：なぜわかったのか？どうやって計算したのか？</span>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">ベランダの電波から宇宙の幾何学・質量・暗黒物質を解き明かす 5 大原理（タップで開閉）</div>
             </div>
-            <span id="galacticGuideBody-icon" style="color:#38bdf8; font-size:1rem; font-weight:bold;">▼</span>
+            <span id="galacticGuideBody-icon" style="color:var(--accent); font-size:1rem; font-weight:bold;">▼</span>
           </div>
 
           <div id="galacticGuideBody" style="display:block;">
@@ -2507,7 +2686,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>🔍 Q1. どうやってペルセウス腕やハローだと特定したのか？</span>
                 <span id="guideItem1-icon" style="color:var(--text-muted); font-size:0.75rem;">▲</span>
               </div>
-              <div id="guideItem1" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:block; padding-left:8px;">
+              <div id="guideItem1" style="font-size:0.8rem; line-height:1.6; color:var(--text-primary); display:block; padding-left:8px;">
                 <b>「空間の幾何学」×「電波のドップラー周波数ズレ」の掛け算</b>で特定しています。<br>
                 1. <b>空間幾何学</b>: 地球の自転（地方恒星時 LST）からアンテナ視線の銀河座標 (l, b) を算出。銀緯 |b| &gt; 30° なら円盤外の「銀河ハロー（深宇宙）」、|b| ≤ 15° なら「天の川銀河面」です。<br>
                 2. <b>ドップラー視線速度 (DSP)</b>: 銀河面を向いている時、天の川の差動回転（外側ほど角速度が遅い）により、太陽系の外側を回るペルセウス腕は太陽系から見て<b>秒速約 45 km で遠ざかります</b>。このため 21cm 電波（1420.406 MHz）が約 213 kHz 高い方へ青方偏移し、波形上に<b>「0 km/s（手前の局所腕）」と「-45 km/s（外側のペルセウス腕）」という 2 つの山が分離して現れます</b>。この電波の山こそが渦状腕を突き抜けて捉えた動かぬ証拠です。
@@ -2520,7 +2699,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>⚛️ Q2. なぜ 21cm なのか？（数百万年に1度の奇跡の電波）</span>
                 <span id="guideItem2-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
               </div>
-              <div id="guideItem2" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+              <div id="guideItem2" style="font-size:0.8rem; line-height:1.6; color:var(--text-primary); display:none; padding-left:8px;">
                 中性水素原子（陽子1個＋電子1個）において、陽子と電子のスピン（自転）が同じ向き（平行）から逆向き（反平行）へ落ちる際、超微細構造遷移エネルギー ΔE = 5.87 × 10⁻⁶ eV を電磁波として放射します。プランクの法則 (ΔE = hν) より、その周波数は <b>ν₀ = 1420.405751768 MHz（波長 λ = 21.106 cm）</b> と極めて精密に決まっています。<br>
                 1個の原子がこの放射を起こす確率は「約 1,100 万年に 1 回」という極微の現象ですが、銀河系内には太陽の数十億倍もの水素原子が存在するため、ベランダのアンテナで積算することで強烈な宇宙シグナルとして捉えることができます。
               </div>
@@ -2532,7 +2711,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>🌌 Q3. どうやって暗黒物質（ダークマター）を実証しているのか？</span>
                 <span id="guideItem3-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
               </div>
-              <div id="guideItem3" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+              <div id="guideItem3" style="font-size:0.8rem; line-height:1.6; color:var(--text-primary); display:none; padding-left:8px;">
                 天体が銀河の重力に引き込まれず円軌道を保つ条件は、万有引力と遠心力の釣り合い <b>V² / R = G M(R) / R²</b>（∴ M(R) = R V² / G）です。<br>
                 もし銀河の質量が目に見える星だけに集中していれば、太陽系（R₀ = 8.2 kpc, V₀ = 220 km/s）より外側にあるペルセウス腕（R ≈ 10.3 kpc）はケプラーの法則に従って <b>V_kepler = V₀ √(R₀ / R) ≈ 196.3 km/s</b> まで減速するはずです。<br>
                 しかし受信した電波のドップラー偏移を解析すると、外側でも <b>V_obs ≈ 220.0 km/s と全く減速していません（フラット回転曲線）</b>。このペルセウス腕位置で既に <b>(220.0 / 196.3)² ≈ 1.26 倍</b> の質量超過があり、さらに銀河最外縁部（R ≈ 20 kpc）ではケプラー予測 141.2 km/s に対し <b>(220.0 / 141.2)² ≈ 2.43 倍もの未知の質量</b> が必要となります。この「目に見えない巨大な重力源」こそがダークマターの正体です。
@@ -2545,7 +2724,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>📏 Q4. どうやって渦状腕までの距離やガスの重さを計算したのか？</span>
                 <span id="guideItem4-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
               </div>
-              <div id="guideItem4" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+              <div id="guideItem4" style="font-size:0.8rem; line-height:1.6; color:var(--text-primary); display:none; padding-left:8px;">
                 1. <b>空間距離 d</b>: オオルトの銀河差動回転モデル v_LSR = V₀ (R₀/R - 1) sin(l) から銀河中心距離 R を逆算し、余弦定理（三角測量）d = R₀ cos(l) + √(R² - R₀² sin²(l)) を解くことで、ペルセウス腕までの距離（約 6,200 光年〜反銀河中心方向 13,500 光年）が幾何学的に求まります。<br>
                 2. <b>ガスの総質量（柱密度）</b>: 希薄な星間ガスにおいて、スペクトルの輝度温度 T_B(v) の面積を積分すると、視線方向の断面積 1 cm² に含まれる水素原子の総数 <b>N_H = 1.823 × 10¹⁸ ∫ T_B(v) dv [atoms/cm²]</b> が求まります。これに水素原子質量とアンテナ立体角を掛けることで、視野内のガスの総重量（太陽質量の何万倍か）を計量できます。
               </div>
@@ -2557,7 +2736,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>📡 Q5. なぜ安価な SDR ドングルで微弱な宇宙電波が受かるのか？（周波数スイッチング DSP の威力）</span>
                 <span id="guideItem5-icon" style="color:var(--text-muted); font-size:0.75rem;">▼</span>
               </div>
-              <div id="guideItem5" style="font-size:0.8rem; line-height:1.6; color:#cbd5e1; display:none; padding-left:8px;">
+              <div id="guideItem5" style="font-size:0.8rem; line-height:1.6; color:var(--text-primary); display:none; padding-left:8px;">
                 宇宙からの水素輝線信号はわずか数ケルビン（熱雑音より数十倍微弱）であり、通常の受信では安価なドングル内部のアンプのゲイン傾斜・うねり（数 dB）に完全に埋もれてしまいます。<br>
                 本システムでは 15 秒おきに <b>ON周波数（1420.406 MHz）</b> と <b>OFF周波数（1423.000 MHz）</b> を交互に高速スイッチングし、除算 <b>(P_ON - P_OFF) / P_OFF</b> を行うことで、ハードウェア起因の歪みを数学的に完全に相殺しています。<br>
                 さらに 5 分間（300 秒）積算することで、ラジオメーターの式 <b>ΔT_min = T_sys / √(Δf · τ)</b> に従って熱雑音の揺らぎを約 1/1,000 に圧縮し、クリーンな宇宙信号を浮かび上がらせています。
@@ -2566,90 +2745,64 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="copy-btn" onclick="closeGalacticModal()">閉じる</button>
-      </div>
     </div>
-  </div>
+  </div><!-- /#wsGalactic -->
 
-  <!-- Future Passes Modal -->
-  <div id="futurePassesModal" class="modal" onclick="closeFuturePassesModal(event)">
-    <div class="modal-box modal-box-large" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span class="modal-title">
-          <span class="modal-title-long">📅 今後の北向きベランダ通過予測 (24時間)</span>
-          <span class="modal-title-short">📅 通過予測 (24h)</span>
-        </span>
-        <button class="modal-close" onclick="closeFuturePassesModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div style="background:rgba(6,182,212,0.1); border:1px solid rgba(6,182,212,0.3); border-radius:8px; padding:10px 14px; font-size:0.83rem; margin-bottom:14px; color:#e2e8f0;">
-          💡 <strong>ベランダ観測可能ウィンドウ</strong>: 方位角 250°〜110°（西〜北〜東）、仰角 25°〜60°（手すり下限〜上階庇上限）。南側建物遮蔽を避け、この開口窓を通過するパスを SGP4 により高精度予測しています。
+  <!-- 04 / ARCHIVE Workspace -->
+  <div id="wsArchive" class="workspace-pane">
+    <div id="backupModal" class="workspace-panel" style="max-width: 760px;">
+      <div class="workspace-panel-header">
+        <div>
+          <span class="workspace-panel-code">04 / ARCHIVE</span>
+          <span class="workspace-panel-title">S3 フルバックアップ ＆ ディザスタリカバリ</span>
         </div>
-        <div id="futurePassesList">
-          <div style="text-align:center; padding:20px; color:#94a3b8;">読み込み中...</div>
-        </div>
+        <button type="button" class="btn-refresh" onclick="closeBackupModal()">CONSOLE</button>
       </div>
-      <div class="modal-footer">
-        <button class="copy-btn" onclick="closeFuturePassesModal()">閉じる</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Backup & Restore Modal -->
-  <div id="backupModal" class="modal" onclick="closeBackupModal(event)">
-    <div class="modal-box" style="max-width: 640px;" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span class="modal-title">📦 S3 フルバックアップ ＆ ディザスタリカバリ</span>
-        <button class="modal-close" onclick="closeBackupModal()">&times;</button>
-      </div>
-      <div class="modal-body" style="padding: 16px; font-size: 0.9rem; line-height: 1.6;">
-        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-          <div style="font-weight: bold; color: var(--accent); margin-bottom: 6px;">📊 Garage S3 ストレージ統計</div>
-          <div id="backupStatsLoading">ストレージ情報を取得中...</div>
+      <div style="font-size: 0.9rem; line-height: 1.65;">
+        <div style="background: var(--bg-inset); border: 1px solid var(--border-hairline); border-radius: 2px; padding: 14px; margin-bottom: 18px;">
+          <div style="font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.04em;">GARAGE S3 STORAGE STATS</div>
+          <div id="backupStatsLoading" style="color: var(--text-secondary);">ストレージ情報を取得中...</div>
           <div id="backupStatsContent" style="display: none;">
-            <div class="backup-stats-grid">
-              <div>総オブジェクト数: <strong id="statTotalCount" style="color:white;">-</strong> 件</div>
-              <div>総ストレージ容量: <strong id="statTotalSize" style="color:white;">-</strong></div>
-              <div>成果物 (results/): <span id="statResultsCount" style="color:#38bdf8;">-</span> 件</div>
-              <div>生データ (archive/): <span id="statArchiveCount" style="color:#a78bfa;">-</span> 件</div>
-              <div>ゴールデンRAW (golden/): <span id="statGoldenCount" style="color:#f59e0b;">-</span> 件</div>
-              <div>一時受取 (raw/): <span id="statRawCount" style="color:#94a3b8;">-</span> 件</div>
+            <div class="backup-stats-grid mono-num">
+              <div>総オブジェクト数: <strong id="statTotalCount" style="color:var(--text-primary);">-</strong> 件</div>
+              <div>総ストレージ容量: <strong id="statTotalSize" style="color:var(--text-primary);">-</strong></div>
+              <div>成果物 (results/): <span id="statResultsCount" style="color:var(--accent);">-</span> 件</div>
+              <div>生データ (archive/): <span id="statArchiveCount" style="color:var(--text-primary);">-</span> 件</div>
+              <div>ゴールデンRAW (golden/): <span id="statGoldenCount" style="color:var(--status-warn);">-</span> 件</div>
+              <div>一時受取 (raw/): <span id="statRawCount" style="color:var(--text-secondary);">-</span> 件</div>
             </div>
           </div>
         </div>
 
         <div style="margin-bottom: 20px;">
-          <h4 style="margin: 0 0 8px 0; color: #38bdf8;">📥 1. フルバックアップのダウンロード</h4>
-          <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px 0;">
+          <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.85rem;">01 / FULL BACKUP DOWNLOAD</h4>
+          <p style="color: var(--text-secondary); font-size: 0.82rem; margin: 0 0 12px 0;">
             Garage S3 内の全成果物（画像・JSON・スペクトログラム）および生 IQ / WAV 音声を単一の <code>.tar</code> アーカイブとしてストリーミング配信します。<br>
-            ダウンロード完了後、Google Drive 等の安全な外部クラウドストレージへ手動で保管してください。
+            ダウンロード完了後、外部ストレージへ保管してください。
           </p>
-          <a id="btnDownloadBackup" href="/api/backup/download" class="action-btn" style="display: inline-block; background: #059669; color: white; padding: 8px 16px; font-weight: bold; text-decoration: none; border-radius: 6px; cursor: pointer;">
-            💾 フルバックアップ (.tar) をダウンロード
+          <a id="btnDownloadBackup" href="/api/backup/download" class="action-btn" style="display: inline-block; background: var(--status-ok); color: var(--bg-inset); padding: 8px 16px; font-family: var(--font-mono); font-size: 0.8rem; font-weight: 700; text-decoration: none; border-radius: 2px; cursor: pointer;">
+            DOWNLOAD BACKUP (.TAR)
           </a>
         </div>
 
-        <hr style="border: none; border-top: 1px solid #334155; margin: 20px 0;">
+        <hr style="border: none; border-top: 1px solid var(--border-hairline); margin: 20px 0;">
 
         <div>
-          <h4 style="margin: 0 0 8px 0; color: #f59e0b;">📤 2. バックアップからの復元（リストア）</h4>
-          <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px 0;">
-            Google Drive 等から取得したバックアップ <code>.tar</code> ファイルを選択すると、Garage S3 へ全データを展開・復元します。<br>
-            ※ 数十GB 以上の巨大バックアップ時は、ブラウザタイムアウトを防ぐため同梱の CLI ツール（<code>scripts/restore_backup.py</code>）のご利用を推奨します。
+          <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.85rem;">02 / RESTORE FROM ARCHIVE</h4>
+          <p style="color: var(--text-secondary); font-size: 0.82rem; margin: 0 0 12px 0;">
+            バックアップ <code>.tar</code> ファイルを選択すると、Garage S3 へ全データを展開・復元します。<br>
+            数 GB 以上の巨大バックアップ時は、ブラウザタイムアウトを防ぐため同梱の CLI ツール（<code>scripts/restore_backup.py</code>）のご利用を推奨します。
           </p>
           <div class="restore-input-row">
-            <input type="file" id="restoreFileInput" accept=".tar,.tar.gz" style="color: #94a3b8; font-size: 0.85rem; max-width: 100%;">
-            <button id="btnExecuteRestore" class="action-btn" style="background: #f59e0b; color: white; padding: 6px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; white-space: nowrap;" onclick="executeRestore()">復元実行</button>
+            <input type="file" id="restoreFileInput" accept=".tar,.tar.gz" style="color: var(--text-secondary); font-size: 0.82rem; max-width: 100%;">
+            <button id="btnExecuteRestore" class="action-btn" style="background: var(--bg-inset); color: var(--accent); border: 1px solid var(--accent); padding: 6px 14px; font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; border-radius: 2px; cursor: pointer; white-space: nowrap;" onclick="executeRestore()">EXECUTE RESTORE</button>
           </div>
-          <div id="restoreStatus" style="font-size: 0.82rem; color: #38bdf8; min-height: 18px;"></div>
+          <div id="restoreStatus" class="mono-num" style="font-size: 0.8rem; color: var(--accent); min-height: 18px; margin-top: 6px;"></div>
         </div>
       </div>
-      <div class="modal-footer" style="padding: 12px 16px; border-top: 1px solid #334155; text-align: right;">
-        <button class="copy-btn" onclick="closeBackupModal()">閉じる</button>
-      </div>
     </div>
-  </div>
+  </div><!-- /#wsArchive -->
+  </div><!-- /.workspace-shell -->
 
   <!-- Satellite Pass Replay & GIF Clipper Modal -->
   <div id="replayModal" class="modal" onclick="closeReplayModal(event)">
@@ -2663,15 +2816,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <!-- Left: Sky Dome Radar -->
           <div class="radar-wrapper">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <span style="font-size:0.8rem; font-weight:bold; color:#cbd5e1;">2D 天球レーダー</span>
-              <button id="btnToggleHeatmap" class="btn-sm" onclick="toggleSkyHeatmap()" style="padding:2px 8px; font-size:0.75rem; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:4px; cursor:pointer;">🎯 実績ヒートマップ: OFF</button>
+              <span style="font-size:0.8rem; font-weight:bold; color:var(--text-primary);">2D 天球レーダー</span>
+              <button id="btnToggleHeatmap" class="btn-sm" onclick="toggleSkyHeatmap()" style="padding:2px 8px; font-size:0.75rem; background:var(--bg-surface); border:1px solid var(--border-hairline); color:var(--text-secondary); border-radius:4px; cursor:pointer;">🎯 実績ヒートマップ: OFF</button>
             </div>
             <canvas id="radarCanvas" width="440" height="440" class="radar-canvas"></canvas>
             <div class="radar-legend">
               <div class="legend-item"><div class="legend-color" style="background:#06b6d4;"></div><span>開口窓 (Az 250°~110°, El 25°~60°)</span></div>
-              <div class="legend-item"><div class="legend-color" style="background:rgba(16,185,129,0.5); border:1px dashed #10b981;"></div><span>復調実績ヒートマップ</span></div>
-              <div class="legend-item"><div class="legend-color" style="background:rgba(15,23,42,0.85); border:1px solid #ef4444;"></div><span>南側建物遮蔽</span></div>
-              <div class="legend-item"><div class="legend-color" style="background:#34d399; border-radius:50%;"></div><span>衛星位置</span></div>
+              <div class="legend-item"><div class="legend-color" style="background:rgba(16,185,129,0.5); border:1px dashed var(--status-ok);"></div><span>復調実績ヒートマップ</span></div>
+              <div class="legend-item"><div class="legend-color" style="background:rgba(15,23,42,0.85); border:1px solid var(--status-err);"></div><span>南側建物遮蔽</span></div>
+              <div class="legend-item"><div class="legend-color" style="background:var(--status-ok); border-radius:50%;"></div><span>衛星位置</span></div>
             </div>
           </div>
 
@@ -2680,8 +2833,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Status Badge & Telemetry -->
             <div class="telemetry-card">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span id="repSatLabel" style="font-weight:bold; color:#38bdf8; font-size:1.05rem;">🛰️ 観測パス</span>
-                <span id="windowStatusBadge" style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:bold; background:#1e293b; color:#94a3b8; border:1px solid #334155;">判定中...</span>
+                <span id="repSatLabel" style="font-weight:bold; color:var(--accent); font-size:1.05rem;">🛰️ 観測パス</span>
+                <span id="windowStatusBadge" style="padding:2px 8px; border-radius:2px; font-size:0.75rem; font-weight:bold; background:var(--bg-surface); color:var(--text-secondary); border:1px solid var(--border-hairline);">判定中...</span>
               </div>
               <div class="replay-telemetry-grid">
                 <div class="telemetry-item">
@@ -2704,17 +2857,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- Decoded Cloud Image Preview (pops up during lock) -->
-            <div id="replayDecodedBox" style="display:none; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:8px 12px; margin-bottom:12px;">
-              <div style="font-size:0.75rem; font-weight:bold; color:#38bdf8; margin-bottom:4px; display:flex; justify-content:space-between;">
+            <div id="replayDecodedBox" style="display:none; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:2px; padding:8px 12px; margin-bottom:12px;">
+              <div style="font-size:0.75rem; font-weight:bold; color:var(--accent); margin-bottom:4px; display:flex; justify-content:space-between;">
                 <span>🛰️ 復調気象画像 (CADU ロック)</span>
-                <span style="font-size:0.7rem; color:#94a3b8;">タップで拡大</span>
+                <span style="font-size:0.7rem; color:var(--text-secondary);">タップで拡大</span>
               </div>
               <img id="replayDecodedImg" src="" style="width:100%; max-height:140px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="openImageModal(this.src)">
             </div>
 
             <!-- Spectrogram with Synced Red Cursor -->
             <div style="margin-bottom:8px;">
-              <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary); margin-bottom:4px;">
                 <span>📊 受信スペクトログラム (クリックでシーク)</span>
                 <span id="repCurrentTimeText">00:00 / 00:00</span>
               </div>
@@ -2726,13 +2879,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Timeline Scrubber & Speed Controls -->
             <div style="margin-bottom:12px;">
-              <input type="range" id="replayScrubber" min="0" max="406" value="0" style="width:100%; accent-color:#38bdf8; cursor:pointer;" oninput="handleScrubberInput(this.value)">
+              <input type="range" id="replayScrubber" min="0" max="406" value="0" style="width:100%; accent-color:var(--accent); cursor:pointer;" oninput="handleScrubberInput(this.value)">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; gap:6px;">
-                  <button id="btnPlayPause" class="btn-sm" style="background:#0284c7; color:white; font-weight:bold; padding:6px 14px; min-height:36px;" onclick="togglePlayPause()">▶️ 再生</button>
+                  <button id="btnPlayPause" class="btn-sm" style="background:var(--accent); color:white; font-weight:bold; padding:6px 14px; min-height:36px;" onclick="togglePlayPause()">▶️ 再生</button>
                   <button class="btn-sm" style="padding:6px 12px; min-height:36px;" onclick="restartPlayback()">⏮️ 最初から</button>
                 </div>
-                <div style="display:flex; gap:4px; align-items:center; font-size:0.8rem; color:#94a3b8;">
+                <div style="display:flex; gap:4px; align-items:center; font-size:0.8rem; color:var(--text-secondary);">
                   <span>速度:</span>
                   <button class="chip speed-chip active" onclick="setPlaySpeed(1, this)" style="padding:4px 10px; font-size:0.75rem;">1x</button>
                   <button class="chip speed-chip" onclick="setPlaySpeed(2, this)" style="padding:4px 10px; font-size:0.75rem;">2x</button>
@@ -2765,7 +2918,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <div id="gifProgressContainer" class="progress-bar-container">
                 <div id="gifProgressBar" class="progress-bar-fill"></div>
               </div>
-              <div id="gifProgressText" style="font-size:0.75rem; color:#94a3b8; text-align:center; margin-top:4px;"></div>
+              <div id="gifProgressText" style="font-size:0.75rem; color:var(--text-secondary); text-align:center; margin-top:4px;"></div>
             </div>
           </div>
         </div>
@@ -2778,6 +2931,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <script src="/static/gifenc.js"></script>
   <script>
+    function switchWorkspace(ws) {
+      const map = {
+        console: { pane: 'wsConsole', tab: 'wsTabConsole' },
+        orbit: { pane: 'wsOrbit', tab: 'wsTabOrbit' },
+        galactic: { pane: 'wsGalactic', tab: 'wsTabGalactic' },
+        archive: { pane: 'wsArchive', tab: 'wsTabArchive' },
+      };
+      if (!map[ws]) ws = 'console';
+      Object.keys(map).forEach(k => {
+        const pane = document.getElementById(map[k].pane);
+        const tab = document.getElementById(map[k].tab);
+        if (pane) pane.classList.toggle('active', k === ws);
+        if (tab) tab.classList.toggle('active', k === ws);
+      });
+      if (ws !== 'orbit' && typeof rafHandle !== 'undefined' && rafHandle) {
+        cancelAnimationFrame(rafHandle);
+        rafHandle = null;
+      }
+      if (ws !== 'galactic') {
+        if (typeof galacticPollTimer !== 'undefined' && galacticPollTimer) {
+          clearInterval(galacticPollTimer);
+          galacticPollTimer = null;
+        }
+        if (typeof galacticStopAnimation === 'function') galacticStopAnimation();
+      }
+      if (ws === 'orbit') {
+        renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
+      } else if (ws === 'galactic') {
+        galacticFetchObservations();
+        if (!galacticPollTimer) {
+          galacticPollTimer = setInterval(galacticFetchObservations, 10000);
+        }
+        galacticStartAnimation();
+      } else if (ws === 'archive') {
+        loadBackupStats();
+      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+
     function openImageModal(src) {
       document.getElementById('modalImg').src = src;
       document.getElementById('imageModal').classList.add('active');
@@ -2820,15 +3012,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       });
     }
 
-    // --- バックアップ ＆ リストア モーダル ロジック ---
+    // --- バックアップ ＆ リストア ワークスペース ロジック ---
     function openBackupModal() {
-      document.getElementById('backupModal').classList.add('active');
-      loadBackupStats();
+      switchWorkspace('archive');
     }
     function closeBackupModal(e) {
-      if (!e || e.target.id === 'backupModal' || e.target.classList.contains('modal-close') || e.target.classList.contains('copy-btn')) {
-        document.getElementById('backupModal').classList.remove('active');
-      }
+      switchWorkspace('console');
     }
     async function loadBackupStats() {
       const loading = document.getElementById('backupStatsLoading');
@@ -2894,9 +3083,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let orbitSelectedCalDate = null;
 
     function openOrbitCalendarModal() {
-      const modal = document.getElementById('orbitCalendarModal');
-      modal.classList.add('active');
-      renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
+      switchWorkspace('orbit');
     }
 
     async function openOrbitCalendarOnDate(dateStr) {
@@ -2907,8 +3094,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const parts = String(dateStr).split('-');
       const y = parseInt(parts[0], 10);
       const m = parseInt(parts[1], 10);
-      const modal = document.getElementById('orbitCalendarModal');
-      if (modal) modal.classList.add('active');
+      switchWorkspace('orbit');
       switchOrbitTab('calendar');
       if (!isNaN(y) && !isNaN(m)) {
         await renderMonthlyCalendar(y, m);
@@ -2919,12 +3105,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     function closeOrbitCalendarModal(e) {
-      if (e && e.target !== e.currentTarget && !e.target.classList.contains('modal-close') && !e.target.classList.contains('copy-btn')) return;
-      document.getElementById('orbitCalendarModal').classList.remove('active');
-      if (rafHandle) {
-        cancelAnimationFrame(rafHandle);
-        rafHandle = null;
-      }
+      switchWorkspace('console');
     }
 
     function switchOrbitTab(tab) {
@@ -3721,18 +3902,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
-    // --- 今後の通過予測モーダル ロジック ---
+    // --- 今後の通過予測ドック ロジック ---
     function closeFuturePassesModal(e) {
-      if (!e || e.target.id === 'futurePassesModal' || e.target.classList.contains('modal-close') || e.target.classList.contains('copy-btn')) {
-        document.getElementById('futurePassesModal').classList.remove('active');
-      }
+      const dock = document.getElementById('futurePassesModal');
+      const btn = document.getElementById('btnFuturePassesToggle');
+      if (dock) dock.classList.remove('active');
+      if (btn) btn.classList.remove('active');
     }
 
     async function openFuturePassesModal() {
+      switchWorkspace('console');
       const modal = document.getElementById('futurePassesModal');
+      const btn = document.getElementById('btnFuturePassesToggle');
+      if (modal && modal.classList.contains('active')) {
+        closeFuturePassesModal();
+        return;
+      }
       const listEl = document.getElementById('futurePassesList');
-      listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">📅 向こう 24 時間のパスを SGP4 計算中...</div>';
-      modal.classList.add('active');
+      if (!listEl) return;
+      listEl.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-secondary); font-family:var(--font-mono); font-size:0.8rem;">CALCULATING 24H SGP4 PASSES...</div>';
+      if (modal) modal.classList.add('active');
+      if (btn) btn.classList.add('active');
 
       try {
         const res = await fetch('/api/future-passes');
@@ -3740,57 +3930,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const data = await res.json();
 
         if (!data.passes || data.passes.length === 0) {
-          listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">向こう 24 時間にスカイウィンドウ通過予測はありません。</div>';
+          listEl.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-secondary);">向こう 24 時間にスカイウィンドウ通過予測はありません。</div>';
           return;
         }
 
-        let html = '';
+        let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:10px;">';
         data.passes.forEach(p => {
           const aosJst = new Date(p.aos_time).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-          const tcaJst = new Date(p.tca_time).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' });
           const isExcellent = p.quality_score.includes('EXCELLENT');
           const isGood = p.quality_score.includes('GOOD');
           const isFair = p.quality_score.includes('FAIR');
-          const badgeBg = isExcellent ? '#059669' : (isGood ? '#0284c7' : (isFair ? '#d97706' : '#475569'));
+          const badgeColor = isExcellent ? 'var(--status-ok)' : (isGood ? 'var(--accent)' : (isFair ? 'var(--status-warn)' : 'var(--text-muted)'));
 
           const prob = p.success_probability !== undefined && p.success_probability !== null ? Math.round(p.success_probability * 100) : null;
-          const probColor = prob !== null ? (prob >= 70 ? '#10b981' : (prob >= 40 ? '#38bdf8' : (prob >= 20 ? '#f59e0b' : '#94a3b8'))) : '#94a3b8';
+          const probColor = prob !== null ? (prob >= 70 ? 'var(--status-ok)' : (prob >= 40 ? 'var(--accent)' : (prob >= 20 ? 'var(--status-warn)' : 'var(--text-secondary)'))) : 'var(--text-secondary)';
           const driftBadge = p.time_drift_seconds !== undefined && p.time_drift_seconds !== null ? `
-            <div style="font-size:0.75rem; color:#a78bfa; margin-top:4px;">
-              ⏰ TLE時刻補正: <strong>${p.time_drift_seconds > 0 ? '+' : ''}${p.time_drift_seconds}秒</strong> (実測TCA追従)
+            <div class="mono-num" style="font-size:0.72rem; color:var(--text-secondary); margin-top:6px;">
+              TLE DRIFT: <strong style="color:var(--text-primary);">${p.time_drift_seconds > 0 ? '+' : ''}${p.time_drift_seconds}s</strong>
             </div>
           ` : '';
 
           const probBar = prob !== null ? `
-            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #334155;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem;">
-                <span style="color:#94a3b8;">🎯 復調期待度: <strong style="color:${probColor}; font-size:0.92rem;">${prob}%</strong></span>
-                <span style="color:#64748b; font-size:0.75rem;">${p.history_summary || ''}</span>
+            <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border-hairline);">
+              <div class="mono-num" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:0.74rem;">
+                <span style="color:var(--text-secondary);">DECODE PROB: <strong style="color:${probColor};">${prob}%</strong></span>
+                <span style="color:var(--text-muted); font-size:0.7rem;">${p.history_summary || ''}</span>
               </div>
-              <div style="width:100%; background:#1e293b; border-radius:999px; height:8px; overflow:hidden;">
-                <div style="background:${probColor}; width:${prob}%; height:100%; border-radius:999px;"></div>
+              <div style="width:100%; background:var(--bg-surface); border:1px solid var(--border-hairline); height:5px;">
+                <div style="background:${probColor}; width:${prob}%; height:100%;"></div>
               </div>
             </div>
           ` : '';
 
           html += `
-            <div style="background:rgba(255,255,255,0.03); border:1px solid #334155; border-radius:10px; padding:12px 14px; margin-bottom:12px;">
+            <div style="background:var(--bg-inset); border:1px solid var(--border-hairline); border-radius:2px; padding:10px 12px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
-                <span style="font-weight:bold; color:#38bdf8; font-size:1.02rem;">🛰️ ${p.satellite}</span>
-                <span style="background:${badgeBg}; color:white; font-size:0.75rem; padding:3px 10px; border-radius:999px; font-weight:bold; letter-spacing:0.02em;">${p.quality_score}</span>
+                <span style="font-family:var(--font-serif); font-weight:700; color:var(--text-primary); font-size:0.95rem;">${p.satellite}</span>
+                <span class="mono-num" style="border:1px solid ${badgeColor}; color:${badgeColor}; font-size:0.72rem; padding:1px 6px; border-radius:2px; font-weight:600;">${p.quality_score}</span>
               </div>
-              <div style="display:flex; flex-direction:column; gap:6px; font-size:0.82rem; color:#cbd5e1; background:rgba(0,0,0,0.25); padding:8px 12px; border-radius:6px;">
+              <div class="mono-num" style="display:flex; flex-direction:column; gap:4px; font-size:0.76rem; color:var(--text-secondary);">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                  <span style="color:#94a3b8; font-size:0.76rem;">出現 (AOS)</span>
-                  <strong style="color:white; font-family:ui-monospace, monospace;">${aosJst}</strong>
+                  <span>AOS (JST)</span>
+                  <strong style="color:var(--text-primary);">${aosJst}</strong>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                  <span style="color:#94a3b8; font-size:0.76rem;">最大仰角 (TCA)</span>
-                  <strong style="color:white;">${p.max_elevation}° <span style="color:#94a3b8; font-size:0.74rem; font-weight:normal;">(Az ${p.max_elevation_azimuth}°)</span></strong>
+                  <span>MAX EL</span>
+                  <strong style="color:var(--text-primary);">${p.max_elevation}° <span style="color:var(--text-muted); font-weight:normal;">(Az ${p.max_elevation_azimuth}°)</span></strong>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                  <span style="color:#94a3b8; font-size:0.76rem;">開口窓滞在</span>
-                  <strong style="color:#38bdf8;">${p.window_duration_seconds} 秒</strong>
+                  <span>WINDOW</span>
+                  <strong style="color:var(--accent);">${p.window_duration_seconds} s</strong>
                 </div>
               </div>
               ${driftBadge}
@@ -3798,9 +3987,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
           `;
         });
+        html += '</div>';
         listEl.innerHTML = html;
       } catch (err) {
-        listEl.innerHTML = `<div style="color:#ef4444; padding:10px;">予測データ取得エラー: ${err.message}</div>`;
+        listEl.innerHTML = `<div style="color:var(--status-err); padding:10px;">予測データ取得エラー: ${err.message}</div>`;
       }
     }
 
@@ -4739,6 +4929,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       } finally {
         isLoading = false;
         if (loader) loader.classList.remove('active');
+        // 画面がまだ下端付近にある場合は連続ロードできるように再チェック
+        setTimeout(() => {
+          const consolePane = document.getElementById('wsConsole');
+          if (consolePane && !consolePane.classList.contains('active')) return;
+          if (!isLoading && hasMore) {
+            const sentinel = document.getElementById('scrollSentinel');
+            if (sentinel) {
+              const rect = sentinel.getBoundingClientRect();
+              if (rect.top <= window.innerHeight + 450) {
+                loadPasses(currentPage + 1, false, timelineNextOffset);
+              }
+            }
+          }
+        }, 50);
       }
     }
 
@@ -4878,15 +5082,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const sentinel = document.getElementById('scrollSentinel');
       if (!sentinel) return;
 
+      const tryLoadMore = () => {
+        const consolePane = document.getElementById('wsConsole');
+        if (consolePane && !consolePane.classList.contains('active')) return;
+        if (!isLoading && hasMore) {
+          loadPasses(currentPage + 1, false, timelineNextOffset);
+        }
+      };
+
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
-          if (entry.isIntersecting && !isLoading && hasMore) {
-            loadPasses(currentPage + 1, false, timelineNextOffset);
+          if (entry.isIntersecting) {
+            tryLoadMore();
           }
         });
-      }, { rootMargin: '400px' });
+      }, { rootMargin: '450px' });
 
       observer.observe(sentinel);
+
+      window.addEventListener('scroll', () => {
+        if (isLoading || !hasMore) return;
+        const docEl = document.documentElement;
+        if (window.innerHeight + window.scrollY >= docEl.scrollHeight - 550) {
+          tryLoadMore();
+        }
+      }, { passive: true });
     }
 
     function timelineRatioToBucket(ratio) {
@@ -4955,23 +5175,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       timelineSyncToScroll(false);
     }
 
+    let timelineIsJumping = false;
+
     async function timelineJumpToBucket(bucket) {
       if (!bucket) return;
-      await loadPasses(1, true, bucket.offset);
-      const container = document.getElementById('cardsContainer');
-      if (container) {
-        const topY = container.getBoundingClientRect().top + window.scrollY - 24;
-        window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
+      timelineIsJumping = true;
+      try {
+        await loadPasses(1, true, bucket.offset);
+        const container = document.getElementById('cardsContainer');
+        if (container) {
+          const topY = container.getBoundingClientRect().top + window.scrollY - 72;
+          window.scrollTo({ top: Math.max(0, topY), behavior: 'auto' });
+        }
+      } finally {
+        setTimeout(() => { timelineIsJumping = false; }, 150);
       }
     }
 
     async function timelineResetToTop() {
-      await loadPasses(1, true, 0);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      timelineIsJumping = true;
+      try {
+        await loadPasses(1, true, 0);
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      } finally {
+        setTimeout(() => { timelineIsJumping = false; }, 150);
+      }
     }
 
     function timelineSyncToScroll(showPillBriefly) {
-      if (timelineIsDragging || !timelineBuckets || timelineBuckets.length === 0) return;
+      if (timelineIsDragging || timelineIsJumping || !timelineBuckets || timelineBuckets.length === 0) return;
       const container = document.getElementById('cardsContainer');
       if (!container) return;
       const cards = container.querySelectorAll('.card');
@@ -5128,18 +5360,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const normalBtn = document.getElementById('galacticSpeedNormalBtn');
       if (slowBtn && normalBtn) {
         if (speed < 0.5) {
-          slowBtn.style.background = '#0284c7';
-          slowBtn.style.color = '#fff';
+          slowBtn.style.background = 'var(--accent)';
+          slowBtn.style.color = 'var(--bg-inset)';
           slowBtn.style.fontWeight = 'bold';
-          normalBtn.style.background = '#1e293b';
-          normalBtn.style.color = '#94a3b8';
+          normalBtn.style.background = 'var(--bg-inset)';
+          normalBtn.style.color = 'var(--text-secondary)';
           normalBtn.style.fontWeight = 'normal';
         } else {
-          normalBtn.style.background = '#0284c7';
-          normalBtn.style.color = '#fff';
+          normalBtn.style.background = 'var(--accent)';
+          normalBtn.style.color = 'var(--bg-inset)';
           normalBtn.style.fontWeight = 'bold';
-          slowBtn.style.background = '#1e293b';
-          slowBtn.style.color = '#94a3b8';
+          slowBtn.style.background = 'var(--bg-inset)';
+          slowBtn.style.color = 'var(--text-secondary)';
           slowBtn.style.fontWeight = 'normal';
         }
       }
@@ -5150,8 +5382,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ['galacticRangeFullBtn', 'galacticRangeArmBtn', 'galacticRangeZoomBtn'].forEach(id => {
         const btn = document.getElementById(id);
         if (!btn) return;
-        btn.style.background = '#1e293b';
-        btn.style.color = '#94a3b8';
+        btn.style.background = 'var(--bg-inset)';
+        btn.style.color = 'var(--text-secondary)';
         btn.style.fontWeight = 'normal';
       });
       const activeMap = {
@@ -5161,8 +5393,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       };
       const activeBtn = document.getElementById(activeMap[mode]);
       if (activeBtn) {
-        activeBtn.style.background = '#0284c7';
-        activeBtn.style.color = '#fff';
+        activeBtn.style.background = 'var(--accent)';
+        activeBtn.style.color = 'var(--bg-inset)';
         activeBtn.style.fontWeight = 'bold';
       }
       if (galacticData && galacticData.latest_spectrum) {
@@ -5180,24 +5412,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     function openGalacticModal() {
-      const modal = document.getElementById('galacticModal');
-      if (modal) modal.classList.add('active');
-      galacticFetchObservations();
-      if (!galacticPollTimer) {
-        galacticPollTimer = setInterval(galacticFetchObservations, 10000);
-      }
-      galacticStartAnimation();
+      switchWorkspace('galactic');
     }
 
     function closeGalacticModal(e) {
-      if (e && e.target !== document.getElementById('galacticModal')) return;
-      const modal = document.getElementById('galacticModal');
-      if (modal) modal.classList.remove('active');
-      if (galacticPollTimer) {
-        clearInterval(galacticPollTimer);
-        galacticPollTimer = null;
-      }
-      galacticStopAnimation();
+      switchWorkspace('console');
     }
 
     function galacticStartAnimation() {
@@ -6886,74 +7105,74 @@ def resolve_card_metadata(p: dict):
         if sat_type == "SpaceStation":
             signal_type = signal_type or "APRS / AX.25 (1200bps AFSK)"
             freq_label = freq_label or "145.825 MHz"
-            icon = icon or "🚀"
+            icon = icon or "[ISS]"
         elif sat_type == "WeatherSatellite":
             signal_type = signal_type or "LRPT (QPSK 72kbps)"
             freq_label = freq_label or "137.900 MHz"
-            icon = icon or "🛰️"
+            icon = icon or "[METEOR]"
         elif sat_type == "CubeSat":
             signal_type = signal_type or "BPSK (1200bps Telemetry)"
             freq_label = freq_label or "145.935 MHz"
-            icon = icon or "📻"
+            icon = icon or "[CUBESAT]"
         else:
             signal_type = signal_type or "Audio / RF Spectrum"
             freq_label = freq_label or "-"
-            icon = icon or "📡"
+            icon = icon or "[SAT]"
 
     return sat_type, signal_type, freq_label, icon, summary_text
 
 
 TELEMETRY_EXPLANATIONS = {
     "tca": {
-        "title": "⏰ TCA (Time of Closest Approach / 最接近通過時刻)",
+        "title": "TCA (Time of Closest Approach / 最接近通過時刻)",
         "formula": "v_r(t) = 0,  d(Range)/dt = 0",
         "theory": "衛星が観測点に最も接近し、視線速度がゼロとなる基準時刻。接近（負の視線速度）から離脱（正の視線速度）へ反転する境界点です。",
         "balcony": "空間距離が最小となるため電波強度がピークに達し、ドップラー偏移がゼロを横切る観測のコア時刻です。",
     },
     "elevation": {
-        "title": "📐 Max Elevation & Azimuth (最大仰角・通過方位)",
+        "title": "Max Elevation & Azimuth (最大仰角・通過方位)",
         "formula": "El = arcsin(u / Range),  Az = arctan2(e, n)",
         "theory": "地平線 (0°) から天頂 (90°) を測る最高仰角と、その瞬間の水平方位角（北0°, 東90°, 南180°, 西270°）。",
         "balcony": "北向き開口窓 (El 25°〜60°, Az 250°〜110°) に最大仰角が収まるパスほど、上階の庇や手すりの遮蔽を避けて強力な直接波を受信できます。",
     },
     "window": {
-        "title": "🔭 Sky Window Duration (開口窓滞在時間)",
+        "title": "Sky Window Duration (開口窓滞在時間)",
         "formula": "T_window = Σ [t | Az(t) ∈ [250°, 110°] ∧ El(t) ∈ [25°, 60°]]",
         "theory": "ベランダの幾何学的視野限界（手すり下限〜庇上限）内を衛星が通過した実効時間と、進入・離脱方位。",
         "balcony": "南側を鉄筋コンクリートが遮るため、直接波を受信できる正味のチャンスはこの開口窓通過時間（通常2〜4分間）に限られます。",
     },
     "norad": {
-        "title": "🛰️ NORAD Cat ID & Orbit Type (軌道分類)",
+        "title": "NORAD Cat ID & Orbit Type (軌道分類)",
         "formula": "TLE Line 1 (Columns 3-7: Catalog Number), 軌道傾斜角 i",
         "theory": "北米航空宇宙防衛司令部が付与する一意の衛星番号と、軌道傾斜角 i から分類される軌道特性。",
         "balcony": "ISS (i=51.6°) は西から東へ傾いて飛び、気象衛星やCubeSat (i≈98° 太陽同期極軌道) は北極上空からベランダ正面へ進入します。",
     },
     "range": {
-        "title": "📏 Slant Range (斜距離・空間幾何距離)",
+        "title": "Slant Range (斜距離・空間幾何距離)",
         "formula": "Range = |r_sat(t) - r_obs| = √(e² + n² + u²) [km]",
         "theory": "地上局アンテナから衛星本体までの直線空間距離。",
         "balcony": "低軌道衛星は約500km（直上付近）から2500km（地平線付近）まで激変し、電波の幾何学的拡散減衰（FSPL）に直結します。",
     },
     "fspl": {
-        "title": "📉 FSPL (自由空間伝搬損失)",
+        "title": "FSPL (自由空間伝搬損失)",
         "formula": "FSPL = 20 log₁₀(d_km) + 20 log₁₀(f_MHz) + 32.44 [dB]",
         "theory": "等方性アンテナから放射された電波が、真空中を球面拡散伝搬する際の幾何学的減衰量。",
         "balcony": "距離変動に伴いパス中に 10〜15 dB も減衰量が変化し、AOS/LOS 付近と TCA 付近での受信電力の山なり曲線の主因となります。",
     },
     "doppler": {
-        "title": "〰️ Doppler Shift & df/dt (ドップラー周波数偏移)",
+        "title": "Doppler Shift & df/dt (ドップラー周波数偏移)",
         "formula": "Δf = -f₀ × (v_r / c) [Hz],  df/dt [Hz/s]",
         "theory": "衛星の高速飛行（時速約2.8万km）に伴う相対視線速度 v_r による周波数ズレと、TCA通過時の周波数変化率。",
         "balcony": "TCA通過時に変化率 df/dt（S字カーブの傾き）が最大となり、スペクトログラム上に美しい変曲点として刻まれます。",
     },
     "protocol": {
-        "title": "📡 Protocol & Modulation (物理・通信諸元)",
+        "title": "Protocol & Modulation (物理・通信諸元)",
         "formula": "AFSK 1200bps (Bell 202) / BPSK / QPSK 72kbps",
         "theory": "高周波搬送波にデジタルビット列を変調する方式と、データリンク層プロトコル（AX.25等）。",
         "balcony": "ISSは音声FM帯でのAFSK変調、CubeSatは低電力に強いBPSK、気象衛星は高密度画像を送るQPSKを採用しています。",
     },
     "decode": {
-        "title": "📦 Decode Stats & CRC (パケット復号実績)",
+        "title": "Decode Stats & CRC (パケット復号実績)",
         "formula": "CRC-16-CCITT / FCS Checksum Pass",
         "theory": "受信電波からノイズを取り除き、誤り検出符号 (CRC) を通過した正常パケットの検出数。",
         "balcony": "ベランダの手すり反射（マルチパス）や都市雑音に打ち勝ち、1ビットの誤りもなく地上局で復号できた正味の実績です。",
@@ -7059,12 +7278,12 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
           <div class="geek-tooltip" onclick="event.stopPropagation()">
             <div class="geek-tooltip-title">{title_esc}</div>
             <div class="geek-tooltip-section">
-              <div class="geek-tooltip-tag">📐 物理・数式定義</div>
+              <div class="geek-tooltip-tag">PHYSICAL / MATHEMATICAL DEFINITION</div>
               <div class="geek-tooltip-formula">{formula_esc}</div>
               <div class="geek-tooltip-body">{theory_esc}</div>
             </div>
             <div class="geek-tooltip-section">
-              <div class="geek-tooltip-tag">🔭 ベランダ観測での着眼点</div>
+              <div class="geek-tooltip-tag">OBSERVATION NOTE</div>
               <div class="geek-tooltip-body">{balcony_esc}</div>
             </div>
           </div>
@@ -7080,56 +7299,56 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
             tca_disp = dt.strftime("%H:%M:%S UTC")
         except Exception:
             pass
-    item_tca = make_item("tca", "⏰", "TCA (最接近)", tca_disp, f"(t={metrics.get('tca_second', 0)}s)", "telemetry-col-left")
+    item_tca = make_item("tca", "01", "TCA (最接近)", tca_disp, f"(t={metrics.get('tca_second', 0)}s)", "telemetry-col-left")
 
     # 2. Max El
     max_el = metrics.get("max_elevation", 0.0)
     max_el_az = metrics.get("max_elevation_azimuth", 0.0)
-    item_el = make_item("elevation", "📐", "MAX EL (最大仰角)", f"{max_el}°", f"(Az {max_el_az}°)", "telemetry-col-center")
+    item_el = make_item("elevation", "02", "MAX EL (最大仰角)", f"{max_el}°", f"(Az {max_el_az}°)", "telemetry-col-center")
 
     # 3. Sky Window
     win_sec = metrics.get("window_duration_seconds", 0)
     aos_az = metrics.get("window_aos_az")
     los_az = metrics.get("window_los_az")
     win_sub = f"({aos_az}°→{los_az}°)" if (aos_az is not None and los_az is not None) else "(遮蔽なし)"
-    item_win = make_item("window", "🔭", "SKY WINDOW (開口窓)", f"{win_sec} 秒", win_sub, "telemetry-col-right")
+    item_win = make_item("window", "03", "SKY WINDOW (開口窓)", f"{win_sec} 秒", win_sub, "telemetry-col-right")
 
     # 4. NORAD
     norad_id = metrics.get("norad_id")
     norad_str = f"#{norad_id}" if norad_id else "-"
     orbit_type = metrics.get("orbit_type", "LEO")
-    item_norad = make_item("norad", "🛰️", "NORAD / ORBIT", norad_str, f"({orbit_type})", "telemetry-col-left")
+    item_norad = make_item("norad", "04", "NORAD / ORBIT", norad_str, f"({orbit_type})", "telemetry-col-left")
 
     # 5. Slant Range
     min_r = metrics.get("min_range_km", 0.0)
     max_r = metrics.get("max_range_km", 0.0)
-    item_range = make_item("range", "📏", "SLANT RANGE (斜距離)", f"{min_r} km", f"(Max: {max_r}km)", "telemetry-col-center")
+    item_range = make_item("range", "05", "SLANT RANGE (斜距離)", f"{min_r} km", f"(Max: {max_r}km)", "telemetry-col-center")
 
     # 6. FSPL
     min_fspl = metrics.get("min_fspl_db", 0.0)
     delta_fspl = metrics.get("delta_fspl_db", 0.0)
-    item_fspl = make_item("fspl", "📉", "FSPL (伝搬損失)", f"{min_fspl} dB", f"(Δ {delta_fspl}dB)", "telemetry-col-right")
+    item_fspl = make_item("fspl", "06", "FSPL (伝搬損失)", f"{min_fspl} dB", f"(Δ {delta_fspl}dB)", "telemetry-col-right")
 
     # 7. Doppler
     max_dop = metrics.get("max_doppler_hz", 0.0)
     df_dt = metrics.get("tca_df_dt_hz_s", 0.0)
-    item_dop = make_item("doppler", "〰️", "DOPPLER (理論偏移)", f"±{max_dop} Hz", f"({df_dt} Hz/s)", "telemetry-col-left")
+    item_dop = make_item("doppler", "07", "DOPPLER (理論偏移)", f"±{max_dop} Hz", f"({df_dt} Hz/s)", "telemetry-col-left")
 
     # 8. Protocol
     proto = metrics.get("protocol", "RF Spectrum")
     freq_mhz = metrics.get("freq_mhz", 145.825)
-    item_proto = make_item("protocol", "📡", "PROTOCOL (通信諸元)", proto, f"({freq_mhz} MHz)", "telemetry-col-center")
+    item_proto = make_item("protocol", "08", "PROTOCOL (通信諸元)", proto, f"({freq_mhz} MHz)", "telemetry-col-center")
 
     # 9. Decode Stats
     stats_main = f"{packets_count} パケット" if sat_type == "SpaceStation" else f"{packets_count} フレーム"
     stats_sub = "CRC-OK" if packets_count > 0 else "NO SIGNAL"
-    item_decode = make_item("decode", "📦", "DECODE STATS (復号)", stats_main, f"({stats_sub})", "telemetry-col-right")
+    item_decode = make_item("decode", "09", "DECODE STATS (復号)", stats_main, f"({stats_sub})", "telemetry-col-right")
 
     return f"""
     <div class="telemetry-panel">
       <div class="telemetry-panel-header">
-        <span>📐 地上局テレメトリ & 軌道力学諸元</span>
-        <span class="telemetry-panel-hint">各項目の ⓘ をタップ / ホバーで物理解説表示</span>
+        <span>TELEMETRY &amp; ORBITAL MECHANICS</span>
+        <span class="telemetry-panel-hint">ⓘ で物理解説を表示</span>
       </div>
       <div class="telemetry-grid">
         {item_tca}
@@ -7394,7 +7613,7 @@ def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
             lines_html.append(line)
 
         content_html = hud_grid_html + "".join(lines_html)
-        title_text = f"🛰️ 宇宙機生体テレメトリ・プレビュー ({len(packet_items)} フレーム中 直近 {len(recent_pkts)} 件)"
+        title_text = f"TELEMETRY PREVIEW ({len(packet_items)} フレーム中 直近 {len(recent_pkts)} 件)"
     else:
         # APRS / パケット通信
         lines_html = []
@@ -7420,13 +7639,13 @@ def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
             lines_html.append(line)
 
         content_html = "".join(lines_html)
-        title_text = f"📡 最新復号パケット・プレビュー ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)"
+        title_text = f"PACKET PREVIEW ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)"
 
     return f"""
     <div class="packet-preview-container">
       <div class="packet-preview-header">
         <span>{title_text}</span>
-        <span style="font-family: ui-monospace, monospace; font-size: 0.75rem; color: #34d399;">CRC: PASS</span>
+        <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--status-ok);">CRC: PASS</span>
       </div>
       {content_html}
     </div>
@@ -7440,7 +7659,7 @@ def render_card_html(p: dict) -> str:
         spectrogram_html = f"""
         <div class="spectrogram-container">
           <img class="spectrogram-img" loading="lazy" src="{img_url}" alt="Spectrogram" onclick="openImageModal('{img_url}')">
-          <span class="spectrogram-hint">🔍 スペクトログラム拡大</span>
+          <span class="spectrogram-hint">ZOOM</span>
         </div>
         """
 
@@ -7450,11 +7669,11 @@ def render_card_html(p: dict) -> str:
             decoded_img_url = f"/view?key={urllib.parse.quote(fkey)}"
             decoded_images_html += f"""
             <div class="spectrogram-container" style="margin-top: 8px;">
-              <div style="padding: 4px 8px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: var(--accent); font-weight: bold; text-align: left;">
-                🛰️ 復調気象画像: {fname}
+              <div style="padding: 4px 10px; font-family: var(--font-mono); font-size: 0.72rem; background: var(--bg-surface); border-bottom: 1px solid var(--border-hairline); color: var(--accent); font-weight: 600; text-align: left;">
+                [IMG] 復調気象画像: {fname}
               </div>
               <img class="spectrogram-img" loading="lazy" src="{decoded_img_url}" alt="{fname}" onclick="openImageModal('{decoded_img_url}')">
-              <span class="spectrogram-hint">🔍 気象画像タップで拡大</span>
+              <span class="spectrogram-hint">ZOOM</span>
             </div>
             """
 
@@ -7483,7 +7702,7 @@ def render_card_html(p: dict) -> str:
         pretty_summary = json.dumps(summary, indent=2, ensure_ascii=False)
         summary_accordion = f"""
         <details class="data-accordion">
-          <summary>📊 解析サマリ (summary.json) の中身を見る</summary>
+          <summary>SUMMARY.JSON (解析サマリ)</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>{pretty_summary}</code></pre>
           </div>
@@ -7498,9 +7717,9 @@ def render_card_html(p: dict) -> str:
         packet_items = packets_data.get("packets") or packets_data.get("frames", [])
     if packet_items:
         pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
-        accordion_title = f"📡 受信パケット ({len(packet_items)} 件) の中身を見る"
+        accordion_title = f"PACKETS ({len(packet_items)} 件)"
         if "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
-            accordion_title = f"📻 受信テレメトリ ({len(packet_items)} 件) の中身を見る"
+            accordion_title = f"TELEMETRY FRAMES ({len(packet_items)} 件)"
         open_attr = " open" if is_success else ""
         packets_accordion = f"""
         <details class="data-accordion"{open_attr}>
@@ -7513,7 +7732,7 @@ def render_card_html(p: dict) -> str:
     elif "ISS" in sat_upper:
         packets_accordion = f"""
         <details class="data-accordion">
-          <summary>📡 APRS 受信パケット (0 件)</summary>
+          <summary>APRS PACKETS (0 件)</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>パケットは検出されませんでした (0 packets)</code></pre>
           </div>
@@ -7522,7 +7741,7 @@ def render_card_html(p: dict) -> str:
     elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
         packets_accordion = f"""
         <details class="data-accordion">
-          <summary>📻 BPSK テレメトリフレーム (0 件)</summary>
+          <summary>BPSK TELEMETRY FRAMES (0 件)</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>テレメトリフレームは検出されませんでした (0 frames)</code></pre>
           </div>
@@ -7534,9 +7753,9 @@ def render_card_html(p: dict) -> str:
         dl_url = f"/download?key={urllib.parse.quote(fkey)}"
 
         if fname.endswith(".png"):
-            view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">👁️ 表示</button>"""
+            view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">VIEW</button>"""
         elif fname.endswith(".json") or fname.endswith(".txt"):
-            view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">👁️ 中身を見る</button>"""
+            view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">INSPECT</button>"""
         else:
             view_btn = ""
 
@@ -7544,12 +7763,12 @@ def render_card_html(p: dict) -> str:
         file_row = f"""
         <div class="file-row">
           <div class="file-info">
-            <span class="file-icon">📄</span>
+            <span class="file-icon mono-num">[FILE]</span>
             <span class="file-name" title="{fname_esc}">{fname_esc}</span>
           </div>
           <div class="file-actions">
             {view_btn}
-            <a class="action-btn btn-download" href="{dl_url}">📥 保存</a>
+            <a class="action-btn btn-download" href="{dl_url}">SAVE</a>
           </div>
         </div>
         """
@@ -7558,7 +7777,7 @@ def render_card_html(p: dict) -> str:
     files_grid_html = "".join(file_rows)
     files_accordion = f"""
     <details class="data-accordion files-accordion">
-      <summary>📁 生成ファイル一覧 ({len(file_rows)} 件: 中身プレビュー ＆ ダウンロード)</summary>
+      <summary>FILES ({len(file_rows)} 件: プレビュー ＆ ダウンロード)</summary>
       <div class="accordion-content">
         <div class="files-grid">
           {files_grid_html}
@@ -7570,9 +7789,9 @@ def render_card_html(p: dict) -> str:
     has_data_val = "true" if is_success else "false"
 
     if is_success:
-        status_badge_html = '<span class="badge-status badge-status-success">✅ 復調成功</span>'
+        status_badge_html = '<span class="badge-status badge-status-success">DECODED</span>'
     else:
-        status_badge_html = '<span class="badge-status badge-status-failure">⚠️ 未復調 (0件)</span>'
+        status_badge_html = '<span class="badge-status badge-status-failure">NO DATA (0)</span>'
 
     # 地上局テレメトリ諸元 & パケットプレビューの生成
     metrics = resolve_pass_telemetry_metrics(p)
@@ -7610,8 +7829,8 @@ def render_card_html(p: dict) -> str:
           <div class="pass-id">{p.get('pass_id', '')}</div>
         </div>
         <div class="sat-header-right">
-          <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">🛰️ 天球リプレイ</button>
-          <button class="btn-sm btn-grafana" onclick="openGrafanaPass({from_ms}, {to_ms})">📊 Grafana</button>
+          <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">REPLAY</button>
+          <button class="btn-sm btn-grafana" onclick="openGrafanaPass({from_ms}, {to_ms})">GRAFANA</button>
           {status_badge_html}
         </div>
       </div>
@@ -8613,6 +8832,8 @@ def warm_cache_background():
         # 画面に即座に表示される上位24件の地上局テレメトリ諸元も先行算出
         for p in passes[:24]:
             resolve_pass_telemetry_metrics(p)
+        # /api/stats で使用する 30日分の次回ベストパス予測も先行算出
+        get_next_best_passes_cached(cache=pass_cache)
         print(f"✅ [Pre-warming] Cache warmed in {time.time() - t0:.2f}s ({len(passes)} passes)", flush=True)
     except Exception as e:
         print(f"⚠️ [Pre-warming] Error during cache warming: {e}", flush=True)
