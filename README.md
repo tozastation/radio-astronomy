@@ -28,14 +28,16 @@
 
 ### 観測結果ビューア（`satellite-viewer` / NodePort 30088）
 
-録音されたパスごとの音声・スペクトログラム、復調された気象画像、地上局テレメトリ（最接近時刻 TCA、最大仰角、開口角）をブラウザから確認できます。
+[DESIGN.md](DESIGN.md) に基づく黒鉛系ダーク計器盤 UI と 4 つの統合ワークスペースで構成され、録音されたパスごとの音声・スペクトログラム、復調画像、軌道予測、銀河 21cm 分光データをブラウザから確認できます。
 
 | 観測結果ダッシュボード | 天球観測リプレイ ＆ 実績ヒートマップ |
 | :---: | :---: |
 | ![観測結果ダッシュボード](docs/images/readme_viewer_dashboard.png) | ![天球観測リプレイ](docs/images/readme_viewer_replay.png) |
 
-- **地上局テレメトリ & 軌道力学諸元**: 通過ごとの最接近時刻 TCA、最大仰角、ベランダ開口角、ドップラー実測 TCA 補正値を即座に算出。各項目の ⓘ をタップすると無線工学・軌道力学の物理解説が表示されます（詳細は [docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md)）。
-- **天球観測リプレイ & GIF 切り出し**: 北向きベランダの見通し範囲（\(270^\circ \sim 90^\circ\)）と観測実績ヒートマップを天球上に重畳し、衛星の通過軌跡をシミュレーション再生および GIF エクスポートできます。
+- **`01 / CONSOLE`（観測コンソール）**: 上部統計ミニバー、カテゴリ／状態フィルタ、次のベストパス表示に加え、パス選択で復号画像・宇宙機テレメトリ HUD・スペクトログラム同期リプレイ＆ GIF エクスポートをインライン展開。最接近時刻 TCA、最大仰角、ベランダ開口角、ドップラー実測 TCA 補正値の各項目の ⓘ をタップすると物理解説が表示されます（[docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md)）。
+- **`02 / ORBIT & MAP`（軌道予測・電波伝搬）**: 実測結果に基づくベイズ確率モデルで動的に精度更新する通過予測カレンダーと、世界地図上のフットプリント・電波伝搬アニメーションを表示。
+- **`03 / GALACTIC 21CM`（天の川銀河 21cm 分光モニター）**: 衛星通過待機中に実行する 21cm 水素線ドリフトスキャン（1420.406 MHz ON / 1423.000 MHz OFF 周波数スイッチング）の視線速度スペクトルと銀河俯瞰図を可視化（[docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md](docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md)）。
+- **`04 / ARCHIVE`（バックアップ ＆ リストア）**: Garage S3 バケット統計の確認およびフルバックアップ／リストアを実行。
 
 ### リアルタイム監視ダッシュボード（`Grafana` / NodePort 30080）
 
@@ -66,7 +68,7 @@ Prometheus と連携し、衛星通過中の物理量や小型 PC（GPD Pocket3�
 > **観測対象の選定と背景**
 > - **気象衛星**: かつて米国の NOAA が送信していた APT（アナログ放送）は停波しているため、本観測所ではロシアの極軌道気象衛星 Meteor-M の LRPT（デジタル画像放送）を受信しています。
 > - **太陽電波**: 太陽は東から南を通って西へ沈むため、南側を建物が遮る北向きベランダでは直接受信に向きません（コード `solar-station` は残しています）。
-> - **21cm 中性水素線**: 常時分光して貯める処理（生 IQ 1 秒積算）は本リポジトリでは稼働していませんが、理論式と背景は [docs/02_radio_astronomy_guide.md](docs/02_radio_astronomy_guide.md) に参照用として整理しています。
+> - **21cm 中性水素線**: `satellite-tracker-rs` にて、好条件の衛星パス待機中（AOS まで 30 秒以上の空き時間）に 1420.406 MHz ON / 1423.000 MHz OFF の周波数スイッチングによるドリフトスキャンを実行し、Garage S3（`galactic/`）へ記録しています（低仰角パスを足切りして銀河観測を優先継続する Pass Gating にも対応）。理論式と背景は [docs/02_radio_astronomy_guide.md](docs/02_radio_astronomy_guide.md) に整理しています。
 
 ### 動いている場所（1台にまとめた KubeEdge）
 
@@ -82,7 +84,7 @@ flowchart TB
         SDR["RTL-SDR Blog V4"]
 
         subgraph Edge["アンテナ側 gpd-pocket3-edge（EdgeCore）"]
-            Tracker["satellite-tracker-rs<br/>通過のあいだだけ 48 kHz WAV"]
+            Tracker["satellite-tracker-rs<br/>通過中は衛星受信 / 待機中は 21cm スキャン"]
             EdgeCtl["EdgeHub / MetaManager / Edged"]
         end
 
@@ -99,7 +101,7 @@ flowchart TB
     Ant --> SDR
     SDR -->|USB| Tracker
     EdgeCtl -->|"Pod の定義"| Tracker
-    Tracker -->|"通過のあと WAV を置く"| Garage
+    Tracker -->|"通過のあと WAV / 21cm JSON を置く"| Garage
     Viewer -->|"未解析の WAV を見つける"| Garage
     Viewer -->|"ワークフロー開始"| Temporal
     Temporal --> KEDA
@@ -110,9 +112,9 @@ flowchart TB
 
 | コンポーネント | 役割・状態 | 稼働場所 |
 | :--- | :--- | :--- |
-| `satellite-tracker-rs` | 衛星通過中のみ受信機を開き、48 kHz WAV を録音・Garage へ転送 | アンテナ側 Pod (`gpd-pocket3-edge`) |
+| `satellite-tracker-rs` | 衛星通過中は受信・Garage へ転送、待機中は銀河 21cm ドリフトスキャンを実行 | アンテナ側 Pod (`gpd-pocket3-edge`) |
 | Garage / Temporal / KEDA / `satellite-analyzer` | オブジェクトストレージ、イベント駆動ワークフロー、オンデマンド解析 | 同じ PC 上の Kubernetes |
-| `satellite-viewer` | 観測結果の閲覧、TCA/仰角/GIF 切り出し、ワークフロー自動起動（NodePort 30088） | 同じ PC 上の Kubernetes |
+| `satellite-viewer` | 統合ダッシュボード（`CONSOLE` / `ORBIT & MAP` / `GALACTIC 21CM` / `ARCHIVE`）とワークフロー自動起動（NodePort 30088） | 同じ PC 上の Kubernetes |
 | `kubeedge-metrics-proxy` | アンテナ側コンテナの CPU・メモリ使用量を Prometheus へ中継 | アンテナ側 |
 | Prometheus / Grafana | 監視ダッシュボード（NodePort 30080） | 同じ PC 上の Kubernetes |
 
@@ -145,21 +147,24 @@ flowchart TB
 
 | パス | 役割 |
 | :--- | :--- |
-| `apps/satellite-tracker-rs` | アンテナ側の追尾（Rust）。北向き見通し角を判定し、通過中のみ 48 kHz WAV を録音して Garage へアップロード |
-| `apps/satellite-analyzer` | Temporal の解析ワーカー（Python）。パケットの復号およびスペクトログラム生成 |
-| `apps/satellite-viewer` | 観測結果ビューア（Python/Flask）。未解析の録音を見つけてワークフローを開始（NodePort 30088） |
+| `apps/satellite-tracker-rs` | アンテナ側の追尾（Rust）。北向き見通し角と Pass Gating を判定し、衛星受信・21cm スキャン結果を Garage へアップロード |
+| `apps/satellite-analyzer` | Temporal の解析ワーカー（Python）。パケット・画像・生 IQ の復号およびスペクトログラム生成 |
+| `apps/satellite-viewer` | 観測結果ビューア（Python/Flask）。4 ワークスペース統合 UI と未解析録音のワークフロー起動（NodePort 30088） |
 | `apps/kubeedge-metrics-proxy` | アンテナ側コンテナのリソースメトリクスを Prometheus へ中継 |
 | `apps/satellite-tracker` | アンテナ側追尾のプロトタイプ実装（Python 版） |
 | `apps/ground-station` | Rust の地上局クレート（通過予測、SGP4 軌道計算、ドップラー計算、復調、`solar-station`） |
+| `apps/seestar-plan` | スマート望遠鏡 Seestar 向けの天体観測計画・気象/空況ダッシュボード |
 | `infrastructure/kubeedge` | k3s および KubeEdge（CloudCore / EdgeCore）のマニフェスト |
 | `infrastructure/monitoring` | kube-prometheus-stack（Prometheus / Grafana） |
 | `infrastructure/storage/garage` | Garage S3 ストレージのマニフェスト |
-| `infrastructure/apps` | Temporal, Tracker, Analyzer のデプロイ定義 |
+| `infrastructure/apps` | Temporal, Tracker, Analyzer, Seestar Plan のデプロイ定義 |
+| `infrastructure/viewer` / `keda` / `registry` | Viewer、KEDA オートスケーリング、ローカルコンテナレジストリの定義 |
+| `DESIGN.md` | `satellite-viewer` 統合ダッシュボードのデザインシステム・UI 実装規約 |
 | `docs/qa/` | 軌道力学、DSP、復調、KubeEdge 等の技術解説アーカイブ |
 | `docs/articles/` | 連載「ベランダ電波観測所」の執筆原稿 |
 
 ### 追尾対象衛星
-- `satellite-tracker-rs` 標準設定: **ISS**（145.825 MHz APRS）、**METEOR-M2 4**（137.100 MHz LRPT）、**FUNcube-1**
+- `satellite-tracker-rs` 標準設定（`DEFAULT_TARGETS`）: **ISS (ZARYA)**（145.825 MHz APRS）、**METEOR-M2 3**（137.900 MHz LRPT）、**METEOR-M2 4**（137.900 MHz LRPT）、**FUNCUBE-1 (AO-73)**（145.935 MHz BPSK）
 - `ground-station` 定義済み衛星: XW-2A、CAS-4A、UmKA-1、SONATE-2、SO-50 ほか
 
 ---
@@ -217,10 +222,12 @@ kubectl get pods -A
 本リポジトリでは、無線工学・軌道力学・DSP・分散インフラの知見を体系的にドキュメント化しています。
 
 ### 運用とインフラ
+- [DESIGN.md](DESIGN.md) — 統合ダッシュボード（黒鉛系計器盤 UI）のデザインシステムと実装規約
 - [docs/03_system_architecture.md](docs/03_system_architecture.md) — 1 台に集約した KubeEdge とイベント駆動パイプラインの全体像
 - [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md) — Ubuntu 26.04 への k3s & EdgeCore セットアップ手順
 - [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md) — クラスタ構成とインフラ運用の目次
 - [docs/04_qa.md](docs/04_qa.md) — 技術質疑応答・トピック別インデックス（全アーカイブへの入口）
+- [docs/qa/32_satellite_viewer_performance_optimization_and_latency.md](docs/qa/32_satellite_viewer_performance_optimization_and_latency.md) — `satellite-viewer` の並列 I/O・暖機・レスポンス最適化
 
 ### 電波天文学・DSP・軌道力学の理論
 - [docs/00_glossary.md](docs/00_glossary.md) — SDR、無線工学、電波天文学の基本用語集
@@ -229,6 +236,9 @@ kubectl get pods -A
 - [docs/qa/10_observation_metrics_and_heuristic_evaluation.md](docs/qa/10_observation_metrics_and_heuristic_evaluation.md) — 観測成否の判定基準とヒューリスティック評価
 - [docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md](docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md) — METEOR-M2 LRPT 受信診断と DSP 最適化
 - [docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md) — 地上局テレメトリと物理解説ツールチップ
+- [docs/qa/30_iss_raw_iq_and_doppler_cancellation_dsp.md](docs/qa/30_iss_raw_iq_and_doppler_cancellation_dsp.md) — ISS 生 IQ 録音とドップラーキャンセル DSP
+- [docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md](docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md) — 天の川銀河のスケールと 21cm 分光スペクトルの読み解き
+- [docs/qa/34_dsp_demodulation_optimization_and_threshold_theory.md](docs/qa/34_dsp_demodulation_optimization_and_threshold_theory.md) — 復調 DSP 最適化としきい値理論
 
 ### 連載記事（Qiita）と初期記録
 - [docs/articles/qiita_rtl_sdr_v4_getting_started.md](docs/articles/qiita_rtl_sdr_v4_getting_started.md) — #1 WSL2 と RTL-SDR Blog V4 で始める電波受信
@@ -243,16 +253,19 @@ kubectl get pods -A
 ```text
 .
 ├── README.md
+├── DESIGN.md                          # 統合ダッシュボード UI/UX 設計指針
 ├── GEMINI.md
 ├── Cargo.toml                         # Cargo ワークスペース定義
+├── docker-compose.yaml                # ローカル検証用構成
 ├── apps/
-│   ├── satellite-tracker-rs/          # アンテナ側の衛星追尾（Rust）
+│   ├── satellite-tracker-rs/          # アンテナ側の衛星追尾 & 21cm スキャン（Rust）
 │   ├── satellite-analyzer/            # Temporal 解析ワーカー（Python）
 │   ├── satellite-viewer/              # 観測結果ビューア Web アプリケーション
 │   ├── kubeedge-metrics-proxy/        # エッジメトリクス Prometheus 中継エージェント
 │   ├── satellite-tracker/             # アンテナ側追尾（Python 初期実装）
-│   └── ground-station/                # Rust 地上局クレート & solar-station
-├── infrastructure/                    # k3s, KubeEdge, Garage, Temporal, KEDA, 監視
+│   ├── ground-station/                # Rust 地上局クレート & solar-station
+│   └── seestar-plan/                  # Seestar 天体観測計画アプリ
+├── infrastructure/                    # k3s, KubeEdge, Garage, Temporal, KEDA, Viewer, 監視
 ├── docs/
 │   ├── 00_glossary.md                 # 用語集
 │   ├── 01_math_and_dsp_cheatsheet.md  # 数学・DSP チートシート
