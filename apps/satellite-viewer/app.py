@@ -1237,6 +1237,159 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .stats-sat-row:hover {
       background: rgba(56, 189, 248, 0.08);
     }
+    .stats-best-pass-btn {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 3px 6px;
+      font-size: 0.72rem;
+      line-height: 1.25;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .stats-best-pass-btn:hover {
+      background: rgba(56, 189, 248, 0.22);
+      border-color: var(--accent);
+    }
+    .stats-best-pass-btn.is-golden {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.45);
+    }
+    .stats-best-pass-sub {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+    .timeline-jump-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      max-width: 1120px;
+      margin: 0 auto 12px auto;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+    .timeline-jump-banner.visible {
+      display: flex;
+    }
+    .timeline-jump-reset-btn {
+      background: rgba(56, 189, 248, 0.2);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .timeline-jump-reset-btn:hover {
+      background: rgba(56, 189, 248, 0.32);
+    }
+    .timeline-scrubber {
+      position: fixed;
+      right: 6px;
+      top: 132px;
+      bottom: 24px;
+      width: 28px;
+      z-index: 900;
+      display: none;
+      align-items: stretch;
+      justify-content: center;
+      user-select: none;
+      touch-action: none;
+      cursor: ns-resize;
+    }
+    .timeline-scrubber.active {
+      display: flex;
+    }
+    .timeline-track {
+      position: relative;
+      width: 4px;
+      height: 100%;
+      background: rgba(148, 163, 184, 0.22);
+      border-radius: 999px;
+      transition: width 0.15s ease, background 0.15s ease;
+    }
+    .timeline-scrubber:hover .timeline-track,
+    .timeline-scrubber.is-dragging .timeline-track {
+      width: 6px;
+      background: rgba(56, 189, 248, 0.35);
+    }
+    .timeline-thumb {
+      position: absolute;
+      left: 50%;
+      top: 0%;
+      transform: translate(-50%, -50%);
+      width: 12px;
+      height: 22px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.65);
+      pointer-events: none;
+      transition: transform 0.1s ease;
+    }
+    .timeline-scrubber.is-dragging .timeline-thumb {
+      transform: translate(-50%, -50%) scale(1.18);
+      background: #7dd3fc;
+    }
+    .timeline-tick {
+      position: absolute;
+      right: 12px;
+      transform: translateY(-50%);
+      font-size: 0.64rem;
+      color: var(--text-muted);
+      background: rgba(15, 23, 42, 0.78);
+      padding: 1px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0.75;
+    }
+    .timeline-scrubber:hover .timeline-tick,
+    .timeline-scrubber.is-dragging .timeline-tick {
+      opacity: 1;
+      color: var(--text);
+    }
+    .timeline-floating-pill {
+      position: absolute;
+      right: 34px;
+      top: 0%;
+      transform: translateY(-50%);
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid rgba(56, 189, 248, 0.55);
+      color: #f8fafc;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .timeline-floating-pill.visible {
+      opacity: 1;
+    }
+    @media (max-width: 768px) {
+      .timeline-scrubber {
+        right: 2px;
+        width: 24px;
+      }
+      .timeline-tick {
+        display: none;
+      }
+    }
     .stats-band-row {
       margin-bottom: 8px;
       font-size: 0.76rem;
@@ -1944,11 +2097,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <div id="noMatchState" class="no-match-state">条件に一致する観測データがありません。</div>
 
+  <div id="timelineJumpBanner" class="timeline-jump-banner" aria-live="polite">
+    <span id="timelineJumpLabel">📅 ジャンプ表示中</span>
+    <button type="button" class="timeline-jump-reset-btn" onclick="timelineResetToTop()">⬆️ 先頭へ戻る</button>
+  </div>
+
   <main id="cardsContainer"></main>
   <div id="scrollSentinel" style="height: 20px; margin: 10px 0;"></div>
   <div id="scrollLoader" class="scroll-loader">
     <div class="spinner"></div>
     <span>観測データを読み込み中...</span>
+  </div>
+
+  <!-- Google Photos style Timeline Scrubber -->
+  <div id="timelineScrubber" class="timeline-scrubber" aria-label="期間タイムラインジャンプ">
+    <div id="timelineTrack" class="timeline-track">
+      <div id="timelineTicks"></div>
+      <div id="timelineThumb" class="timeline-thumb"></div>
+    </div>
+    <div id="timelineFloatingPill" class="timeline-floating-pill"></div>
   </div>
 
   <!-- Image Modal -->
@@ -2730,6 +2897,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const modal = document.getElementById('orbitCalendarModal');
       modal.classList.add('active');
       renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
+    }
+
+    async function openOrbitCalendarOnDate(dateStr) {
+      if (!dateStr) {
+        openOrbitCalendarModal();
+        return;
+      }
+      const parts = String(dateStr).split('-');
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const modal = document.getElementById('orbitCalendarModal');
+      if (modal) modal.classList.add('active');
+      switchOrbitTab('calendar');
+      if (!isNaN(y) && !isNaN(m)) {
+        await renderMonthlyCalendar(y, m);
+        selectCalendarDay(dateStr);
+      } else {
+        await renderMonthlyCalendar(orbitCalYear, orbitCalMonth);
+      }
     }
 
     function closeOrbitCalendarModal(e) {
@@ -4252,6 +4438,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let isLoading = false;
     let hasMore = true;
     let statsDetailsOpen = false;
+    let timelineBuckets = [];
+    let timelineTotalMatched = 0;
+    let timelineBaseOffset = 0;
+    let timelineNextOffset = 0;
+    let timelineIsDragging = false;
+    let timelineScrollRafPending = false;
+    let timelineScrollHideTimer = null;
 
     function filterEscapeHtml(str) {
       return String(str || '').replace(/[&<>"']/g, s => ({
@@ -4452,7 +4645,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
-    async function loadPasses(page = 1, reset = false) {
+    async function loadPasses(page = 1, reset = false, customOffset = null) {
       if (isLoading) return;
       if (!reset && !hasMore) return;
       isLoading = true;
@@ -4460,8 +4653,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const loader = document.getElementById('scrollLoader');
       if (loader) loader.classList.add('active');
 
+      const reqOffset = (customOffset !== null && customOffset !== undefined)
+        ? Math.max(0, customOffset)
+        : (reset ? 0 : timelineNextOffset);
+
       const params = new URLSearchParams({
         page: String(page),
+        offset: String(reqOffset),
         limit: '12',
         category: currentCategory,
         demod_only: isDemodOnly ? 'true' : 'false',
@@ -4482,12 +4680,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (reset) {
           container.innerHTML = data.cards_html;
           currentPage = 1;
+          timelineBaseOffset = (typeof data.offset === 'number') ? data.offset : reqOffset;
         } else {
           container.insertAdjacentHTML('beforeend', data.cards_html);
           currentPage = page;
         }
 
         hasMore = data.has_more;
+        timelineNextOffset = (typeof data.next_offset === 'number') ? data.next_offset : (reqOffset + 12);
+        timelineTotalMatched = data.total_matched || 0;
+        if (Array.isArray(data.timeline_buckets)) {
+          timelineBuckets = data.timeline_buckets;
+        } else if (reset) {
+          timelineBuckets = [];
+        }
+
+        const jumpBanner = document.getElementById('timelineJumpBanner');
+        const jumpLabel = document.getElementById('timelineJumpLabel');
+        if (jumpBanner && jumpLabel) {
+          if (timelineBaseOffset > 0 && timelineTotalMatched > 0) {
+            const firstCard = container.querySelector('.card');
+            const dLabel = firstCard ? (firstCard.getAttribute('data-pass-date-label') || '') : '';
+            jumpLabel.textContent = dLabel
+              ? `📅 ${dLabel} 付近 (${timelineBaseOffset + 1}件目〜) を表示中`
+              : `📅 ${timelineBaseOffset + 1}件目〜 を表示中`;
+            jumpBanner.classList.add('visible');
+          } else {
+            jumpBanner.classList.remove('visible');
+          }
+        }
+        timelineRenderScrubber();
 
         if (data.counts) {
           if (document.getElementById('count-all')) document.getElementById('count-all').textContent = data.counts.all || 0;
@@ -4567,17 +4789,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           if (stats.by_satellite.length === 0) {
             satBody.innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem;">データがありません</div>';
           } else {
-            const rows = stats.by_satellite.map(s => `
-              <tr class="stats-sat-row" onclick="filterBySatelliteFromStats('${filterEscapeHtml(s.satellite).replace(/'/g, "\\'")}')">
-                <td style="font-weight:600; color:var(--text);">${filterEscapeHtml(s.satellite)}</td>
-                <td>${s.success}/${s.total} (${s.success_rate_pct}%)</td>
-                <td>${s.packets}pkt / ${s.images}枚</td>
-                <td>${s.avg_max_el !== null ? s.avg_max_el + '°' : '-'}</td>
-              </tr>
-            `).join('');
+            const rows = stats.by_satellite.map(s => {
+              const nb = s.next_best_pass;
+              let nbHtml = '<span style="color:var(--text-muted); font-size:0.72rem;">予定なし</span>';
+              if (nb) {
+                const star = nb.is_golden ? '🌟 ' : '🎯 ';
+                const goldenCls = nb.is_golden ? ' is-golden' : '';
+                const tip = `TCA: ${nb.tca_time_jst} JST / 方位: ${nb.max_elevation_azimuth}° / 開口窓: ${nb.window_duration_seconds}秒 / ${nb.quality_score}`;
+                nbHtml = `
+                  <button type="button" class="stats-best-pass-btn${goldenCls}" title="${filterEscapeHtml(tip)}" onclick="event.stopPropagation(); openOrbitCalendarOnDate('${filterEscapeHtml(nb.aos_date_jst)}')">
+                    <span>${star}${filterEscapeHtml(nb.aos_time_jst)}</span>
+                    <span class="stats-best-pass-sub">${nb.success_probability_pct}% / ${nb.max_elevation}°</span>
+                  </button>
+                `;
+              }
+              return `
+                <tr class="stats-sat-row" onclick="filterBySatelliteFromStats('${filterEscapeHtml(s.satellite).replace(/'/g, "\\'")}')">
+                  <td style="font-weight:600; color:var(--text);">${filterEscapeHtml(s.satellite)}</td>
+                  <td>${s.success}/${s.total} (${s.success_rate_pct}%)</td>
+                  <td>${s.packets}pkt / ${s.images}枚</td>
+                  <td>${s.avg_max_el !== null ? s.avg_max_el + '°' : '-'}</td>
+                  <td>${nbHtml}</td>
+                </tr>
+              `;
+            }).join('');
             satBody.innerHTML = `
               <table class="stats-sat-table">
-                <thead><tr><th>衛星</th><th>成功/総数</th><th>成果</th><th>平均仰角</th></tr></thead>
+                <thead><tr><th>衛星</th><th>成功/総数</th><th>成果</th><th>平均仰角</th><th>次のベスト狙い目</th></tr></thead>
                 <tbody>${rows}</tbody>
               </table>
             `;
@@ -4643,12 +4881,215 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting && !isLoading && hasMore) {
-            loadPasses(currentPage + 1, false);
+            loadPasses(currentPage + 1, false, timelineNextOffset);
           }
         });
       }, { rootMargin: '400px' });
 
       observer.observe(sentinel);
+    }
+
+    function timelineRatioToBucket(ratio) {
+      if (!timelineBuckets || timelineBuckets.length === 0) return null;
+      const clamped = Math.max(0, Math.min(1, ratio));
+      const targetOffset = Math.round(clamped * Math.max(0, timelineTotalMatched - 1));
+      let chosen = timelineBuckets[0];
+      for (let i = 0; i < timelineBuckets.length; i++) {
+        if (timelineBuckets[i].offset <= targetOffset) {
+          chosen = timelineBuckets[i];
+        } else {
+          break;
+        }
+      }
+      return chosen;
+    }
+
+    function timelineUpdateThumbPosition(ratio, pillText, showPill) {
+      const clamped = Math.max(0, Math.min(1, ratio));
+      const pct = (clamped * 100).toFixed(2) + '%';
+      const thumb = document.getElementById('timelineThumb');
+      const pill = document.getElementById('timelineFloatingPill');
+      if (thumb) thumb.style.top = pct;
+      if (pill) {
+        pill.style.top = pct;
+        if (pillText !== undefined && pillText !== null) {
+          pill.textContent = pillText;
+        }
+        if (showPill !== undefined) {
+          pill.classList.toggle('visible', !!showPill);
+        }
+      }
+    }
+
+    function timelineRenderScrubber() {
+      const scrubber = document.getElementById('timelineScrubber');
+      const ticksEl = document.getElementById('timelineTicks');
+      if (!scrubber || !ticksEl) return;
+
+      const isTimeSorted = (currentSortBy === 'newest' || currentSortBy === 'oldest');
+      if (!isTimeSorted || !timelineBuckets || timelineBuckets.length < 2 || timelineTotalMatched <= 1) {
+        scrubber.classList.remove('active');
+        ticksEl.innerHTML = '';
+        return;
+      }
+
+      scrubber.classList.add('active');
+
+      // 月単位（重複除外、間隔が近すぎる場合は間引き）のティックを描画
+      let ticksHtml = '';
+      let lastYm = '';
+      let lastPct = -20;
+      const denom = Math.max(1, timelineTotalMatched - 1);
+      for (let i = 0; i < timelineBuckets.length; i++) {
+        const b = timelineBuckets[i];
+        if (b.ym !== lastYm) {
+          lastYm = b.ym;
+          const pct = (b.offset / denom) * 100;
+          if (pct - lastPct >= 8 || i === 0) {
+            ticksHtml += `<div class="timeline-tick" style="top:${pct.toFixed(2)}%">${filterEscapeHtml(b.month_label)}</div>`;
+            lastPct = pct;
+          }
+        }
+      }
+      ticksEl.innerHTML = ticksHtml;
+      timelineSyncToScroll(false);
+    }
+
+    async function timelineJumpToBucket(bucket) {
+      if (!bucket) return;
+      await loadPasses(1, true, bucket.offset);
+      const container = document.getElementById('cardsContainer');
+      if (container) {
+        const topY = container.getBoundingClientRect().top + window.scrollY - 24;
+        window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
+      }
+    }
+
+    async function timelineResetToTop() {
+      await loadPasses(1, true, 0);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function timelineSyncToScroll(showPillBriefly) {
+      if (timelineIsDragging || !timelineBuckets || timelineBuckets.length === 0) return;
+      const container = document.getElementById('cardsContainer');
+      if (!container) return;
+      const cards = container.querySelectorAll('.card');
+      if (!cards.length) return;
+
+      let activeCard = cards[0];
+      const probeY = 140;
+      for (let i = 0; i < cards.length; i++) {
+        const rect = cards[i].getBoundingClientRect();
+        if (rect.bottom >= probeY) {
+          activeCard = cards[i];
+          break;
+        }
+      }
+
+      const cardDate = activeCard.getAttribute('data-pass-date');
+      let matchedBucket = timelineBuckets[0];
+      if (cardDate) {
+        for (let i = 0; i < timelineBuckets.length; i++) {
+          if (timelineBuckets[i].date === cardDate) {
+            matchedBucket = timelineBuckets[i];
+            break;
+          }
+        }
+      }
+      const denom = Math.max(1, timelineTotalMatched - 1);
+      const ratio = matchedBucket.offset / denom;
+      const pillText = `${matchedBucket.label} (${matchedBucket.count}件)`;
+      timelineUpdateThumbPosition(ratio, pillText, showPillBriefly);
+
+      if (showPillBriefly) {
+        if (timelineScrollHideTimer) clearTimeout(timelineScrollHideTimer);
+        timelineScrollHideTimer = setTimeout(() => {
+          if (!timelineIsDragging) {
+            const pill = document.getElementById('timelineFloatingPill');
+            if (pill) pill.classList.remove('visible');
+          }
+        }, 1200);
+      }
+    }
+
+    function timelineInitScrubber() {
+      const scrubber = document.getElementById('timelineScrubber');
+      if (!scrubber) return;
+
+      let pendingBucket = null;
+      const getRatioFromClientY = (clientY) => {
+        const rect = scrubber.getBoundingClientRect();
+        const h = Math.max(1, rect.height);
+        return Math.max(0, Math.min(1, (clientY - rect.top) / h));
+      };
+
+      const updateDragPreview = (clientY) => {
+        const ratio = getRatioFromClientY(clientY);
+        const bucket = timelineRatioToBucket(ratio);
+        pendingBucket = bucket;
+        if (bucket) {
+          timelineUpdateThumbPosition(ratio, `${bucket.label} (${bucket.count}件)`, true);
+        }
+      };
+
+      scrubber.addEventListener('pointerdown', (e) => {
+        if (!timelineBuckets || timelineBuckets.length === 0) return;
+        e.preventDefault();
+        timelineIsDragging = true;
+        scrubber.classList.add('is-dragging');
+        if (scrubber.setPointerCapture) {
+          try { scrubber.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+        updateDragPreview(e.clientY);
+      });
+
+      scrubber.addEventListener('pointermove', (e) => {
+        if (timelineIsDragging) {
+          updateDragPreview(e.clientY);
+        } else if (timelineBuckets && timelineBuckets.length > 0) {
+          const ratio = getRatioFromClientY(e.clientY);
+          const bucket = timelineRatioToBucket(ratio);
+          if (bucket) {
+            timelineUpdateThumbPosition(ratio, `${bucket.label} (${bucket.count}件)`, true);
+          }
+        }
+      });
+
+      const finishDrag = (e) => {
+        if (!timelineIsDragging) return;
+        timelineIsDragging = false;
+        scrubber.classList.remove('is-dragging');
+        if (pendingBucket) {
+          timelineJumpToBucket(pendingBucket);
+        }
+        pendingBucket = null;
+        setTimeout(() => {
+          if (!timelineIsDragging) {
+            const pill = document.getElementById('timelineFloatingPill');
+            if (pill) pill.classList.remove('visible');
+          }
+        }, 900);
+      };
+
+      scrubber.addEventListener('pointerup', finishDrag);
+      scrubber.addEventListener('pointercancel', finishDrag);
+      scrubber.addEventListener('pointerleave', () => {
+        if (!timelineIsDragging) {
+          const pill = document.getElementById('timelineFloatingPill');
+          if (pill) pill.classList.remove('visible');
+        }
+      });
+
+      window.addEventListener('scroll', () => {
+        if (!scrubber.classList.contains('active') || timelineIsDragging) return;
+        if (timelineScrollRafPending) return;
+        timelineScrollRafPending = true;
+        requestAnimationFrame(() => {
+          timelineScrollRafPending = false;
+          timelineSyncToScroll(true);
+        });
+      }, { passive: true });
     }
 
     function openGrafanaPass(fromMs, toMs) {
@@ -5625,6 +6066,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       loadPasses(1, true);
       statsLoadSummary();
       setupInfiniteScroll();
+      timelineInitScrubber();
     });
   </script>
 </body>
@@ -5841,6 +6283,101 @@ def get_month_passes_cached(year: int, month: int, cache=None) -> dict:
     )
     _calendar_passes_cache[cache_key] = (now, data)
     return data
+
+
+_next_best_passes_cache = {}
+_NEXT_BEST_CACHE_TTL = 3600.0
+
+
+def get_next_best_passes_cached(now_dt=None, horizon_days: int = 30, cache=None) -> dict:
+    """
+    今後 horizon_days 日間における各衛星の「次のベストな復調が狙えるパス」を算出して返す。
+    選定基準: success_probability 最大 -> max_elevation 最大 -> window_duration_seconds 最大 -> 最短日時。
+    """
+    use_cache = now_dt is None
+    now_ts = time.time()
+    cache_key = int(horizon_days)
+    if use_cache and cache_key in _next_best_passes_cache:
+        cached_ts, cached_data = _next_best_passes_cache[cache_key]
+        if now_ts - cached_ts < _NEXT_BEST_CACHE_TTL:
+            return cached_data
+
+    if now_dt is None:
+        now_dt = datetime.now(timezone.utc)
+    elif now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+    if cache is None:
+        try:
+            cache = pass_cache
+        except Exception:
+            cache = None
+
+    history_stats = cache.get_satellite_history_stats() if cache else None
+    time_drifts = cache.compute_satellite_time_drifts() if cache else None
+    heatmap_data = cache.compute_sky_heatmap() if cache else None
+    empirical_mask = heatmap_data.get("empirical_mask") if heatmap_data else None
+
+    targets = []
+    for sat_name in DEFAULT_TARGET_TLES.keys():
+        tle = load_tle_for_satellite(sat_name)
+        if tle:
+            targets.append((sat_name, tle[0], tle[1]))
+
+    if not targets:
+        return {}
+
+    calc = OrbitCalculator()
+    future_passes = calc.find_future_passes(
+        targets=targets,
+        start_time=now_dt,
+        horizon_hours=max(24, int(horizon_days) * 24),
+        step_seconds=60,
+        history_stats=history_stats,
+        time_drifts=time_drifts,
+        empirical_mask=empirical_mask,
+    )
+
+    jst = timezone(timedelta(hours=9))
+    best_by_sat = {}
+    for p in future_passes:
+        prob = p.success_probability if p.success_probability is not None else 0.0
+        try:
+            aos_dt = datetime.fromisoformat(p.aos_time)
+            tca_dt = datetime.fromisoformat(p.tca_time)
+        except Exception:
+            continue
+        aos_ts = aos_dt.timestamp()
+        score_key = (
+            round(prob, 4),
+            float(p.max_elevation),
+            int(p.window_duration_seconds),
+            -aos_ts,
+        )
+        prev = best_by_sat.get(p.satellite)
+        if prev is None or score_key > prev[0]:
+            aos_jst = aos_dt.astimezone(jst)
+            tca_jst = tca_dt.astimezone(jst)
+            best_by_sat[p.satellite] = (
+                score_key,
+                {
+                    "aos_time_jst": aos_jst.strftime("%m/%d %H:%M"),
+                    "aos_date_jst": aos_jst.strftime("%Y-%m-%d"),
+                    "aos_iso": p.aos_time,
+                    "tca_time_jst": tca_jst.strftime("%m/%d %H:%M"),
+                    "max_elevation": p.max_elevation,
+                    "max_elevation_azimuth": p.max_elevation_azimuth,
+                    "window_duration_seconds": p.window_duration_seconds,
+                    "success_probability_pct": round(prob * 100.0, 1),
+                    "quality_score": p.quality_score,
+                    "is_golden": "EXCELLENT" in (p.quality_score or ""),
+                },
+            )
+
+    result = {sat: val[1] for sat, val in best_by_sat.items()}
+    if use_cache:
+        _next_best_passes_cache[cache_key] = (now_ts, result)
+    return result
 
 
 def generate_s3_backup_stream(s3_client, bucket: str, prefixes=("results/", "archive/", "golden/", "raw/")):
@@ -6155,7 +6692,47 @@ def filter_and_sort_passes(
     return matched_passes, counts
 
 
-def compute_observation_stats(all_passes: list, now_dt: datetime | None = None) -> dict:
+def build_timeline_buckets(matched_passes: list, sort_by: str = "newest") -> list[dict]:
+    """
+    時系列ソート (newest / oldest) のパス一覧から、Google Photos 風タイムラインスクラバー用の
+    JST 日付バケット一覧（date, ym, label, short_label, month_label, offset, count）を生成する。
+    """
+    if sort_by not in ("newest", "oldest") or not matched_passes:
+        return []
+
+    jst = timezone(timedelta(hours=9))
+    buckets = []
+    bucket_map = {}
+
+    for idx, p in enumerate(matched_passes):
+        ts = get_pass_timestamp(p)
+        if ts.year <= 1970:
+            continue
+        ts_jst = ts.astimezone(jst)
+        date_str = ts_jst.strftime("%Y-%m-%d")
+        if date_str not in bucket_map:
+            b = {
+                "date": date_str,
+                "ym": ts_jst.strftime("%Y-%m"),
+                "label": f"{ts_jst.year}年{ts_jst.month}月{ts_jst.day}日",
+                "short_label": f"{ts_jst.month}/{ts_jst.day}",
+                "month_label": f"{ts_jst.year}年{ts_jst.month}月",
+                "offset": idx,
+                "count": 1,
+            }
+            bucket_map[date_str] = b
+            buckets.append(b)
+        else:
+            bucket_map[date_str]["count"] += 1
+
+    return buckets
+
+
+def compute_observation_stats(
+    all_passes: list,
+    now_dt: datetime | None = None,
+    next_best_passes: dict | None = None,
+) -> dict:
     """
     全観測パスからダッシュボード上部ミニバー向けの統計情報を集計する。
     """
@@ -6252,6 +6829,7 @@ def compute_observation_stats(all_passes: list, now_dt: datetime | None = None) 
         band_data["rate_pct"] = round((band_data["success"] / t) * 100.0, 1) if t > 0 else 0.0
 
     by_satellite = []
+    next_best_map = next_best_passes or {}
     for entry in sorted(sat_map.values(), key=lambda x: (-x["total"], x["satellite"])):
         t = entry["total"]
         by_satellite.append({
@@ -6263,6 +6841,7 @@ def compute_observation_stats(all_passes: list, now_dt: datetime | None = None) 
             "packets": entry["packets"],
             "images": entry["images"],
             "avg_max_el": round(entry["el_sum"] / entry["el_count"], 1) if entry["el_count"] > 0 else None,
+            "next_best_pass": next_best_map.get(entry["satellite"]),
         })
 
     daily_trend = [
@@ -6288,6 +6867,7 @@ def compute_observation_stats(all_passes: list, now_dt: datetime | None = None) 
         "by_satellite": by_satellite,
         "by_elevation_band": el_bands,
         "daily_trend": daily_trend,
+        "next_best_passes": next_best_map,
     }
 
 
@@ -7012,9 +7592,13 @@ def render_card_html(p: dict) -> str:
         dur_sec = 406
     from_ms = (base_ts - 180) * 1000
     to_ms = (base_ts + dur_sec + 180) * 1000
+    jst_tz = timezone(timedelta(hours=9))
+    base_jst = base_dt.astimezone(jst_tz)
+    pass_date_str = base_jst.strftime("%Y-%m-%d")
+    pass_date_label = f"{base_jst.year}年{base_jst.month}月{base_jst.day}日"
 
     return f"""
-    <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}">
+    <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}" data-pass-date="{pass_date_str}" data-pass-date-label="{pass_date_label}">
       <div class="card-header">
         <div class="sat-header-left">
           <div class="sat-name">{icon} {p.get('satellite', '')}</div>
@@ -7593,10 +8177,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
 
             total_matched = len(matched_passes)
-            start_idx = (page - 1) * limit
+            offset_raw = query.get("offset", [None])[0]
+            if offset_raw is not None:
+                try:
+                    start_idx = max(0, min(int(offset_raw), total_matched))
+                except ValueError:
+                    start_idx = (page - 1) * limit
+            else:
+                start_idx = (page - 1) * limit
             end_idx = start_idx + limit
             page_items = matched_passes[start_idx:end_idx]
             has_more = end_idx < total_matched
+            timeline_buckets = build_timeline_buckets(matched_passes, sort_by=sort_param)
 
             cards_html = "".join(render_card_html(p) for p in page_items)
 
@@ -7604,6 +8196,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "cards_html": cards_html,
                 "has_more": has_more,
                 "total_matched": total_matched,
+                "offset": start_idx,
+                "next_offset": end_idx,
+                "timeline_buckets": timeline_buckets,
                 "counts": counts
             }).encode("utf-8")
 
@@ -7612,7 +8207,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/stats":
             all_passes = pass_cache.get_all_passes()
-            stats = compute_observation_stats(all_passes)
+            next_best_passes = get_next_best_passes_cached(cache=pass_cache)
+            stats = compute_observation_stats(all_passes, next_best_passes=next_best_passes)
             body = json.dumps(stats).encode("utf-8")
             self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
             return

@@ -977,6 +977,85 @@ class TestPerformanceOptimizations(unittest.TestCase):
             self.assertIn(f'id="{elem_id}"', HTML_TEMPLATE)
         self.assertIn("/api/stats", HTML_TEMPLATE)
 
+    def test_get_next_best_passes_cached_and_stats_integration(self):
+        from app import get_next_best_passes_cached, compute_observation_stats
+        now_dt = datetime(2026, 10, 15, 0, 0, 0, tzinfo=timezone.utc)
+        best_map = get_next_best_passes_cached(now_dt=now_dt, horizon_days=7, cache=None)
+        self.assertIsInstance(best_map, dict)
+        self.assertGreater(len(best_map), 0)
+        sample_sat, sample_best = next(iter(best_map.items()))
+        for key in ("aos_time_jst", "aos_date_jst", "tca_time_jst", "max_elevation", "success_probability_pct", "quality_score"):
+            self.assertIn(key, sample_best)
+        self.assertRegex(sample_best["aos_date_jst"], r"^\d{4}-\d{2}-\d{2}$")
+
+        passes = [
+            {
+                "satellite": sample_sat,
+                "pass_id": f"{sample_sat}_20261014_120000",
+                "last_modified_dt": datetime(2026, 10, 14, 12, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 42.0,
+                "summary": {"packets_count": 5, "duration_seconds": 600},
+                "files": {},
+            }
+        ]
+        stats = compute_observation_stats(passes, now_dt=now_dt, next_best_passes=best_map)
+        self.assertEqual(stats["by_satellite"][0]["next_best_pass"], sample_best)
+
+    def test_build_timeline_buckets_and_card_date_attrs(self):
+        from app import build_timeline_buckets, render_card_html
+        passes = [
+            {
+                "satellite": "ISS (ZARYA)",
+                "pass_id": "ISS (ZARYA)_20261113_020000",  # JST 11:00
+                "last_modified_dt": datetime(2026, 11, 13, 2, 0, 0, tzinfo=timezone.utc),
+                "summary": {"packets_count": 3},
+                "files": {},
+            },
+            {
+                "satellite": "METEOR-M2 4",
+                "pass_id": "METEOR-M2 4_20261113_010000",  # JST 10:00
+                "last_modified_dt": datetime(2026, 11, 13, 1, 0, 0, tzinfo=timezone.utc),
+                "summary": {"packets_count": 1},
+                "files": {},
+            },
+            {
+                "satellite": "FUNCUBE-1 (AO-73)",
+                "pass_id": "FUNCUBE-1 (AO-73)_20261028_100000",  # JST 19:00
+                "last_modified_dt": datetime(2026, 10, 28, 10, 0, 0, tzinfo=timezone.utc),
+                "summary": {"packets_count": 2},
+                "files": {},
+            },
+        ]
+        buckets = build_timeline_buckets(passes, sort_by="newest")
+        self.assertEqual(len(buckets), 2)
+        self.assertEqual(buckets[0]["date"], "2026-11-13")
+        self.assertEqual(buckets[0]["label"], "2026年11月13日")
+        self.assertEqual(buckets[0]["offset"], 0)
+        self.assertEqual(buckets[0]["count"], 2)
+        self.assertEqual(buckets[1]["date"], "2026-10-28")
+        self.assertEqual(buckets[1]["offset"], 2)
+        self.assertEqual(buckets[1]["count"], 1)
+
+        self.assertEqual(build_timeline_buckets(passes, sort_by="max_el_desc"), [])
+
+        card_html = render_card_html(passes[0])
+        self.assertIn('data-pass-date="2026-11-13"', card_html)
+        self.assertIn('data-pass-date-label="2026年11月13日"', card_html)
+
+    def test_html_template_has_timeline_scrubber_and_next_best_pass(self):
+        for elem_id in (
+            "timelineJumpBanner",
+            "timelineJumpLabel",
+            "timelineScrubber",
+            "timelineTrack",
+            "timelineTicks",
+            "timelineThumb",
+            "timelineFloatingPill",
+        ):
+            self.assertIn(f'id="{elem_id}"', HTML_TEMPLATE)
+        self.assertIn("openOrbitCalendarOnDate", HTML_TEMPLATE)
+        self.assertIn("次のベスト狙い目", HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()
