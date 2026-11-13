@@ -135,7 +135,8 @@ class ISSDspDemodulator:
         doppler_override_hz: Optional[np.ndarray] = None,
     ) -> str:
         """
-        生 IQ ファイル (240kSPS uint8 cu8) からドップラー補正・FM復調を行い、48kHz WAV を生成する
+        生 IQ ファイル (240kSPS uint8 cu8) からドップラー補正・FM復調を行い、48kHz WAV を生成する。
+        大容量ファイルでも OOM を起こさないよう 10 秒単位のチャンクストリーミングで処理する。
         """
         if not os.path.exists(raw_path):
             logger.warning(f"Raw IQ file not found: {raw_path}")
@@ -150,29 +151,17 @@ class ISSDspDemodulator:
         if output_wav_path is None:
             output_wav_path = os.path.splitext(raw_path)[0] + "_48k.wav"
 
-        # 1. 生 IQ 読み込み (uint8: [I0, Q0, I1, Q1, ...])
-        raw_u8 = np.fromfile(raw_path, dtype=np.uint8)
-        num_complex_samples = len(raw_u8) // 2
+        num_complex_samples = file_size // 2
         if num_complex_samples < sample_rate * 0.1:
             return ""
 
-        # 2. 複素解析信号化 x[n] = (I - 127.5)/128 + j (Q - 127.5)/128 (complex64 で省メモリ化)
-        x = np.empty(num_complex_samples, dtype=np.complex64)
-        x.real = (raw_u8[0::2].astype(np.float32) - 127.5) / 128.0
-        x.imag = (raw_u8[1::2].astype(np.float32) - 127.5) / 128.0
-        del raw_u8
-
         duration_sec = num_complex_samples / float(sample_rate)
 
-        # 3. ドップラー周波数偏移列の算出
-        doppler_shifts = None
+        # 1. ドップラー周波数偏移列 (1秒刻み等) の事前計算 (数百要素のみで軽量)
+        shifts_1s = None
+        override_arr = None
         if doppler_override_hz is not None:
-            if len(doppler_override_hz) == num_complex_samples:
-                doppler_shifts = doppler_override_hz
-            else:
-                x_interp = np.linspace(0, duration_sec, len(doppler_override_hz))
-                x_samples = np.linspace(0, duration_sec, num_complex_samples)
-                doppler_shifts = np.interp(x_samples, x_interp, doppler_override_hz)
+            override_arr = np.asarray(doppler_override_hz, dtype=np.float64)
         elif tle_lines is not None and pass_start_utc is not None:
             try:
                 shifts_1s = self.compute_doppler_shifts(
@@ -183,65 +172,152 @@ class ISSDspDemodulator:
                     center_freq_hz=center_freq_hz,
                     step_sec=1.0,
                 )
-                x_interp = np.linspace(0, duration_sec, len(shifts_1s))
-                x_samples = np.linspace(0, duration_sec, num_complex_samples)
-                doppler_shifts = np.interp(x_samples, x_interp, shifts_1s)
             except Exception as e:
                 logger.warning(f"Failed to compute Doppler shift from TLE: {e}. Falling back to zero-shift.")
-                doppler_shifts = None
+                shifts_1s = None
 
-        # 4. 複素ミキシングによるドップラー相殺 x[n] = x[n] * exp(-j θ[n]) (インプレース乗算)
-        if doppler_shifts is not None:
-            # 位相角 θ[n] = 2π * cumsum(Δf / f_s)
-            phase_rad = (2.0 * np.pi * np.cumsum(doppler_shifts) / float(sample_rate)).astype(np.float32)
-            rotator = np.empty(num_complex_samples, dtype=np.complex64)
-            rotator.real = np.cos(phase_rad)
-            rotator.imag = -np.sin(phase_rad)
-            del phase_rad
-            x *= rotator
-            del rotator
-
-        # 4.5 検波前チャネル帯域制限フィルタ & デシメーション (Pre-detection Channel LPF & Decimation)
-        # Carson 帯域幅 B_c = 2(Δf_dev + f_m) ≈ 10.4 kHz (NFM 1200bps AFSK: Δf_dev ≈ 3kHz, f_m ≈ 2.2kHz)
-        # 非線形な Polar Discriminator (atan2) の前段で 240kHz 帯域の広帯域熱雑音を除去することで、
-        # FM スレッショルド効果によるクリック雑音発生を防ぎ、検波感度を約 11.8 dB 向上させる。
-        # 240kSPS -> 48kSPS (デシメーション比 5)
+        # 2. チャンクストリーミング処理の設定
         decim = 5
         fs_if = sample_rate // decim  # 48000 Hz
-        x_real = signal.resample_poly(x.real, up=1, down=decim)
-        x_imag = signal.resample_poly(x.imag, up=1, down=decim)
-        del x
-        x_if = (x_real + 1j * x_imag).astype(np.complex64)
-        del x_real, x_imag
+        chunk_complex = (sample_rate * 10 // decim) * decim  # 10秒分 (240kSPSなら 2,400,000 サンプル)
+        pad_in = 500  # resample_poly 境界過渡応答除去用オーバーラップ (500 % 5 == 0)
+        pad_out = pad_in // decim
 
-        # 5. 位相差分 FM 復調 (Polar Discriminator at 48kSPS)
-        # P[n] = x_if[n] * conj(x_if[n-1])
-        # Δφ[n] = arg(P[n]) = atan2(Im(P[n]), Re(P[n]))
-        p = x_if[1:] * np.conj(x_if[:-1])
-        del x_if
-        demod_audio = np.angle(p).astype(np.float32)
-        del p
+        sos = signal.butter(4, 3500.0 / (fs_if / 2.0), btype="low", output="sos")
+        zi = np.zeros((sos.shape[0], 2), dtype=np.float64)
 
-        # 6. 音声帯域フィルタリング (AFSK 3.5kHz LPF)
-        # AFSK (Bell 202: 1200Hz/2200Hz) の不要高周波成分を除去するためカットオフ 3.5kHz の LPF を適用
-        b, a = signal.butter(4, 3500.0 / (fs_if / 2.0), btype="low")
-        audio_48k = signal.filtfilt(b, a, demod_audio).astype(np.float32)
-        del demod_audio
+        phase_acc = 0.0
+        prev_tail_x = None
+        prev_x_if_last = None
+        max_val = 0.0
+        total_audio_samples = 0
 
-        # 7. 16-bit PCM WAV スケーリング & 出力
-        max_val = np.max(np.abs(audio_48k))
-        if max_val > 1e-6:
-            # ピーク振幅を int16 の約 75% (24000) に正規化
-            scale = 24000.0 / max_val
-            pcm_data = np.clip(audio_48k * scale, -32768, 32767).astype(np.int16)
-        else:
-            pcm_data = np.zeros(len(audio_48k), dtype=np.int16)
+        tmp_f32_path = output_wav_path + ".f32.tmp"
+        try:
+            with open(raw_path, "rb") as raw_f, open(tmp_f32_path, "wb") as tmp_f:
+                sample_offset = 0
+                while sample_offset < num_complex_samples:
+                    to_read_complex = min(chunk_complex, num_complex_samples - sample_offset)
+                    buf = raw_f.read(to_read_complex * 2)
+                    if not buf or len(buf) < 2:
+                        break
+                    raw_u8 = np.frombuffer(buf, dtype=np.uint8)
+                    actual_complex = len(raw_u8) // 2
+                    if actual_complex == 0:
+                        break
 
-        with wave.open(output_wav_path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(48000)
-            wf.writeframes(pcm_data.tobytes())
+                    # 複素解析信号化 (complex64)
+                    x = np.empty(actual_complex, dtype=np.complex64)
+                    x.real = (raw_u8[0 : actual_complex * 2 : 2].astype(np.float32) - 127.5) / 128.0
+                    x.imag = (raw_u8[1 : actual_complex * 2 : 2].astype(np.float32) - 127.5) / 128.0
+                    del raw_u8
+
+                    # ドップラー周波数偏移列 (このチャンク分のみ補間)
+                    chunk_shifts = None
+                    if override_arr is not None:
+                        if len(override_arr) == num_complex_samples:
+                            chunk_shifts = override_arr[sample_offset : sample_offset + actual_complex]
+                        else:
+                            x_interp = np.linspace(0.0, duration_sec, len(override_arr))
+                            t0 = sample_offset / float(sample_rate)
+                            t1 = (sample_offset + actual_complex) / float(sample_rate)
+                            x_samples = np.linspace(t0, t1, actual_complex, endpoint=False)
+                            chunk_shifts = np.interp(x_samples, x_interp, override_arr)
+                    elif shifts_1s is not None:
+                        x_interp = np.linspace(0.0, duration_sec, len(shifts_1s))
+                        t0 = sample_offset / float(sample_rate)
+                        t1 = (sample_offset + actual_complex) / float(sample_rate)
+                        x_samples = np.linspace(t0, t1, actual_complex, endpoint=False)
+                        chunk_shifts = np.interp(x_samples, x_interp, shifts_1s)
+
+                    # 複素ミキシングによるドップラー相殺 (位相連続性を保持)
+                    if chunk_shifts is not None:
+                        phase_rad = phase_acc + (2.0 * np.pi * np.cumsum(chunk_shifts, dtype=np.float64) / float(sample_rate))
+                        phase_acc = float(phase_rad[-1] % (2.0 * np.pi))
+                        phase_f32 = phase_rad.astype(np.float32)
+                        del phase_rad, chunk_shifts
+                        rotator = np.empty(actual_complex, dtype=np.complex64)
+                        rotator.real = np.cos(phase_f32)
+                        rotator.imag = -np.sin(phase_f32)
+                        del phase_f32
+                        x *= rotator
+                        del rotator
+
+                    # 検波前チャネル帯域制限フィルタ & デシメーション (240kSPS -> 48kSPS)
+                    if prev_tail_x is not None:
+                        x_padded = np.concatenate((prev_tail_x, x))
+                        x_real = signal.resample_poly(x_padded.real, up=1, down=decim)
+                        x_imag = signal.resample_poly(x_padded.imag, up=1, down=decim)
+                        x_if = (x_real[pad_out:] + 1j * x_imag[pad_out:]).astype(np.complex64)
+                        del x_padded, x_real, x_imag
+                    else:
+                        x_real = signal.resample_poly(x.real, up=1, down=decim)
+                        x_imag = signal.resample_poly(x.imag, up=1, down=decim)
+                        x_if = (x_real + 1j * x_imag).astype(np.complex64)
+                        del x_real, x_imag
+
+                    if actual_complex >= pad_in:
+                        prev_tail_x = x[-pad_in:].copy()
+                    else:
+                        prev_tail_x = None
+                    del x
+
+                    if len(x_if) == 0:
+                        sample_offset += actual_complex
+                        continue
+
+                    # 位相差分 FM 復調 (Polar Discriminator at 48kSPS)
+                    if prev_x_if_last is not None:
+                        x_for_disc = np.concatenate((np.array([prev_x_if_last], dtype=np.complex64), x_if))
+                        p = x_for_disc[1:] * np.conj(x_for_disc[:-1])
+                        del x_for_disc
+                    else:
+                        if len(x_if) < 2:
+                            prev_x_if_last = x_if[-1]
+                            sample_offset += actual_complex
+                            continue
+                        p = x_if[1:] * np.conj(x_if[:-1])
+
+                    prev_x_if_last = x_if[-1]
+                    del x_if
+
+                    demod_audio = np.angle(p).astype(np.float64)
+                    del p
+
+                    # 音声帯域フィルタリング (AFSK 3.5kHz LPF, 状態 zi をチャンク間で引き継ぎ)
+                    audio_chunk, zi = signal.sosfilt(sos, demod_audio, zi=zi)
+                    del demod_audio
+                    audio_f32 = audio_chunk.astype(np.float32)
+                    del audio_chunk
+
+                    chunk_max = float(np.max(np.abs(audio_f32)))
+                    if chunk_max > max_val:
+                        max_val = chunk_max
+                    total_audio_samples += len(audio_f32)
+                    audio_f32.tofile(tmp_f)
+                    del audio_f32
+
+                    sample_offset += actual_complex
+
+            # 3. 16-bit PCM WAV スケーリング & 出力 (ストリーミング書き出し)
+            scale = (24000.0 / max_val) if max_val > 1e-6 else 0.0
+            read_block_samples = fs_if * 10  # 480,000 samples (1.92 MB)
+            with open(tmp_f32_path, "rb") as tmp_f, wave.open(output_wav_path, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # 16-bit
+                wf.setframerate(fs_if)
+                while True:
+                    chunk = np.fromfile(tmp_f, dtype=np.float32, count=read_block_samples)
+                    if len(chunk) == 0:
+                        break
+                    if scale > 0.0:
+                        pcm_data = np.clip(chunk * scale, -32768, 32767).astype(np.int16)
+                    else:
+                        pcm_data = np.zeros(len(chunk), dtype=np.int16)
+                    wf.writeframes(pcm_data.tobytes())
+        finally:
+            if os.path.exists(tmp_f32_path):
+                os.remove(tmp_f32_path)
 
         logger.info(f"Successfully demodulated raw IQ to 48kHz WAV: {output_wav_path}")
         return output_wav_path

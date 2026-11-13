@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from temporalio import activity
 
 from aprs_decoder import APRSDecoder
-from funcube_decoder import FUNcubeDecoder
+from funcube_decoder import FUNcubeDecoder, DEFAULT_FUNCUBE_TLE
 from meteor_decoder import MeteorDecoder
 from iss_dsp import ISSDspDemodulator
 from spectrogram_generator import SpectrogramGenerator
@@ -21,6 +21,30 @@ DEFAULT_ISS_TLE = (
     "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996",
     "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
 )
+
+DEFAULT_METEOR_M2_3_TLE = (
+    "1 57166U 23091A   26296.25648911 -.00000011  00000+0  13974-4 0  9991",
+    "2 57166  98.5934 348.5131 0004559 145.3247 214.8230 14.24054780172745",
+)
+
+DEFAULT_METEOR_M2_4_TLE = (
+    "1 59051U 24039A   26296.27566674  .00000005  00000+0  21993-4 0  9998",
+    "2 59051  98.7198 254.0636 0007418 151.3257 208.8330 14.22441005137473",
+)
+
+
+def _resolve_fallback_tle(satellite: str):
+    """衛星名に応じたフォールバック TLE タプルを返す"""
+    upper = (satellite or "").upper()
+    if "ISS" in upper:
+        return DEFAULT_ISS_TLE
+    if "FUNCUBE" in upper or "AO-73" in upper:
+        return DEFAULT_FUNCUBE_TLE
+    if "METEOR-M2 3" in upper or "METEOR M2-3" in upper:
+        return DEFAULT_METEOR_M2_3_TLE
+    if "METEOR-M2 4" in upper or "METEOR M2-4" in upper:
+        return DEFAULT_METEOR_M2_4_TLE
+    return None
 
 def compute_file_duration_seconds(file_path: str, default_sample_rate: int = 240000) -> float:
     """録音ファイル (生 IQ または WAV) の正確な収録時間 [秒] を算出"""
@@ -366,9 +390,7 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         # 録音時間および TCA タイムドリフト・推定 SNR の算出
         rec_duration_sec = compute_file_duration_seconds(local_wav)
         pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
-        tle_lines = params.get("tle_lines")
-        if not tle_lines and "ISS" in satellite.upper():
-            tle_lines = DEFAULT_ISS_TLE
+        tle_lines = params.get("tle_lines") or _resolve_fallback_tle(satellite)
 
         tca_drift_sec = None
         snr_db = None

@@ -181,3 +181,53 @@ def test_decode_packets_activity_with_corrupt_raw(tmp_path):
     assert res["packets"] == []
 
 
+def test_demodulate_multi_chunk_continuity(tmp_path):
+    """10秒チャンク境界を跨いでも位相連続性と復調トーン品質が維持されることを検証"""
+    demod = ISSDspDemodulator()
+    sample_rate = 48000  # fs_if = 9600 Hz (> 7000 Hz)
+    duration_sec = 12.0  # 10s チャンク + 2s チャンク
+    num_samples = int(sample_rate * duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    fm_dev_hz = 1500.0
+    mod_freq_hz = 1200.0
+    doppler_drift_hz = 1000.0 * (1.0 - 2.0 * (t / duration_sec))
+    instantaneous_freq = doppler_drift_hz + fm_dev_hz * np.sin(2 * np.pi * mod_freq_hz * t)
+    phase = 2 * np.pi * np.cumsum(instantaneous_freq) / sample_rate
+
+    i_val = np.clip(np.round(127.5 + 100.0 * np.cos(phase)), 0, 255).astype(np.uint8)
+    q_val = np.clip(np.round(127.5 + 100.0 * np.sin(phase)), 0, 255).astype(np.uint8)
+    raw_bytes = np.empty(num_samples * 2, dtype=np.uint8)
+    raw_bytes[0::2] = i_val
+    raw_bytes[1::2] = q_val
+
+    raw_path = str(tmp_path / "multi_chunk.raw")
+    with open(raw_path, "wb") as f:
+        f.write(raw_bytes.tobytes())
+
+    out_wav = demod.demodulate_raw_iq(
+        raw_path=raw_path,
+        sample_rate=sample_rate,
+        output_wav_path=str(tmp_path / "multi_chunk.wav"),
+        doppler_override_hz=doppler_drift_hz,
+    )
+    assert os.path.exists(out_wav)
+    with wave.open(out_wav, "rb") as wf:
+        assert wf.getframerate() == sample_rate // 5
+        audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+
+    fft_mag = np.abs(np.fft.rfft(audio.astype(float)))
+    freqs = np.fft.rfftfreq(len(audio), 1.0 / (sample_rate // 5))
+    peak_idx = np.argmax(fft_mag[10:]) + 10
+    assert abs(freqs[peak_idx] - 1200.0) < 30.0
+
+
+def test_resolve_fallback_tle_for_all_satellites():
+    from activities import _resolve_fallback_tle
+    assert _resolve_fallback_tle("ISS (ZARYA)") is not None
+    assert _resolve_fallback_tle("FUNCUBE-1 (AO-73)") is not None
+    assert _resolve_fallback_tle("METEOR-M2 3") is not None
+    assert _resolve_fallback_tle("METEOR-M2 4") is not None
+    assert _resolve_fallback_tle("UNKNOWN-SAT") is None
+
+
