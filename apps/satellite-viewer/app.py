@@ -17,7 +17,7 @@ import gzip
 import concurrent.futures
 from typing import Dict, Any, Optional, List
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import boto3
 from botocore.client import Config
@@ -1040,6 +1040,271 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-color: #34d399;
       box-shadow: 0 0 12px rgba(16, 185, 129, 0.45);
     }
+    .chip-group-toggles {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+    .chip-group-toggles .chip.chip-toggle {
+      margin-left: 0;
+    }
+    .filter-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .filter-search-wrap {
+      position: relative;
+      flex: 1 1 220px;
+      min-width: 180px;
+      display: flex;
+      align-items: center;
+    }
+    .filter-search-input {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 7px 30px 7px 30px;
+      font-size: 0.84rem;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .filter-search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+    .filter-search-icon {
+      position: absolute;
+      left: 9px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .filter-search-clear {
+      position: absolute;
+      right: 6px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 2px 5px;
+      display: none;
+    }
+    .filter-search-clear.visible {
+      display: inline-block;
+    }
+    .filter-select {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 0.82rem;
+      outline: none;
+      cursor: pointer;
+    }
+    .filter-select:focus {
+      border-color: var(--accent);
+    }
+    .filter-reset-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      padding: 7px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .filter-reset-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+    .filter-reset-btn.has-active {
+      border-color: rgba(245, 158, 11, 0.5);
+      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .filter-active-summary {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    /* Stats Minibar */
+    .stats-minibar {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.95));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .stats-summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .stats-kpis {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .stats-kpi-item {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+    .stats-kpi-item strong {
+      color: var(--text);
+      font-size: 0.95rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .stats-kpi-item .kpi-accent {
+      color: #34d399;
+    }
+    .stats-toggle-btn {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 5px 11px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .stats-toggle-btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+    }
+    .stats-details-panel {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .stats-details-panel.open {
+      display: grid;
+    }
+    .stats-detail-box {
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .stats-detail-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stats-sat-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.76rem;
+    }
+    .stats-sat-table th, .stats-sat-table td {
+      padding: 4px 4px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .stats-sat-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .stats-sat-row {
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .stats-sat-row:hover {
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .stats-band-row {
+      margin-bottom: 8px;
+      font-size: 0.76rem;
+    }
+    .stats-band-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+      color: var(--text);
+    }
+    .stats-bar-track {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .stats-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0284c7, #34d399);
+      border-radius: 999px;
+      transition: width 0.3s ease;
+    }
+    .stats-trend-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 82px;
+      padding-top: 8px;
+    }
+    .stats-trend-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+      gap: 3px;
+    }
+    .stats-trend-bar-wrap {
+      width: 100%;
+      max-width: 24px;
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      position: relative;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .stats-trend-bar-total {
+      width: 100%;
+      background: rgba(56, 189, 248, 0.35);
+      border-radius: 4px 4px 0 0;
+      position: relative;
+    }
+    .stats-trend-bar-success {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #10b981;
+      border-radius: 4px 4px 0 0;
+    }
+    .stats-trend-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
     .filter-options {
       display: flex;
       justify-content: space-between;
@@ -1392,6 +1657,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       .chip.chip-toggle {
         margin-left: 0;
       }
+      .chip-group-toggles {
+        margin-left: 0;
+        flex-wrap: nowrap;
+        flex-shrink: 0;
+      }
+      .filter-controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .filter-search-wrap {
+        flex: 1 1 auto;
+      }
+      .stats-kpis {
+        gap: 10px 14px;
+      }
+      .stats-details-panel.open {
+        grid-template-columns: 1fr;
+      }
       .filter-options {
         flex-direction: column;
         align-items: flex-start;
@@ -1569,26 +1852,93 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="btn-label-long">📅 通過予測 (24h)</span>
         <span class="btn-label-short">📅 通過予測</span>
       </button>
-      <button class="btn-refresh btn-reload" onclick="loadPasses(1, true)">
+      <button class="btn-refresh btn-reload" onclick="refreshAllDashboardData()">
         <span class="btn-label-long">🔄 最新データ取得</span>
         <span class="btn-label-short">🔄 最新取得</span>
       </button>
     </div>
   </header>
 
+  <!-- Observation Stats Minibar -->
+  <section id="statsMinibar" class="stats-minibar" aria-label="観測統計サマリー">
+    <div class="stats-summary-row">
+      <div class="stats-kpis">
+        <span class="stats-kpi-item">📊 総観測: <strong id="statTotalPasses">-</strong> 件</span>
+        <span class="stats-kpi-item">✨ 復調成功率: <strong id="statSuccessRate" class="kpi-accent">-</strong>% (<span id="statSuccessCount">-</span>件)</span>
+        <span class="stats-kpi-item">📦 総パケット: <strong id="statTotalPackets">-</strong></span>
+        <span class="stats-kpi-item">🖼️ 気象画像: <strong id="statTotalImages">-</strong> 枚</span>
+        <span class="stats-kpi-item">⏱️ 総受信時間: <strong id="statTotalHours">-</strong> h</span>
+      </div>
+      <button type="button" id="statsToggleBtn" class="stats-toggle-btn" onclick="statsToggleDetails()">詳細内訳 ▼</button>
+    </div>
+    <div id="statsDetailsPanel" class="stats-details-panel">
+      <div class="stats-detail-box">
+        <div class="stats-detail-title">
+          <span>🛰️ 衛星別実績 (クリックで絞込)</span>
+          <span id="statDateRange" style="color:var(--text-muted); font-weight:normal;"></span>
+        </div>
+        <div id="statsBySatelliteBody" style="max-height:160px; overflow-y:auto;">読み込み中...</div>
+      </div>
+      <div class="stats-detail-box">
+        <div class="stats-detail-title"><span>📐 仰角帯別の復調成功率</span></div>
+        <div id="statsByElevationBody">読み込み中...</div>
+      </div>
+      <div class="stats-detail-box">
+        <div class="stats-detail-title">
+          <span>📈 直近7日間の推移 (JST)</span>
+          <span style="color:var(--text-muted); font-weight:normal; font-size:0.7rem;">緑: 成功 / 青: 全体</span>
+        </div>
+        <div id="statsDailyTrendBody">読み込み中...</div>
+      </div>
+    </div>
+  </section>
+
   <!-- Filter & Search Toolbar -->
   <div class="toolbar-section">
     <div class="filter-chips">
-      <button class="chip active" onclick="setCategoryFilter('all', this)">すべて (<span id="count-all">0</span>)</button>
-      <button class="chip" onclick="setCategoryFilter('SpaceStation', this)">🚀 ISS (<span id="count-spacestation">0</span>)</button>
-      <button class="chip" onclick="setCategoryFilter('WeatherSatellite', this)">🛰️ METEOR (<span id="count-weathersatellite">0</span>)</button>
-      <button class="chip" onclick="setCategoryFilter('CubeSat', this)">📻 FUNcube (<span id="count-cubesat">0</span>)</button>
-      <button class="chip chip-toggle" id="btnDemodOnly" onclick="toggleDemodFilter(this)">
-        ✨ 復調成功のみ (<span id="count-demod-success">0</span>)
-      </button>
+      <button class="chip active" data-category="all" onclick="setCategoryFilter('all', this)">すべて (<span id="count-all">0</span>)</button>
+      <button class="chip" data-category="SpaceStation" onclick="setCategoryFilter('SpaceStation', this)">🚀 ISS (<span id="count-spacestation">0</span>)</button>
+      <button class="chip" data-category="WeatherSatellite" onclick="setCategoryFilter('WeatherSatellite', this)">🛰️ METEOR (<span id="count-weathersatellite">0</span>)</button>
+      <button class="chip" data-category="CubeSat" onclick="setCategoryFilter('CubeSat', this)">📻 FUNcube (<span id="count-cubesat">0</span>)</button>
+      <button class="chip" data-category="GenericSatellite" onclick="setCategoryFilter('GenericSatellite', this)">📡 その他 (<span id="count-genericsatellite">0</span>)</button>
+      <div class="chip-group-toggles">
+        <button class="chip chip-toggle" id="btnDemodOnly" onclick="toggleDemodFilter(this)">
+          ✨ 復調成功のみ (<span id="count-demod-success">0</span>)
+        </button>
+        <button class="chip chip-toggle" id="btnHasImage" onclick="toggleHasImageFilter(this)">
+          🖼️ 画像あり (<span id="count-has-image">0</span>)
+        </button>
+        <button class="chip chip-toggle" id="btnHighEl" onclick="toggleHighElFilter(this)">
+          ⛰️ 仰角30°+
+        </button>
+      </div>
+    </div>
+    <div class="filter-controls">
+      <div class="filter-search-wrap">
+        <span class="filter-search-icon">🔍</span>
+        <input type="text" id="filterSearchInput" class="filter-search-input" placeholder="衛星名・パスID・パケット内容で検索..." oninput="onFilterSearchInput(this.value)">
+        <button type="button" id="filterSearchClear" class="filter-search-clear" title="検索をクリア" onclick="clearFilterSearch()">&times;</button>
+      </div>
+      <select id="filterSatellite" class="filter-select" onchange="onFilterSelectChange()" aria-label="衛星で絞り込み">
+        <option value="all">🛰️ すべての衛星</option>
+      </select>
+      <select id="filterPeriod" class="filter-select" onchange="onFilterSelectChange()" aria-label="期間で絞り込み">
+        <option value="all">🕒 全期間</option>
+        <option value="24h">直近 24時間</option>
+        <option value="7d">直近 7日間</option>
+        <option value="30d">直近 30日間</option>
+      </select>
+      <select id="filterSort" class="filter-select" onchange="onFilterSelectChange()" aria-label="並び替え">
+        <option value="newest">⬇️ 新しい順</option>
+        <option value="oldest">⬆️ 古い順</option>
+        <option value="max_el_desc">📐 最大仰角が高い順</option>
+        <option value="packets_desc">📦 パケット数が多い順</option>
+      </select>
+      <button type="button" id="filterResetBtn" class="filter-reset-btn" onclick="resetAllFilters()">↺ リセット</button>
     </div>
     <div class="filter-options">
       <span class="matched-count" id="matchedCount">読み込み中...</span>
+      <span class="filter-active-summary" id="filterActiveSummary"></span>
     </div>
   </div>
 
@@ -3888,19 +4238,218 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
-    // --- 無限スクロール & 動的ロード ロジック ---
+    // --- 無限スクロール & 動的ロード & フィルタ・統計 ロジック ---
     let currentPage = 1;
     let currentCategory = 'all';
     let isDemodOnly = false;
+    let isHasImageOnly = false;
+    let currentMinEl = 0;
+    let currentSatelliteFilter = 'all';
+    let currentPeriodFilter = 'all';
+    let currentSortBy = 'newest';
+    let currentSearchQuery = '';
+    let filterSearchDebounceTimer = null;
     let isLoading = false;
     let hasMore = true;
+    let statsDetailsOpen = false;
+
+    function filterEscapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[s]));
+    }
+
+    function filterSyncUrl() {
+      try {
+        const params = new URLSearchParams();
+        if (currentCategory && currentCategory !== 'all') params.set('category', currentCategory);
+        if (isDemodOnly) params.set('demod', '1');
+        if (isHasImageOnly) params.set('img', '1');
+        if (currentMinEl > 0) params.set('min_el', String(currentMinEl));
+        if (currentSatelliteFilter && currentSatelliteFilter !== 'all') params.set('sat', currentSatelliteFilter);
+        if (currentPeriodFilter && currentPeriodFilter !== 'all') params.set('period', currentPeriodFilter);
+        if (currentSortBy && currentSortBy !== 'newest') params.set('sort', currentSortBy);
+        if (currentSearchQuery.trim()) params.set('q', currentSearchQuery.trim());
+        const qs = params.toString();
+        const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+        window.history.replaceState(null, '', newUrl);
+      } catch (e) {
+        // Ignore history errors in restricted environments
+      }
+      filterUpdateActiveSummary();
+    }
+
+    function filterRestoreFromUrl() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        currentCategory = params.get('category') || 'all';
+        isDemodOnly = params.get('demod') === '1' || params.get('demod_only') === 'true';
+        isHasImageOnly = params.get('img') === '1' || params.get('has_image') === 'true';
+        currentMinEl = parseFloat(params.get('min_el') || '0') || 0;
+        currentSatelliteFilter = params.get('sat') || params.get('satellite') || 'all';
+        currentPeriodFilter = params.get('period') || 'all';
+        currentSortBy = params.get('sort') || 'newest';
+        currentSearchQuery = params.get('q') || '';
+      } catch (e) {
+        // Ignore
+      }
+      filterSyncUiControls();
+    }
+
+    function filterSyncUiControls() {
+      document.querySelectorAll('.filter-chips .chip[data-category]').forEach(el => {
+        const cat = el.getAttribute('data-category');
+        el.classList.toggle('active', cat === currentCategory);
+      });
+      const btnDemod = document.getElementById('btnDemodOnly');
+      if (btnDemod) btnDemod.classList.toggle('active', isDemodOnly);
+      const btnImg = document.getElementById('btnHasImage');
+      if (btnImg) btnImg.classList.toggle('active', isHasImageOnly);
+      const btnHighEl = document.getElementById('btnHighEl');
+      if (btnHighEl) btnHighEl.classList.toggle('active', currentMinEl >= 30);
+
+      const searchInput = document.getElementById('filterSearchInput');
+      if (searchInput) searchInput.value = currentSearchQuery;
+      const searchClear = document.getElementById('filterSearchClear');
+      if (searchClear) searchClear.classList.toggle('visible', currentSearchQuery.length > 0);
+
+      const satSelect = document.getElementById('filterSatellite');
+      if (satSelect) {
+        if (currentSatelliteFilter !== 'all' && !Array.from(satSelect.options).some(o => o.value === currentSatelliteFilter)) {
+          const opt = document.createElement('option');
+          opt.value = currentSatelliteFilter;
+          opt.textContent = currentSatelliteFilter;
+          satSelect.appendChild(opt);
+        }
+        satSelect.value = currentSatelliteFilter;
+      }
+      const periodSelect = document.getElementById('filterPeriod');
+      if (periodSelect) periodSelect.value = currentPeriodFilter;
+      const sortSelect = document.getElementById('filterSort');
+      if (sortSelect) sortSelect.value = currentSortBy;
+
+      filterUpdateActiveSummary();
+    }
+
+    function filterUpdateActiveSummary() {
+      const parts = [];
+      if (currentCategory !== 'all') parts.push(`カテゴリ: ${currentCategory}`);
+      if (currentSatelliteFilter !== 'all') parts.push(`衛星: ${currentSatelliteFilter}`);
+      if (isDemodOnly) parts.push('復調成功のみ');
+      if (isHasImageOnly) parts.push('画像あり');
+      if (currentMinEl > 0) parts.push(`仰角${currentMinEl}°+`);
+      if (currentPeriodFilter !== 'all') parts.push(`期間: ${currentPeriodFilter}`);
+      if (currentSearchQuery.trim()) parts.push(`検索: "${currentSearchQuery.trim()}"`);
+      if (currentSortBy !== 'newest') {
+        const sortNames = { oldest: '古い順', max_el_desc: '仰角順', packets_desc: 'パケット数順' };
+        parts.push(`並替: ${sortNames[currentSortBy] || currentSortBy}`);
+      }
+
+      const summaryEl = document.getElementById('filterActiveSummary');
+      if (summaryEl) {
+        summaryEl.textContent = parts.length > 0 ? `適用中: ${parts.join(' / ')}` : '';
+      }
+      const resetBtn = document.getElementById('filterResetBtn');
+      if (resetBtn) {
+        resetBtn.classList.toggle('has-active', parts.length > 0);
+      }
+    }
 
     function toggleDemodFilter(btnElement) {
       isDemodOnly = !isDemodOnly;
-      if (btnElement) {
-        btnElement.classList.toggle('active', isDemodOnly);
-      }
+      if (btnElement) btnElement.classList.toggle('active', isDemodOnly);
+      filterSyncUrl();
       loadPasses(1, true);
+    }
+
+    function toggleHasImageFilter(btnElement) {
+      isHasImageOnly = !isHasImageOnly;
+      if (btnElement) btnElement.classList.toggle('active', isHasImageOnly);
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function toggleHighElFilter(btnElement) {
+      currentMinEl = (currentMinEl >= 30) ? 0 : 30;
+      if (btnElement) btnElement.classList.toggle('active', currentMinEl >= 30);
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function onFilterSearchInput(val) {
+      currentSearchQuery = val || '';
+      const clearBtn = document.getElementById('filterSearchClear');
+      if (clearBtn) clearBtn.classList.toggle('visible', currentSearchQuery.length > 0);
+      if (filterSearchDebounceTimer) clearTimeout(filterSearchDebounceTimer);
+      filterSearchDebounceTimer = setTimeout(() => {
+        filterSyncUrl();
+        loadPasses(1, true);
+      }, 280);
+    }
+
+    function clearFilterSearch() {
+      currentSearchQuery = '';
+      const input = document.getElementById('filterSearchInput');
+      if (input) input.value = '';
+      const clearBtn = document.getElementById('filterSearchClear');
+      if (clearBtn) clearBtn.classList.remove('visible');
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function onFilterSelectChange() {
+      const satSelect = document.getElementById('filterSatellite');
+      const periodSelect = document.getElementById('filterPeriod');
+      const sortSelect = document.getElementById('filterSort');
+      currentSatelliteFilter = satSelect ? satSelect.value : 'all';
+      currentPeriodFilter = periodSelect ? periodSelect.value : 'all';
+      currentSortBy = sortSelect ? sortSelect.value : 'newest';
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function resetAllFilters() {
+      currentCategory = 'all';
+      isDemodOnly = false;
+      isHasImageOnly = false;
+      currentMinEl = 0;
+      currentSatelliteFilter = 'all';
+      currentPeriodFilter = 'all';
+      currentSortBy = 'newest';
+      currentSearchQuery = '';
+      filterSyncUiControls();
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function filterBySatelliteFromStats(satName) {
+      currentSatelliteFilter = satName;
+      currentCategory = 'all';
+      filterSyncUiControls();
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function filterUpdateSatelliteDropdown(satellites) {
+      const sel = document.getElementById('filterSatellite');
+      if (!sel || !Array.isArray(satellites)) return;
+      const prevVal = currentSatelliteFilter || sel.value || 'all';
+      sel.innerHTML = '<option value="all">🛰️ すべての衛星</option>';
+      satellites.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.name;
+        opt.textContent = `${item.name} (${item.count})`;
+        sel.appendChild(opt);
+      });
+      if (prevVal !== 'all' && Array.from(sel.options).some(o => o.value === prevVal)) {
+        sel.value = prevVal;
+      } else if (prevVal !== 'all') {
+        const opt = document.createElement('option');
+        opt.value = prevVal;
+        opt.textContent = prevVal;
+        sel.appendChild(opt);
+        sel.value = prevVal;
+      }
     }
 
     async function loadPasses(page = 1, reset = false) {
@@ -3911,7 +4460,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const loader = document.getElementById('scrollLoader');
       if (loader) loader.classList.add('active');
 
-      const url = `/api/passes?page=${page}&limit=12&category=${encodeURIComponent(currentCategory)}&demod_only=${isDemodOnly ? 'true' : 'false'}`;
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '12',
+        category: currentCategory,
+        demod_only: isDemodOnly ? 'true' : 'false',
+        has_image: isHasImageOnly ? 'true' : 'false',
+        satellite: currentSatelliteFilter,
+        period: currentPeriodFilter,
+        min_el: String(currentMinEl),
+        sort: currentSortBy,
+        q: currentSearchQuery.trim(),
+      });
+      const url = `/api/passes?${params.toString()}`;
       try {
         const res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -3933,7 +4494,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           if (document.getElementById('count-spacestation')) document.getElementById('count-spacestation').textContent = data.counts.spacestation || 0;
           if (document.getElementById('count-weathersatellite')) document.getElementById('count-weathersatellite').textContent = data.counts.weathersatellite || 0;
           if (document.getElementById('count-cubesat')) document.getElementById('count-cubesat').textContent = data.counts.cubesat || 0;
+          if (document.getElementById('count-genericsatellite')) document.getElementById('count-genericsatellite').textContent = data.counts.genericsatellite || 0;
           if (document.getElementById('count-demod-success')) document.getElementById('count-demod-success').textContent = data.counts.demod_success || 0;
+          if (document.getElementById('count-has-image')) document.getElementById('count-has-image').textContent = data.counts.has_image || 0;
+          if (data.counts.satellites) {
+            filterUpdateSatelliteDropdown(data.counts.satellites);
+          }
         }
 
         const matchedEl = document.getElementById('matchedCount');
@@ -3956,13 +4522,118 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function setCategoryFilter(category, btnElement) {
       currentCategory = category;
-      document.querySelectorAll('.filter-chips .chip').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.filter-chips .chip[data-category]').forEach(el => el.classList.remove('active'));
       if (btnElement) btnElement.classList.add('active');
+      filterSyncUrl();
       loadPasses(1, true);
     }
 
     function applyFilters() {
       loadPasses(1, true);
+    }
+
+    function statsToggleDetails() {
+      statsDetailsOpen = !statsDetailsOpen;
+      const panel = document.getElementById('statsDetailsPanel');
+      const btn = document.getElementById('statsToggleBtn');
+      if (panel) panel.classList.toggle('open', statsDetailsOpen);
+      if (btn) btn.textContent = statsDetailsOpen ? '詳細内訳 ▲' : '詳細内訳 ▼';
+    }
+
+    async function statsLoadSummary() {
+      try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) return;
+        const stats = await res.json();
+
+        const setTxt = (id, val) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = val;
+        };
+        setTxt('statTotalPasses', stats.total_passes ?? 0);
+        setTxt('statSuccessRate', stats.success_rate_pct ?? 0);
+        setTxt('statSuccessCount', stats.demod_success_passes ?? 0);
+        setTxt('statTotalPackets', (stats.total_packets ?? 0).toLocaleString());
+        setTxt('statTotalImages', stats.total_images ?? 0);
+        setTxt('statTotalHours', stats.total_duration_hours ?? 0);
+
+        if (stats.oldest_pass_iso && stats.newest_pass_iso) {
+          setTxt('statDateRange', `${stats.oldest_pass_iso} 〜 ${stats.newest_pass_iso}`);
+        }
+
+        // 衛星別テーブル
+        const satBody = document.getElementById('statsBySatelliteBody');
+        if (satBody && Array.isArray(stats.by_satellite)) {
+          if (stats.by_satellite.length === 0) {
+            satBody.innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem;">データがありません</div>';
+          } else {
+            const rows = stats.by_satellite.map(s => `
+              <tr class="stats-sat-row" onclick="filterBySatelliteFromStats('${filterEscapeHtml(s.satellite).replace(/'/g, "\\'")}')">
+                <td style="font-weight:600; color:var(--text);">${filterEscapeHtml(s.satellite)}</td>
+                <td>${s.success}/${s.total} (${s.success_rate_pct}%)</td>
+                <td>${s.packets}pkt / ${s.images}枚</td>
+                <td>${s.avg_max_el !== null ? s.avg_max_el + '°' : '-'}</td>
+              </tr>
+            `).join('');
+            satBody.innerHTML = `
+              <table class="stats-sat-table">
+                <thead><tr><th>衛星</th><th>成功/総数</th><th>成果</th><th>平均仰角</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            `;
+          }
+        }
+
+        // 仰角帯別成功率
+        const elBody = document.getElementById('statsByElevationBody');
+        if (elBody && stats.by_elevation_band) {
+          const order = ['high', 'mid', 'low'];
+          elBody.innerHTML = order.map(k => {
+            const b = stats.by_elevation_band[k];
+            if (!b) return '';
+            return `
+              <div class="stats-band-row">
+                <div class="stats-band-header">
+                  <span>${filterEscapeHtml(b.label)}</span>
+                  <span>${b.success}/${b.total} (${b.rate_pct}%)</span>
+                </div>
+                <div class="stats-bar-track">
+                  <div class="stats-bar-fill" style="width:${Math.min(100, b.rate_pct)}%"></div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        // 直近7日間の推移
+        const trendBody = document.getElementById('statsDailyTrendBody');
+        if (trendBody && Array.isArray(stats.daily_trend)) {
+          const maxTotal = Math.max(1, ...stats.daily_trend.map(d => d.total || 0));
+          const cols = stats.daily_trend.map(d => {
+            const totalPct = Math.round(((d.total || 0) / maxTotal) * 100);
+            const succPct = (d.total > 0) ? Math.round(((d.success || 0) / d.total) * 100) : 0;
+            return `
+              <div class="stats-trend-col" title="${d.date}: 成功 ${d.success} / 全 ${d.total} 件">
+                <div style="font-size:0.72rem; color:var(--text-muted);">${d.total}</div>
+                <div class="stats-trend-bar-wrap">
+                  <div class="stats-trend-bar-total" style="height:${totalPct}%">
+                    <div class="stats-trend-bar-success" style="height:${succPct}%"></div>
+                  </div>
+                </div>
+                <div class="stats-trend-label">${filterEscapeHtml(d.date)}</div>
+              </div>
+            `;
+          }).join('');
+          trendBody.innerHTML = `<div class="stats-trend-bars">${cols}</div>`;
+        }
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      }
+    }
+
+    function refreshAllDashboardData() {
+      loadPasses(1, true);
+      statsLoadSummary();
     }
 
     function setupInfiniteScroll() {
@@ -4950,7 +5621,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      filterRestoreFromUrl();
       loadPasses(1, true);
+      statsLoadSummary();
       setupInfiniteScroll();
     });
   </script>
@@ -5262,31 +5935,360 @@ def get_satellite_type(p: dict) -> str:
     return "GenericSatellite"
 
 
+def has_decoded_images(p: dict) -> bool:
+    """スペクトログラム以外の復調画像ファイルが存在するか判定する。"""
+    files = p.get("files") or {}
+    file_keys = files.keys() if isinstance(files, dict) else files
+    return any(
+        any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
+        and "spectrogram" not in fname.lower()
+        for fname in file_keys
+    )
+
+
+def count_decoded_images(p: dict) -> int:
+    """スペクトログラム以外の復調画像ファイル数を返す。"""
+    files = p.get("files") or {}
+    file_keys = files.keys() if isinstance(files, dict) else files
+    return sum(
+        1
+        for fname in file_keys
+        if any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
+        and "spectrogram" not in fname.lower()
+    )
+
+
 def is_demod_successful(p: dict) -> bool:
     """
     パスデータが復調に成功した（中身が見える成果が得られた）かを判定する。
     - 気象衛星: スペクトログラム以外の復調気象画像（MSU-MR 等）が 1 枚以上生成されていること
     - キューブサット / 宇宙ステーション / その他: デコードされたパケット数が 1 件以上あること
     """
-    summary = p.get("summary") or {}
-    files = p.get("files") or {}
-    packets_count = summary.get("packets_count", 0)
-
-    # スペクトログラム以外の画像ファイル（気象写真等）が存在するか判定
-    file_keys = files.keys() if isinstance(files, dict) else files
-    has_decoded_images = any(
-        any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
-        and "spectrogram" not in fname.lower()
-        for fname in file_keys
-    )
-
-    if has_decoded_images:
+    if has_decoded_images(p):
         return True
 
+    summary = p.get("summary") or {}
+    packets_count = summary.get("packets_count", 0)
     if packets_count > 0:
         return True
 
     return False
+
+
+def get_pass_timestamp(p: dict) -> datetime:
+    """パスの観測開始日時 (UTC) を返す。"""
+    pass_id = p.get("pass_id", "")
+    _, parsed_dt = parse_pass_id(pass_id)
+    dt = parsed_dt or p.get("last_modified_dt")
+    if dt is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if getattr(dt, "tzinfo", None) is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def get_pass_max_elevation(p: dict, compute_if_missing: bool = False):
+    """
+    パスの最大仰角を返す。キャッシュ済みなら即返し、compute_if_missing=True の場合のみ
+    TLE から軽量に算出して p['max_elevation'] へキャッシュする。
+    """
+    max_el = p.get("max_elevation")
+    if max_el is None:
+        summary = p.get("summary") or {}
+        max_el = summary.get("max_elevation")
+    if max_el is None:
+        tm = p.get("telemetry_metrics") or {}
+        max_el = tm.get("max_elevation")
+    if max_el is not None:
+        try:
+            return float(max_el)
+        except (TypeError, ValueError):
+            return None
+
+    if not compute_if_missing:
+        return None
+
+    sat = p.get("satellite") or ""
+    pass_id = p.get("pass_id") or ""
+    _, parsed_dt = parse_pass_id(pass_id)
+    tle = load_tle_for_satellite(sat)
+    if parsed_dt and tle:
+        try:
+            summary = p.get("summary") or {}
+            dur = int(float(summary.get("duration_seconds") or summary.get("recording_duration_sec") or 240.0))
+            calc = OrbitCalculator()
+            pts = calc.calculate_trajectory(tle[0], tle[1], parsed_dt, dur, step_seconds=15)
+            if pts:
+                val = float(max(pt.el for pt in pts))
+                p["max_elevation"] = val
+                return val
+        except Exception:
+            pass
+    return None
+
+
+def pass_matches_query(p: dict, q_lower: str) -> bool:
+    """キーワードが衛星名・パスID・サマリー・パケット内容に部分一致するか判定する。"""
+    if not q_lower:
+        return True
+    sat = (p.get("satellite") or "").lower()
+    pass_id = (p.get("pass_id") or "").lower()
+    if q_lower in sat or q_lower in pass_id:
+        return True
+
+    summary = p.get("summary") or {}
+    for key in ("summary_text", "signal_type", "frequency_label"):
+        val = summary.get(key)
+        if val and q_lower in str(val).lower():
+            return True
+
+    packets = p.get("packets")
+    if packets:
+        try:
+            pkt_str = json.dumps(packets, ensure_ascii=False).lower()
+            if q_lower in pkt_str:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def filter_and_sort_passes(
+    all_passes: list,
+    *,
+    category: str = "all",
+    demod_only: bool = False,
+    has_image: bool = False,
+    satellite: str = "all",
+    period: str = "all",
+    min_el: float = 0.0,
+    q: str = "",
+    sort_by: str = "newest",
+    now_dt: datetime | None = None,
+) -> tuple[list, dict]:
+    """
+    パス一覧を各種条件でフィルタリング・ソートし、集計カウントとともに返す。
+    """
+    if now_dt is None:
+        now_dt = datetime.now(timezone.utc)
+
+    counts = {
+        "all": 0,
+        "spacestation": 0,
+        "weathersatellite": 0,
+        "cubesat": 0,
+        "genericsatellite": 0,
+        "demod_success": 0,
+        "has_image": 0,
+        "satellites": [],
+    }
+    sat_counts = {}
+    for p in all_passes:
+        st = get_satellite_type(p).lower()
+        counts["all"] += 1
+        if st in counts:
+            counts[st] += 1
+        if is_demod_successful(p):
+            counts["demod_success"] += 1
+        if has_decoded_images(p):
+            counts["has_image"] += 1
+        sat_name = p.get("satellite") or ""
+        if sat_name:
+            sat_counts[sat_name] = sat_counts.get(sat_name, 0) + 1
+
+    counts["satellites"] = [
+        {"name": name, "count": cnt}
+        for name, cnt in sorted(sat_counts.items(), key=lambda x: (-x[1], x[0]))
+    ]
+
+    period_hours_map = {"24h": 24, "7d": 24 * 7, "30d": 24 * 30}
+    cutoff_dt = None
+    if period in period_hours_map:
+        cutoff_dt = now_dt - timedelta(hours=period_hours_map[period])
+
+    need_el = (min_el > 0.0) or (sort_by == "max_el_desc")
+    q_lower = (q or "").strip().lower()
+
+    matched_passes = []
+    for p in all_passes:
+        st = get_satellite_type(p)
+        if category != "all" and st.lower() != category.lower():
+            continue
+        if satellite and satellite != "all" and (p.get("satellite") or "") != satellite:
+            continue
+        if demod_only and not is_demod_successful(p):
+            continue
+        if has_image and not has_decoded_images(p):
+            continue
+        if cutoff_dt is not None and get_pass_timestamp(p) < cutoff_dt:
+            continue
+        if min_el > 0.0:
+            el = get_pass_max_elevation(p, compute_if_missing=need_el)
+            if el is None or el < min_el:
+                continue
+        if q_lower and not pass_matches_query(p, q_lower):
+            continue
+        matched_passes.append(p)
+
+    if sort_by == "oldest":
+        matched_passes.sort(key=get_pass_timestamp)
+    elif sort_by == "max_el_desc":
+        matched_passes.sort(
+            key=lambda p: (
+                el if (el := get_pass_max_elevation(p, compute_if_missing=True)) is not None else -1.0,
+                get_pass_timestamp(p),
+            ),
+            reverse=True,
+        )
+    elif sort_by == "packets_desc":
+        matched_passes.sort(
+            key=lambda p: (
+                int((p.get("summary") or {}).get("packets_count", 0) or 0),
+                count_decoded_images(p),
+                get_pass_timestamp(p),
+            ),
+            reverse=True,
+        )
+    else:
+        matched_passes.sort(key=get_pass_timestamp, reverse=True)
+
+    return matched_passes, counts
+
+
+def compute_observation_stats(all_passes: list, now_dt: datetime | None = None) -> dict:
+    """
+    全観測パスからダッシュボード上部ミニバー向けの統計情報を集計する。
+    """
+    if now_dt is None:
+        now_dt = datetime.now(timezone.utc)
+    jst = timezone(timedelta(hours=9))
+    now_jst = now_dt.astimezone(jst)
+
+    total_passes = len(all_passes)
+    demod_success_passes = 0
+    total_packets = 0
+    total_images = 0
+    total_duration_sec = 0.0
+    timestamps = []
+
+    sat_map = {}
+    el_bands = {
+        "high": {"label": "高仰角 (45°+)", "total": 0, "success": 0, "rate_pct": 0.0},
+        "mid": {"label": "中仰角 (20°〜45°)", "total": 0, "success": 0, "rate_pct": 0.0},
+        "low": {"label": "低仰角 (<20°)", "total": 0, "success": 0, "rate_pct": 0.0},
+    }
+
+    # 直近7日間 (JST) の日付バケット
+    daily_buckets = {}
+    daily_order = []
+    for offset in range(6, -1, -1):
+        d = (now_jst - timedelta(days=offset)).date()
+        key = d.strftime("%Y-%m-%d")
+        daily_order.append((key, d.strftime("%m/%d")))
+        daily_buckets[key] = {"total": 0, "success": 0}
+
+    for p in all_passes:
+        sat = p.get("satellite") or "Unknown"
+        st = get_satellite_type(p)
+        summary = p.get("summary") or {}
+        pkts = int(summary.get("packets_count", 0) or 0)
+        imgs = count_decoded_images(p)
+        dur = summary.get("duration_seconds") or summary.get("recording_duration_sec") or 0.0
+        try:
+            dur_val = float(dur)
+        except (TypeError, ValueError):
+            dur_val = 0.0
+
+        success = is_demod_successful(p)
+        if success:
+            demod_success_passes += 1
+        total_packets += pkts
+        total_images += imgs
+        total_duration_sec += max(0.0, dur_val)
+
+        ts = get_pass_timestamp(p)
+        if ts.year > 1970:
+            timestamps.append(ts)
+            ts_jst_key = ts.astimezone(jst).strftime("%Y-%m-%d")
+            if ts_jst_key in daily_buckets:
+                daily_buckets[ts_jst_key]["total"] += 1
+                if success:
+                    daily_buckets[ts_jst_key]["success"] += 1
+
+        if sat not in sat_map:
+            sat_map[sat] = {
+                "satellite": sat,
+                "satellite_type": st,
+                "total": 0,
+                "success": 0,
+                "packets": 0,
+                "images": 0,
+                "el_sum": 0.0,
+                "el_count": 0,
+            }
+        entry = sat_map[sat]
+        entry["total"] += 1
+        if success:
+            entry["success"] += 1
+        entry["packets"] += pkts
+        entry["images"] += imgs
+
+        max_el = get_pass_max_elevation(p, compute_if_missing=True)
+        if max_el is not None and max_el > 0.0:
+            entry["el_sum"] += max_el
+            entry["el_count"] += 1
+            if max_el >= 45.0:
+                band = "high"
+            elif max_el >= 20.0:
+                band = "mid"
+            else:
+                band = "low"
+            el_bands[band]["total"] += 1
+            if success:
+                el_bands[band]["success"] += 1
+
+    for band_data in el_bands.values():
+        t = band_data["total"]
+        band_data["rate_pct"] = round((band_data["success"] / t) * 100.0, 1) if t > 0 else 0.0
+
+    by_satellite = []
+    for entry in sorted(sat_map.values(), key=lambda x: (-x["total"], x["satellite"])):
+        t = entry["total"]
+        by_satellite.append({
+            "satellite": entry["satellite"],
+            "satellite_type": entry["satellite_type"],
+            "total": t,
+            "success": entry["success"],
+            "success_rate_pct": round((entry["success"] / t) * 100.0, 1) if t > 0 else 0.0,
+            "packets": entry["packets"],
+            "images": entry["images"],
+            "avg_max_el": round(entry["el_sum"] / entry["el_count"], 1) if entry["el_count"] > 0 else None,
+        })
+
+    daily_trend = [
+        {
+            "date": label,
+            "total": daily_buckets[key]["total"],
+            "success": daily_buckets[key]["success"],
+        }
+        for key, label in daily_order
+    ]
+
+    success_rate_pct = round((demod_success_passes / total_passes) * 100.0, 1) if total_passes > 0 else 0.0
+
+    return {
+        "total_passes": total_passes,
+        "demod_success_passes": demod_success_passes,
+        "success_rate_pct": success_rate_pct,
+        "total_packets": total_packets,
+        "total_images": total_images,
+        "total_duration_hours": round(total_duration_sec / 3600.0, 1),
+        "oldest_pass_iso": min(timestamps).astimezone(jst).strftime("%Y-%m-%d") if timestamps else None,
+        "newest_pass_iso": max(timestamps).astimezone(jst).strftime("%Y-%m-%d") if timestamps else None,
+        "by_satellite": by_satellite,
+        "by_elevation_band": el_bands,
+        "daily_trend": daily_trend,
+    }
 
 
 def resolve_card_metadata(p: dict):
@@ -6567,32 +7569,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             has_data_param = query.get("has_data", ["false"])[0].lower() in ["true", "1", "yes"]
             demod_only_param = query.get("demod_only", ["false"])[0].lower() in ["true", "1", "yes"]
             filter_demod = has_data_param or demod_only_param
+            has_image_param = query.get("has_image", ["false"])[0].lower() in ["true", "1", "yes"]
+            satellite_param = query.get("satellite", ["all"])[0]
+            period_param = query.get("period", ["all"])[0]
+            sort_param = query.get("sort", ["newest"])[0]
+            q_param = query.get("q", [""])[0]
+            try:
+                min_el_param = max(0.0, float(query.get("min_el", ["0"])[0]))
+            except ValueError:
+                min_el_param = 0.0
 
             all_passes = pass_cache.get_all_passes()
-
-            counts = {
-                "all": 0,
-                "spacestation": 0,
-                "weathersatellite": 0,
-                "cubesat": 0,
-                "demod_success": 0,
-            }
-            for p in all_passes:
-                st = get_satellite_type(p).lower()
-                counts["all"] += 1
-                if st in counts:
-                    counts[st] += 1
-                if is_demod_successful(p):
-                    counts["demod_success"] += 1
-
-            matched_passes = []
-            for p in all_passes:
-                st = get_satellite_type(p)
-                if category != "all" and st.lower() != category.lower():
-                    continue
-                if filter_demod and not is_demod_successful(p):
-                    continue
-                matched_passes.append(p)
+            matched_passes, counts = filter_and_sort_passes(
+                all_passes,
+                category=category,
+                demod_only=filter_demod,
+                has_image=has_image_param,
+                satellite=satellite_param,
+                period=period_param,
+                min_el=min_el_param,
+                q=q_param,
+                sort_by=sort_param,
+            )
 
             total_matched = len(matched_passes)
             start_idx = (page - 1) * limit
@@ -6609,6 +7607,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "counts": counts
             }).encode("utf-8")
 
+            self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
+            return
+
+        if path == "/api/stats":
+            all_passes = pass_cache.get_all_passes()
+            stats = compute_observation_stats(all_passes)
+            body = json.dumps(stats).encode("utf-8")
             self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
             return
 

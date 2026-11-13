@@ -847,6 +847,136 @@ class TestPerformanceOptimizations(unittest.TestCase):
         south_polys = [p for p in heatmap["horizon_polygon"] if 130 <= p["az"] <= 230]
         self.assertEqual(len(south_polys), 0)
 
+    def test_filter_and_sort_passes_all_features(self):
+        from app import filter_and_sort_passes
+        now_dt = datetime(2026, 11, 13, 3, 0, 0, tzinfo=timezone.utc)
+        passes = [
+            {
+                "satellite": "ISS (ZARYA)",
+                "pass_id": "ISS (ZARYA)_20261113_010000",
+                "last_modified_dt": datetime(2026, 11, 13, 1, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 52.0,
+                "summary": {"packets_count": 12, "duration_seconds": 360, "summary_text": "APRS Beacon"},
+                "packets": [{"src": "JA1XYZ-1", "info": "Hello from ISS"}],
+                "files": {"spectrogram.png": "k1"},
+            },
+            {
+                "satellite": "METEOR-M2 4",
+                "pass_id": "METEOR-M2 4_20261110_010000",
+                "last_modified_dt": datetime(2026, 11, 10, 1, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 35.0,
+                "summary": {"packets_count": 0, "duration_seconds": 420, "summary_text": "LRPT image"},
+                "packets": None,
+                "files": {"spectrogram.png": "k2", "msu_mr_rgb.png": "k3"},
+            },
+            {
+                "satellite": "FUNCUBE-1 (AO-73)",
+                "pass_id": "FUNCUBE-1 (AO-73)_20261001_010000",
+                "last_modified_dt": datetime(2026, 10, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 15.0,
+                "summary": {"packets_count": 2, "duration_seconds": 180},
+                "packets": [{"msg": "telemetry"}],
+                "files": {},
+            },
+            {
+                "satellite": "NOAA-19",
+                "pass_id": "NOAA-19_20261112_120000",
+                "last_modified_dt": datetime(2026, 11, 12, 12, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 25.0,
+                "summary": {"packets_count": 0, "duration_seconds": 300},
+                "packets": None,
+                "files": {"spectrogram.png": "k4"},
+            },
+        ]
+
+        # 全件 & counts 確認
+        matched, counts = filter_and_sort_passes(passes, now_dt=now_dt)
+        self.assertEqual(len(matched), 4)
+        self.assertEqual(counts["all"], 4)
+        self.assertEqual(counts["spacestation"], 1)
+        self.assertEqual(counts["weathersatellite"], 1)
+        self.assertEqual(counts["cubesat"], 1)
+        self.assertEqual(counts["genericsatellite"], 1)
+        self.assertEqual(counts["demod_success"], 3)
+        self.assertEqual(counts["has_image"], 1)
+        self.assertEqual(len(counts["satellites"]), 4)
+        # デフォルトは新しい順
+        self.assertEqual(matched[0]["satellite"], "ISS (ZARYA)")
+
+        # キーワード検索（パケット内のコールサイン）
+        matched_q, _ = filter_and_sort_passes(passes, q="JA1XYZ", now_dt=now_dt)
+        self.assertEqual(len(matched_q), 1)
+        self.assertEqual(matched_q[0]["satellite"], "ISS (ZARYA)")
+
+        # 画像ありのみ
+        matched_img, _ = filter_and_sort_passes(passes, has_image=True, now_dt=now_dt)
+        self.assertEqual([p["satellite"] for p in matched_img], ["METEOR-M2 4"])
+
+        # 仰角 30° 以上 & 仰角降順ソート
+        matched_el, _ = filter_and_sort_passes(passes, min_el=30.0, sort_by="max_el_desc", now_dt=now_dt)
+        self.assertEqual([p["satellite"] for p in matched_el], ["ISS (ZARYA)", "METEOR-M2 4"])
+
+        # 期間フィルタ (24h, 7d)
+        matched_24h, _ = filter_and_sort_passes(passes, period="24h", now_dt=now_dt)
+        self.assertEqual([p["satellite"] for p in matched_24h], ["ISS (ZARYA)", "NOAA-19"])
+        matched_7d, _ = filter_and_sort_passes(passes, period="7d", now_dt=now_dt)
+        self.assertEqual(len(matched_7d), 3)
+
+        # パケット数降順ソート
+        matched_pkt, _ = filter_and_sort_passes(passes, sort_by="packets_desc", now_dt=now_dt)
+        self.assertEqual(matched_pkt[0]["satellite"], "ISS (ZARYA)")
+        self.assertEqual(matched_pkt[1]["satellite"], "FUNCUBE-1 (AO-73)")
+
+    def test_compute_observation_stats(self):
+        from app import compute_observation_stats
+        now_dt = datetime(2026, 11, 13, 3, 0, 0, tzinfo=timezone.utc)
+        passes = [
+            {
+                "satellite": "ISS (ZARYA)",
+                "pass_id": "ISS (ZARYA)_20261113_010000",
+                "last_modified_dt": datetime(2026, 11, 13, 1, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 50.0,
+                "summary": {"packets_count": 10, "duration_seconds": 1800},
+                "files": {},
+            },
+            {
+                "satellite": "METEOR-M2 4",
+                "pass_id": "METEOR-M2 4_20261112_010000",
+                "last_modified_dt": datetime(2026, 11, 12, 1, 0, 0, tzinfo=timezone.utc),
+                "max_elevation": 15.0,
+                "summary": {"packets_count": 0, "duration_seconds": 1800},
+                "files": {"spectrogram.png": "s1", "img1.png": "i1", "img2.png": "i2"},
+            },
+        ]
+
+        stats = compute_observation_stats(passes, now_dt=now_dt)
+        self.assertEqual(stats["total_passes"], 2)
+        self.assertEqual(stats["demod_success_passes"], 2)
+        self.assertEqual(stats["success_rate_pct"], 100.0)
+        self.assertEqual(stats["total_packets"], 10)
+        self.assertEqual(stats["total_images"], 2)
+        self.assertEqual(stats["total_duration_hours"], 1.0)
+        self.assertEqual(stats["by_elevation_band"]["high"]["total"], 1)
+        self.assertEqual(stats["by_elevation_band"]["low"]["total"], 1)
+        self.assertEqual(len(stats["by_satellite"]), 2)
+        self.assertEqual(len(stats["daily_trend"]), 7)
+
+    def test_html_template_has_enhanced_filter_and_stats_minibar(self):
+        for elem_id in (
+            "statsMinibar",
+            "statsToggleBtn",
+            "statsDetailsPanel",
+            "btnHasImage",
+            "btnHighEl",
+            "filterSearchInput",
+            "filterSatellite",
+            "filterPeriod",
+            "filterSort",
+            "filterResetBtn",
+        ):
+            self.assertIn(f'id="{elem_id}"', HTML_TEMPLATE)
+        self.assertIn("/api/stats", HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()
