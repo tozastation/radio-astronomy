@@ -81,6 +81,11 @@ alertmanager:
   #       title: '{{ if eq .Status "firing" }}🚨 [ALERT]{{ else }}✅ [RESOLVED]{{ end }} {{ .CommonAnnotations.summary }}'
   #       message: '{{ .CommonAnnotations.description }}'
 
+# Alertmanager を意図的に無効化しているため未接続アラートを抑止
+defaultRules:
+  disabled:
+    PrometheusNotConnectedToAlertmanagers: true
+
 # Grafana ダッシュボード設定
 grafana:
   enabled: true
@@ -138,3 +143,30 @@ kubeEtcd:
 
 kubeProxy:
   enabled: false
+
+# 1台同居環境では control-plane (tozastation-g1621-02) と edge (gpd-pocket3-edge) が同一IPを持つため、
+# k3s kubelet (:10250) の ServiceMonitor が gpd-pocket3-edge 名義でも二重スクレイプして
+# k8s.rules.container_memory_* が多重一致エラーになる。エッジ側は kubeedge-edged-cadvisor で収集するため除外する。
+kubelet:
+  serviceMonitor:
+    relabelings:
+      - action: drop
+        sourceLabels: [__meta_kubernetes_endpoint_node_name]
+        regex: gpd-pocket3-edge
+      - action: replace
+        sourceLabels: [__metrics_path__]
+        targetLabel: metrics_path
+    cAdvisorRelabelings:
+      - action: drop
+        sourceLabels: [__meta_kubernetes_endpoint_node_name]
+        regex: gpd-pocket3-edge
+      - action: replace
+        sourceLabels: [__metrics_path__]
+        targetLabel: metrics_path
+    probesRelabelings:
+      - action: drop
+        sourceLabels: [__meta_kubernetes_endpoint_node_name]
+        regex: gpd-pocket3-edge
+      - action: replace
+        sourceLabels: [__metrics_path__]
+        targetLabel: metrics_path
