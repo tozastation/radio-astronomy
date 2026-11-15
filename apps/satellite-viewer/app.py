@@ -66,7 +66,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>VERANDA OBSERVATORY // 衛星電波観測コンソール</title>
   <style>
     :root {
@@ -306,7 +306,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .orbit-tabs {
       display: flex;
-      gap: 4px;
+      flex-wrap: wrap;
+      gap: 6px;
       border-bottom: 1px solid var(--border-hairline);
       margin-bottom: 14px;
       padding-bottom: 8px;
@@ -467,7 +468,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: var(--bg-surface);
       border: 1px solid var(--border-hairline);
       border-radius: 2px;
-      overflow: hidden;
+      overflow: visible;
       margin-bottom: 14px;
       transition: border-color 0.18s var(--ease-instrument);
     }
@@ -799,25 +800,74 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       left: auto;
       right: 20px;
     }
+    .geek-tooltip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+    .geek-tooltip-header .geek-tooltip-title {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+    .geek-tooltip-close {
+      background: transparent;
+      border: 1px solid var(--border-hairline);
+      color: var(--text-muted);
+      border-radius: 2px;
+      min-width: 30px;
+      min-height: 30px;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
     @media (max-width: 680px) {
       .geek-tooltip,
       .telemetry-col-left .geek-tooltip,
       .telemetry-col-center .geek-tooltip,
       .telemetry-col-right .geek-tooltip {
+        position: fixed !important;
         left: 0 !important;
         right: 0 !important;
+        bottom: 0 !important;
+        top: auto !important;
         transform: none !important;
         width: 100% !important;
         max-width: 100% !important;
+        max-height: 75vh;
+        max-height: 75dvh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 14px 16px calc(18px + env(safe-area-inset-bottom)) 16px !important;
+        border-radius: 2px 2px 0 0;
+        box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.75);
+        z-index: 3000;
         box-sizing: border-box !important;
       }
       .geek-tooltip::after {
+        display: none !important;
         left: 24px !important;
         right: auto !important;
       }
+      .geek-tooltip-close {
+        display: inline-flex;
+      }
     }
-    /* ホバー（デスクトップ）またはクリック（モバイル）で表示 */
-    .telemetry-item:hover .geek-tooltip,
+    /* ホバー（ポインタデバイス）またはクリック（モバイル）で表示 */
+    @media (hover: hover) and (pointer: fine) {
+      .telemetry-item:hover .geek-tooltip {
+        display: block;
+        animation: tooltipFadeIn 0.15s ease-out;
+      }
+    }
     .geek-tooltip.is-open {
       display: block;
       animation: tooltipFadeIn 0.15s ease-out;
@@ -1105,6 +1155,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 24px;
       cursor: pointer;
       line-height: 1;
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
     }
     .modal-body {
       padding: 16px;
@@ -1681,15 +1737,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       gap: 20px;
     }
     @media (max-width: 860px) {
-      .replay-layout {
+      .replay-layout,
+      .galactic-viz-grid {
         grid-template-columns: 1fr;
       }
     }
     .galactic-viz-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
       gap: 16px;
       margin-bottom: 16px;
+    }
+    .galactic-viz-grid > * {
+      min-width: 0;
     }
     .radar-wrapper {
       display: flex;
@@ -1733,19 +1793,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .replay-telemetry-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       font-size: 0.85rem;
     }
-    .telemetry-item {
+    .replay-telemetry-grid .telemetry-item {
       display: flex;
       flex-direction: column;
+      min-width: 0;
     }
-    .telemetry-label {
+    .replay-telemetry-grid .telemetry-label {
       font-size: 0.72rem;
       color: var(--text-muted);
     }
-    .telemetry-val {
+    .replay-telemetry-grid .telemetry-val {
       font-weight: 700;
       color: var(--text);
       font-family: var(--font-mono); font-variant-numeric: tabular-nums;
@@ -2137,6 +2198,298 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         grid-template-columns: 1fr;
       }
     }
+    html, body {
+      overflow-x: clip;
+      max-width: 100%;
+    }
+    .timeline-scrubber {
+      touch-action: none;
+    }
+    .accordion-content pre.code-block,
+    .modal-body pre.code-block {
+      max-width: 100%;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .packet-preview-line {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .orbit-map-stage {
+      position: relative;
+      width: 100%;
+    }
+    .orbit-map-canvas-frame {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 1;
+      height: auto;
+      max-height: 60vh;
+      background: #080d1a;
+      border-radius: 2px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .orbit-map-overlay-telemetry {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      pointer-events: none;
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      background: rgba(15, 23, 42, 0.85);
+      padding: 8px 12px;
+      border-radius: 2px;
+      border: 1px solid var(--border-hairline);
+    }
+    .orbit-map-overlay-legend {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      pointer-events: none;
+      font-size: 0.72rem;
+      color: var(--text-primary);
+      background: rgba(15, 23, 42, 0.85);
+      padding: 6px 12px;
+      border-radius: 2px;
+      border: 1px solid var(--border-hairline);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .galactic-scale-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .galactic-scale-label {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    @media (max-width: 900px) {
+      .calendar-container {
+        grid-template-columns: 1fr !important;
+      }
+    }
+    @media (max-width: 900px) and (max-height: 520px) {
+      header {
+        position: static !important;
+        padding: 8px 12px !important;
+      }
+      .orbit-map-canvas-frame {
+        max-height: none;
+      }
+    }
+    @media (max-width: 640px) {
+      header {
+        padding: 8px 12px;
+        padding-top: max(8px, env(safe-area-inset-top));
+        gap: 8px;
+      }
+      .workspace-nav {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 6px !important;
+        width: 100%;
+        padding-bottom: 2px;
+      }
+      .workspace-nav::-webkit-scrollbar {
+        display: none;
+      }
+      .ws-tab-btn {
+        flex: 0 0 auto !important;
+        white-space: nowrap;
+        min-height: 36px;
+        padding: 6px 10px !important;
+        font-size: 0.72rem !important;
+      }
+      .stats-summary-row {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .stats-kpis {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+      }
+      .stats-details-panel {
+        grid-template-columns: 1fr !important;
+      }
+      .stats-sat-table {
+        min-width: 460px;
+        font-size: 0.74rem;
+      }
+      .stats-sat-table th,
+      .stats-sat-table td {
+        white-space: nowrap;
+        padding: 6px 8px;
+      }
+      .filter-chips,
+      .filter-chips-mobile {
+        gap: 6px;
+      }
+      .filter-chips .chip,
+      .chip-group-toggles {
+        flex-shrink: 0;
+      }
+      .filter-chips .chip {
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+      }
+      .filter-search-wrap {
+        flex: 1 1 100%;
+        width: 100%;
+      }
+      .filter-search-input,
+      .filter-select,
+      .filter-reset-btn {
+        min-height: 40px;
+        font-size: 16px;
+      }
+      .timeline-scrubber {
+        width: 24px !important;
+        right: max(2px, env(safe-area-inset-right)) !important;
+        top: 148px !important;
+        bottom: max(76px, calc(64px + env(safe-area-inset-bottom))) !important;
+      }
+      .timeline-floating-pill {
+        right: 32px !important;
+        max-width: calc(100vw - 44px);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sat-header-right {
+        justify-content: flex-start;
+        gap: 6px;
+      }
+      .btn-replay,
+      .btn-grafana {
+        min-height: 38px;
+        padding: 6px 12px;
+      }
+      .cubesat-telemetry-hud {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+      }
+      .orbit-tab-btn {
+        flex: 1 1 140px;
+        min-height: 40px;
+        font-size: 0.74rem;
+      }
+      .calendar-grid {
+        grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+        gap: 3px !important;
+      }
+      .calendar-cell {
+        min-height: 48px !important;
+        padding: 4px 2px !important;
+      }
+      .orbit-map-stage {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .orbit-map-canvas-frame {
+        max-height: none;
+        aspect-ratio: 16 / 10;
+      }
+      .orbit-map-overlay-telemetry,
+      .orbit-map-overlay-legend {
+        position: static !important;
+        width: 100%;
+        box-sizing: border-box;
+        pointer-events: auto;
+      }
+      .orbit-map-overlay-legend {
+        gap: 6px 10px !important;
+      }
+      .orbit-controller-actions .btn-refresh {
+        min-height: 38px;
+      }
+      .galactic-toggle-btn {
+        min-height: 34px !important;
+        padding: 4px 10px !important;
+      }
+      .galactic-spectrum-stage {
+        aspect-ratio: 16 / 10 !important;
+        min-height: 220px !important;
+      }
+      .galactic-drift-stage {
+        aspect-ratio: 16 / 9 !important;
+        min-height: 190px !important;
+      }
+      .galactic-scale-row {
+        flex-direction: column;
+        gap: 2px;
+      }
+      .galactic-scale-label {
+        white-space: normal;
+      }
+      .modal {
+        padding: 8px !important;
+      }
+      .modal-box,
+      .modal-box-large {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 92vh;
+        max-height: 92dvh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .modal-body {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        flex: 1 1 auto;
+        min-height: 0;
+        padding: 12px;
+      }
+      .modal-header,
+      .modal-footer {
+        flex-shrink: 0;
+        padding: 10px 12px;
+      }
+      .radar-canvas {
+        max-width: min(100%, 360px) !important;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 1;
+      }
+      .clipper-inputs-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px;
+      }
+      .clipper-input-group input {
+        font-size: 16px;
+        min-height: 38px;
+      }
+      .clipper-card .btn-sm,
+      .speed-chip,
+      .btn-auto-window,
+      .btn-generate-gif,
+      #btnPlayPause {
+        min-height: 40px;
+      }
+      #backupModal .action-btn {
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+    @media (max-width: 420px) {
+      .galactic-mini-grid {
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2205,7 +2558,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span>衛星別実績 (クリックで絞込)</span>
               <span id="statDateRange" class="mono-num" style="color:var(--text-muted); font-weight:normal;"></span>
             </div>
-            <div id="statsBySatelliteBody" style="max-height:160px; overflow-y:auto;">読み込み中...</div>
+            <div id="statsBySatelliteBody" style="max-height:220px; overflow-x:auto; overflow-y:auto; -webkit-overflow-scrolling:touch;">読み込み中...</div>
           </div>
           <div class="stats-detail-box">
             <div class="stats-detail-title"><span>仰角帯別の復調成功率</span></div>
@@ -2379,13 +2732,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Tab 2: Animation View (Canvas & Time Controller) -->
         <div id="orbitAnimationTabContent" style="display:none;">
-          <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; max-height:60vh; background:#080d1a; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
-            <canvas id="orbitWorldCanvas" width="960" height="480" style="width:100%; height:100%; display:block;"></canvas>
-            <div id="canvasOverlayTelemetries" style="position:absolute; top:10px; left:10px; pointer-events:none; font-family:ui-monospace,monospace; font-size:0.75rem; color:var(--text-secondary); background:rgba(15,23,42,0.85); padding:8px 12px; border-radius:2px; border:1px solid var(--border-hairline);">
+          <div class="orbit-map-stage">
+            <div class="orbit-map-canvas-frame">
+              <canvas id="orbitWorldCanvas" width="960" height="480" style="width:100%; height:100%; display:block;"></canvas>
+            </div>
+            <div id="canvasOverlayTelemetries" class="orbit-map-overlay-telemetry">
               <div id="overlaySimTime" style="color:#f1f5f9; font-weight:bold; margin-bottom:4px;">UTC: 2026-10-28 12:00:00</div>
               <div id="overlayRadioStatus" style="color:var(--accent);">📡 BEAM: IDLE</div>
             </div>
-            <div id="canvasLegend" style="position:absolute; bottom:10px; left:10px; pointer-events:none; font-size:0.72rem; color:var(--text-primary); background:rgba(15,23,42,0.85); padding:6px 12px; border-radius:2px; border:1px solid var(--border-hairline); display:flex; gap:12px; flex-wrap:wrap;">
+            <div id="canvasLegend" class="orbit-map-overlay-legend">
               <span><span style="color:var(--accent);">●</span> METEOR-M2 3</span>
               <span><span style="color:#06b6d4;">●</span> METEOR-M2 4</span>
               <span><span style="color:var(--status-err);">●</span> ISS</span>
@@ -2396,7 +2751,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <!-- Time Controller UI -->
           <div id="animationTimeControllerArea" style="margin-top:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:2px; padding:10px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
-              <div style="display:flex; align-items:center; gap:8px;">
+              <div class="orbit-controller-actions" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <button id="btnOrbitPlayPause" class="btn-refresh" onclick="toggleOrbitPlayPause()" style="min-width:75px;">▶ 再生</button>
                 <button id="btnPrevPass" class="btn-refresh" onclick="skipToPass(-1)" title="前のパスへ">⏮️ 前パス</button>
                 <button id="btnNextPass" class="btn-refresh" onclick="skipToPass(1)" title="次のパスへ">⏭️ 次パス</button>
@@ -2499,21 +2854,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span style="font-weight:bold; color:#f1f5f9; font-size:0.92rem;">📊 21cm 水素線視線速度スペクトル</span>
                 <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">周波数スイッチング較正</span>
               </div>
-              <div style="display:flex; align-items:center; gap:6px;">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">横軸範囲:</span>
-                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid var(--border-hairline); font-size:0.72rem;">
-                  <button id="galacticRangeFullBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--accent); color:#fff; font-weight:bold;" onclick="galacticSetSpectrumRange('full')">全域 ±150</button>
-                  <button id="galacticRangeArmBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpectrumRange('arm')">渦状腕 -100~+50</button>
-                  <button id="galacticRangeZoomBtn" class="copy-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpectrumRange('zoom')">超拡大 -70~+30</button>
+                <div class="galactic-segmented-group" style="display:inline-flex; flex-wrap:wrap; border-radius:4px; overflow:hidden; border:1px solid var(--border-hairline); font-size:0.72rem;">
+                  <button id="galacticRangeFullBtn" class="copy-btn galactic-toggle-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--accent); color:#fff; font-weight:bold;" onclick="galacticSetSpectrumRange('full')">全域 ±150</button>
+                  <button id="galacticRangeArmBtn" class="copy-btn galactic-toggle-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpectrumRange('arm')">渦状腕 -100~+50</button>
+                  <button id="galacticRangeZoomBtn" class="copy-btn galactic-toggle-btn" style="padding:2px 8px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpectrumRange('zoom')">超拡大 -70~+30</button>
                 </div>
               </div>
             </div>
 
             <!-- Intuitive Quick Reading Guide -->
             <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.25); border-radius:2px; padding:7px 10px; margin-bottom:8px; font-size:0.74rem; line-height:1.45; color:var(--text-primary);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px; margin-bottom:3px;">
                 <span style="font-weight:bold; color:var(--accent);">💡 一目でわかる！スペクトルの見方（宇宙のスピードメーター）</span>
-                <div id="galacticSpectrumHoverInfo" style="font-size:0.72rem; font-family:ui-monospace,monospace; color:var(--accent); font-weight:bold;">
+                <div id="galacticSpectrumHoverInfo" style="font-size:0.72rem; font-family:ui-monospace,monospace; color:var(--accent); font-weight:bold; overflow-wrap:anywhere;">
                   波形をなぞると渦状腕・距離を表示
                 </div>
               </div>
@@ -2525,17 +2880,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- Spectrum Canvas with interactive hover cursor -->
-            <div style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; min-height:220px; background:#080d1a; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); cursor:crosshair;">
-              <canvas id="galacticSpectrumCanvas" width="900" height="420" style="width:100%; height:100%; display:block;" onmousemove="galacticHandleSpectrumHover(event)" onmouseleave="galacticClearSpectrumHover()" ontouchmove="galacticHandleSpectrumTouch(event)"></canvas>
+            <div class="galactic-spectrum-stage" style="position:relative; width:100%; aspect-ratio: 2 / 1; height:auto; min-height:220px; background:#080d1a; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); cursor:crosshair;">
+              <canvas id="galacticSpectrumCanvas" width="900" height="420" style="width:100%; height:100%; display:block; touch-action:pan-y;" onmousemove="galacticHandleSpectrumHover(event)" onmouseleave="galacticClearSpectrumHover()" ontouchstart="galacticHandleSpectrumTouch(event)" ontouchmove="galacticHandleSpectrumTouch(event)"></canvas>
             </div>
 
             <!-- Dark Matter & Galactic Rotation Analysis Panel -->
             <div id="galacticDarkMatterPanel" style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:2px; padding:10px 12px; font-size:0.78rem;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px; margin-bottom:6px;">
                 <span style="font-weight:bold; color:#a855f7;">🌌 暗黒物質（ダークマター）検証アナライザー</span>
                 <span id="galacticDmBadge" style="font-size:0.72rem; color:var(--status-ok); font-family:ui-monospace,monospace;">フラット回転曲線実証</span>
               </div>
-              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-family:ui-monospace,monospace; margin-bottom:6px; text-align:center;">
+              <div class="galactic-mini-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; font-family:ui-monospace,monospace; margin-bottom:6px; text-align:center;">
                 <div style="background:rgba(0,0,0,0.25); padding:4px; border-radius:4px;">
                   <div style="color:var(--text-muted); font-size:0.7rem;">外腕実測速度 V(R)</div>
                   <div id="galacticDmMeasuredV" style="color:var(--accent); font-weight:bold;">220.0 km/s</div>
@@ -2555,7 +2910,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- 3 Major Discoveries Summary Cards -->
-            <div style="margin-top:8px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-size:0.75rem; text-align:center;">
+            <div class="galactic-mini-grid" style="margin-top:8px; display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; font-size:0.75rem; text-align:center;">
               <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:2px; padding:6px 4px;">
                 <div style="color:var(--text-muted); font-size:0.75rem;">貫通した渦状腕</div>
                 <div id="galacticDiscoveredArms" style="color:var(--accent); font-weight:bold; font-size:0.83rem; margin-top:1px;">2層 (局所腕+ペルセウス腕)</div>
@@ -2581,12 +2936,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span style="font-weight:bold; color:#f1f5f9; font-size:0.92rem;">🗺️ 天の川銀河 2D 俯瞰鳥瞰図 (Top-Down Map)</span>
                 <span style="font-size:0.72rem; color:var(--text-muted); margin-left:6px;">自転＆銀河公転アニメーション</span>
               </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid var(--border-hairline); font-size:0.72rem;">
-                  <button id="galacticSpeedSlowBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:var(--accent); color:#fff; font-weight:bold;" onclick="galacticSetSpeed(0.25)">🐢 悠久 (0.25x)</button>
-                  <button id="galacticSpeedNormalBtn" class="copy-btn" style="padding:2px 7px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpeed(1.0)">標準 (1x)</button>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <div class="galactic-segmented-group" style="display:inline-flex; border-radius:4px; overflow:hidden; border:1px solid var(--border-hairline); font-size:0.72rem;">
+                  <button id="galacticSpeedSlowBtn" class="copy-btn galactic-toggle-btn" style="padding:2px 7px; border-radius:0; border:none; background:var(--accent); color:#fff; font-weight:bold;" onclick="galacticSetSpeed(0.25)">🐢 悠久 (0.25x)</button>
+                  <button id="galacticSpeedNormalBtn" class="copy-btn galactic-toggle-btn" style="padding:2px 7px; border-radius:0; border:none; background:var(--bg-surface); color:var(--text-secondary);" onclick="galacticSetSpeed(1.0)">標準 (1x)</button>
                 </div>
-                <button id="galacticAnimToggleBtn" class="copy-btn" style="padding:2px 8px; font-size:0.75rem; background:var(--bg-surface); border:1px solid #475569;" onclick="galacticToggleAnimation()">⏸ 一時停止</button>
+                <button id="galacticAnimToggleBtn" class="copy-btn galactic-toggle-btn" style="padding:2px 8px; font-size:0.75rem; background:var(--bg-surface); border:1px solid #475569;" onclick="galacticToggleAnimation()">⏸ 一時停止</button>
                 <div id="galacticBeamHeading" style="font-size:0.75rem; font-family:ui-monospace,monospace; color:var(--status-ok); font-weight:bold;">
                   ビーム照射角: l = --°
                 </div>
@@ -2596,7 +2951,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="position:relative; width:100%; aspect-ratio: 1 / 1; max-height:360px; height:auto; background:#040711; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); margin:auto 0;">
               <canvas id="galacticTopDownCanvas" width="600" height="600" style="width:100%; height:100%; display:block;"></canvas>
             </div>
-            <div style="margin-top:8px; display:flex; justify-content:space-around; font-size:0.72rem; color:var(--text-muted); flex-wrap:gap; gap:4px;">
+            <div style="margin-top:8px; display:flex; justify-content:space-around; font-size:0.72rem; color:var(--text-muted); flex-wrap:wrap; gap:6px 10px;">
               <span><span style="color:var(--status-warn);">●</span> 銀河中心 (Sgr A*)</span>
               <span><span style="color:var(--status-ok);">⊙</span> 太陽系 (V=220km/s)</span>
               <span><span style="color:var(--status-err);">🔴</span> 人類電波バブル (~100光年)</span>
@@ -2606,21 +2961,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Immensity of Cosmic Distance & Scales Panel -->
             <div style="margin-top:10px; background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.08); border-radius:2px; padding:8px 12px; font-size:0.75rem;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px; margin-bottom:5px;">
                 <span style="font-weight:bold; color:var(--accent);">📏 銀河のスケール感と人類の電波バブル</span>
                 <span style="font-size:0.7rem; color:var(--status-warn); font-family:ui-monospace,monospace;">1銀河年 = 約2.3億年</span>
               </div>
-              <div style="display:flex; flex-direction:column; gap:4px; line-height:1.4; color:var(--text-primary); font-size:0.73rem;">
-                <div style="display:flex; align-items:flex-start; gap:6px;">
-                  <span style="color:var(--status-err); font-weight:bold; white-space:nowrap;">🔴 人類の電波バブル (~100光年):</span>
+              <div style="display:flex; flex-direction:column; gap:6px; line-height:1.45; color:var(--text-primary); font-size:0.73rem;">
+                <div class="galactic-scale-row">
+                  <span class="galactic-scale-label" style="color:var(--status-err);">🔴 人類の電波バブル (~100光年):</span>
                   <span>1900年以降に人類が放った電波の到達限界球。直径10万光年の銀河では<b>1画素未満（微小な点）</b>にすぎません。</span>
                 </div>
-                <div style="display:flex; align-items:flex-start; gap:6px;">
-                  <span style="color:var(--accent); font-weight:bold; white-space:nowrap;">🌀 ペルセウス腕 (~6,200光年):</span>
+                <div class="galactic-scale-row">
+                  <span class="galactic-scale-label" style="color:var(--accent);">🌀 ペルセウス腕 (~6,200光年):</span>
                   <span>今受信している電波は、<b>古代縄文・メソポタミア黎明期</b>に放たれ、光速で宇宙を旅してベランダに届いた光です。</span>
                 </div>
-                <div style="display:flex; align-items:flex-start; gap:6px;">
-                  <span style="color:var(--status-warn); font-weight:bold; white-space:nowrap;">🦕 太陽系公転周期 (2.3億年):</span>
+                <div class="galactic-scale-row">
+                  <span class="galactic-scale-label" style="color:var(--status-warn);">🦕 太陽系公転周期 (2.3億年):</span>
                   <span>太陽系が銀河を1周する時間。前回太陽系がこの位置にいた頃、<b>地球には恐竜が現れたばかり（三畳紀）</b>でした。</span>
                 </div>
               </div>
@@ -2635,13 +2990,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span style="font-weight:bold; color:#f1f5f9; font-size:0.95rem;">📈 24時間 銀河面ドリフトスキャン予測 ＆ 連続波トータルパワー</span>
               <span style="font-size:0.75rem; color:var(--text-muted); margin-left:8px;">天の川銀河面 (|b| ≤ 15°) ハイライト</span>
             </div>
-            <div style="display:flex; gap:12px; font-size:0.75rem; color:var(--text-muted);">
+            <div style="display:flex; flex-wrap:wrap; gap:8px 12px; font-size:0.75rem; color:var(--text-muted);">
               <span><span style="display:inline-block; width:10px; height:10px; background:rgba(56,189,248,0.25); border:1px solid var(--accent); margin-right:4px;"></span>銀河面 (|b|≤15°)</span>
               <span><span style="display:inline-block; width:10px; height:2px; background:var(--accent); margin-right:4px; vertical-align:middle;"></span>銀緯 |b| 推移</span>
               <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--status-err); margin-right:4px;"></span>連続波 [dB]</span>
             </div>
           </div>
-          <div style="position:relative; width:100%; aspect-ratio: 3 / 1; height:auto; max-height:260px; background:#080d1a; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
+          <div class="galactic-drift-stage" style="position:relative; width:100%; aspect-ratio: 3 / 1; height:auto; max-height:260px; background:#080d1a; border-radius:2px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
             <canvas id="galacticDriftCanvas" width="900" height="260" style="width:100%; height:100%; display:block;"></canvas>
           </div>
         </div>
@@ -3934,7 +4289,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           return;
         }
 
-        let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:10px;">';
+        let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap:10px;">';
         data.passes.forEach(p => {
           const aosJst = new Date(p.aos_time).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
           const isExcellent = p.quality_score.includes('EXCELLENT');
@@ -5331,17 +5686,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       window.open(url, '_blank');
     }
 
+    function closeAllGeekTooltips() {
+      document.querySelectorAll('.geek-tooltip.is-open').forEach(t => t.classList.remove('is-open'));
+    }
+
     function toggleGeekTooltip(e, el) {
       e.stopPropagation();
       const tip = el.querySelector('.geek-tooltip');
       if (!tip) return;
       const wasOpen = tip.classList.contains('is-open');
-      document.querySelectorAll('.geek-tooltip.is-open').forEach(t => t.classList.remove('is-open'));
+      closeAllGeekTooltips();
       if (!wasOpen) tip.classList.add('is-open');
     }
 
-    document.addEventListener('click', () => {
-      document.querySelectorAll('.geek-tooltip.is-open').forEach(t => t.classList.remove('is-open'));
+    document.addEventListener('click', closeAllGeekTooltips);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAllGeekTooltips();
     });
 
     // --- Galactic Monitor & 21cm Hydrogen Line Spectroscopy ---
@@ -7276,7 +7636,10 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
             {val_main} <span class="telemetry-subval">{val_sub}</span>
           </div>
           <div class="geek-tooltip" onclick="event.stopPropagation()">
-            <div class="geek-tooltip-title">{title_esc}</div>
+            <div class="geek-tooltip-header">
+              <div class="geek-tooltip-title">{title_esc}</div>
+              <button type="button" class="geek-tooltip-close" aria-label="解説を閉じる" onclick="closeAllGeekTooltips()">&times;</button>
+            </div>
             <div class="geek-tooltip-section">
               <div class="geek-tooltip-tag">PHYSICAL / MATHEMATICAL DEFINITION</div>
               <div class="geek-tooltip-formula">{formula_esc}</div>

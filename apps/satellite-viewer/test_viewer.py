@@ -1056,6 +1056,30 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn("openOrbitCalendarOnDate", HTML_TEMPLATE)
         self.assertIn("次のベスト狙い目", HTML_TEMPLATE)
 
+    def test_mobile_xiaomi_15_ultra_responsive_polish(self):
+        # ピンチズームを阻害する user-scalable=no / maximum-scale=1.0 が除去されていること
+        self.assertNotIn("user-scalable=no", HTML_TEMPLATE)
+        self.assertNotIn("maximum-scale=1.0", HTML_TEMPLATE)
+        self.assertIn("viewport-fit=cover", HTML_TEMPLATE)
+
+        # 横はみ出し・ツールチップ切り欠き・タッチターゲット・スワイプ領域の保護
+        self.assertIn("overflow-x: clip;", HTML_TEMPLATE)
+        self.assertIn("minmax(min(100%, 420px), 1fr)", HTML_TEMPLATE)
+        self.assertIn("minmax(min(100%, 280px), 1fr)", HTML_TEMPLATE)
+        self.assertIn("@media (hover: hover) and (pointer: fine)", HTML_TEMPLATE)
+        self.assertIn("geek-tooltip-close", HTML_TEMPLATE)
+        self.assertIn("closeAllGeekTooltips", HTML_TEMPLATE)
+        self.assertIn("touch-action: none;", HTML_TEMPLATE)
+        self.assertIn("touch-action:pan-y;", HTML_TEMPLATE)
+        self.assertIn('ontouchstart="galacticHandleSpectrumTouch(event)"', HTML_TEMPLATE)
+        self.assertIn("orbit-map-stage", HTML_TEMPLATE)
+        self.assertIn("orbit-map-canvas-frame", HTML_TEMPLATE)
+        self.assertIn("max-height: 92dvh;", HTML_TEMPLATE)
+        self.assertIn("min-width: 44px;", HTML_TEMPLATE)
+        self.assertIn(".replay-telemetry-grid .telemetry-item", HTML_TEMPLATE)
+        self.assertIn(".workspace-nav::-webkit-scrollbar", HTML_TEMPLATE)
+        self.assertIn(".stats-sat-table", HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()
