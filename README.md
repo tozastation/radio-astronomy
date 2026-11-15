@@ -214,6 +214,21 @@ kubectl get pods -A
 
 アンテナ側の追尾ロジックは `apps/satellite-tracker-rs` に、解析パイプラインの設計仕様は [docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md](docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md) に置いてあります。
 
+### 3. 観測データの定期チューニングレビュー（cron + agy）
+
+サーバ（GPD Pocket3）では、直近 7 日間の観測結果をもとに設定やコードのチューニング余地を自動レビューし、改善根拠がある場合に PR を起票する定期ジョブを動かしています。
+
+- **集計スクリプト**: [scripts/summarize_recent_observations.py](scripts/summarize_recent_observations.py)（Python 標準ライブラリのみで Garage S3 の `results/`、`galactic/`、`raw/` を並列集計）
+- **レビュー・PR 作成スクリプト**: [scripts/run_periodic_tuning_review.sh](scripts/run_periodic_tuning_review.sh)（既存のレビュー PR 重複チェック、`agy --model gemini-4-hydrogen --effort high` によるレビューとテスト実行、`gh pr create` までを担当）
+- **実行スケジュール**: 毎日 JST 05:00 に `cron` で実行（`CRON_TZ=Asia/Tokyo`）
+
+```cron
+CRON_TZ=Asia/Tokyo
+0 5 * * * /home/tozastation/ghq/github.com/tozastation/radio-astronomy/scripts/run_periodic_tuning_review.sh
+```
+
+PR を作らずに差分案だけ確認したい場合は、`DRY_RUN=true ./scripts/run_periodic_tuning_review.sh` で試走できます。実行ログとサマリは `~/.local/state/radio-astronomy-review/` に保存されます。
+
 ---
 
 ## ドキュメント案内
