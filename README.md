@@ -214,20 +214,24 @@ kubectl get pods -A
 
 アンテナ側の追尾ロジックは `apps/satellite-tracker-rs` に、解析パイプラインの設計仕様は [docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md](docs/superpowers/specs/2026-10-10-event-driven-satellite-analysis-pipeline-design.md) に置いてあります。
 
-### 3. 観測データの定期チューニングレビュー（cron + agy）
+### 3. 定期運用レビュー・監視ジョブ（cron + agy）
 
-サーバ（GPD Pocket3）では、直近 7 日間の観測結果をもとに設定やコードのチューニング余地を自動レビューし、改善根拠がある場合に PR を起票する定期ジョブを動かしています。
+サーバ（GPD Pocket3）では、`agy --model gemini-4-hydrogen --effort high` を使った 2 つの定期ジョブを `cron`（`CRON_TZ=Asia/Tokyo`）で動かしています。いずれも改善・修正可能な根拠がある場合のみブランチを作成し、テスト確認のうえ `gh pr create` で PR を起票します。
 
-- **集計スクリプト**: [scripts/summarize_recent_observations.py](scripts/summarize_recent_observations.py)（Python 標準ライブラリのみで Garage S3 の `results/`、`galactic/`、`raw/` を並列集計）
-- **レビュー・PR 作成スクリプト**: [scripts/run_periodic_tuning_review.sh](scripts/run_periodic_tuning_review.sh)（既存のレビュー PR 重複チェック、`agy --model gemini-4-hydrogen --effort high` によるレビューとテスト実行、`gh pr create` までを担当）
-- **実行スケジュール**: 毎日 JST 05:00 に `cron` で実行（`CRON_TZ=Asia/Tokyo`）
+1. **観測データの定期チューニングレビュー（毎日 JST 05:00）**
+   - 集計スクリプト: [scripts/summarize_recent_observations.py](scripts/summarize_recent_observations.py)（Garage S3 の `results/`、`galactic/`、`raw/` を直近 7 日分並列集計）
+   - 実行スクリプト: [scripts/run_periodic_tuning_review.sh](scripts/run_periodic_tuning_review.sh)（ログ保存先: `~/.local/state/radio-astronomy-review/`）
+2. **システム健全性・メトリクス異常チェック（6 時間ごと）**
+   - 収集スクリプト: [scripts/collect_system_health.py](scripts/collect_system_health.py)（Prometheus のアラート・ターゲット・リソース指標、Kubernetes ノード・Pod 状態、ホスト負荷・ディスク使用率を収集）
+   - 実行スクリプト: [scripts/run_system_health_check.sh](scripts/run_system_health_check.sh)（ログ保存先: `~/.local/state/radio-astronomy-health/`）
 
 ```cron
 CRON_TZ=Asia/Tokyo
 0 5 * * * /home/tozastation/ghq/github.com/tozastation/radio-astronomy/scripts/run_periodic_tuning_review.sh
+0 */6 * * * /home/tozastation/ghq/github.com/tozastation/radio-astronomy/scripts/run_system_health_check.sh
 ```
 
-PR を作らずに差分案だけ確認したい場合は、`DRY_RUN=true ./scripts/run_periodic_tuning_review.sh` で試走できます。実行ログとサマリは `~/.local/state/radio-astronomy-review/` に保存されます。
+PR を作らずに差分案だけ確認したい場合は、各スクリプトに `DRY_RUN=true` を付けて実行できます。
 
 ---
 
