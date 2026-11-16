@@ -1127,6 +1127,14 @@ class TestPerformanceOptimizations(unittest.TestCase):
         card_html = render_card_html(p_legacy)
         self.assertIn('<div class="sat-name"><span class="sat-code-tag">[METEOR]</span>METEOR-M2 3</div>', card_html)
 
+    def test_mobile_stats_and_overflow_guards(self):
+        # 統計詳細パネル・各ワークスペースパネルがモバイル幅で横はみ出ししないための CSS ガード検証
+        self.assertIn("grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);", HTML_TEMPLATE)
+        self.assertIn(".stats-sat-table tr.stats-sat-row", HTML_TEMPLATE)
+        self.assertIn("#restoreFileInput", HTML_TEMPLATE)
+        self.assertIn(".replay-layout > *", HTML_TEMPLATE)
+        self.assertIn("overflow-wrap:anywhere;", HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()

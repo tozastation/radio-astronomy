@@ -686,6 +686,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 8px;
       font-family: var(--font-mono);
       font-size: 0.74rem;
       font-weight: 600;
@@ -948,6 +950,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 8px;
       font-family: var(--font-mono);
       font-size: 0.72rem;
       font-weight: 600;
@@ -1463,8 +1467,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       margin-top: 12px;
       padding-top: 12px;
       border-top: 1px solid var(--border-hairline);
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
       gap: 12px;
+    }
+    @media (max-width: 1024px) {
+      .stats-details-panel.open {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
     .stats-details-panel.open {
       display: grid;
@@ -1474,6 +1483,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: 1px solid var(--border-hairline);
       border-radius: 2px;
       padding: 12px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
     }
     .stats-detail-title {
       font-size: 0.78rem;
@@ -1483,6 +1495,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 8px;
     }
     .stats-sat-table {
       width: 100%;
@@ -1701,6 +1715,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .stats-trend-col {
       flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1800,8 +1815,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .replay-layout {
       display: grid;
-      grid-template-columns: 440px 1fr;
+      grid-template-columns: 440px minmax(0, 1fr);
       gap: 20px;
+    }
+    .replay-layout > * {
+      min-width: 0;
+      max-width: 100%;
     }
     @media (max-width: 860px) {
       .replay-layout,
@@ -2100,6 +2119,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       flex-direction: column;
       justify-content: space-between;
       gap: 12px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
     }
     .restore-input-row {
       display: flex;
@@ -2107,63 +2129,86 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       margin-bottom: 8px;
       flex-wrap: wrap;
+      min-width: 0;
+    }
+    #restoreFileInput {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .calendar-main,
+    .calendar-details-panel,
+    .calendar-cell {
+      min-width: 0;
+    }
+    .stats-span-2 {
+      grid-column: span 2;
     }
 
     /* Responsive Mobile Optimizations (< 640px) */
     @media (max-width: 640px) {
       body {
-        padding: 10px;
-        padding-top: max(10px, env(safe-area-inset-top, 10px));
+        padding: 0;
+        padding-top: env(safe-area-inset-top, 0px);
         padding-bottom: max(60px, env(safe-area-inset-bottom, 60px));
-        padding-left: max(10px, env(safe-area-inset-left, 10px));
-        padding-right: max(10px, env(safe-area-inset-right, 10px));
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
       }
       .btn-label-long { display: none; }
       .btn-label-short { display: inline; }
       .modal-title-long { display: none; }
       .modal-title-short { display: inline; }
       header {
+        position: static;
         flex-direction: column;
         align-items: stretch;
-        gap: 12px;
-        margin-bottom: 14px;
+        gap: 8px;
+        padding: 12px;
+        padding-top: max(12px, env(safe-area-inset-top));
       }
       .header-title-block {
         justify-content: space-between;
+        gap: 4px 8px;
+        min-width: 0;
       }
       h1 {
-        font-size: 1.15rem;
+        font-size: 1.08rem;
       }
       .header-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 8px 10px;
+        gap: 8px;
         width: 100%;
-        margin-top: 4px;
       }
       .header-actions .btn-refresh {
-        padding: 9px 12px;
-        font-size: 0.8rem;
+        padding: 8px 12px;
+        font-size: 0.78rem;
         font-weight: 600;
         text-align: center;
         white-space: nowrap;
-        min-height: 40px;
+        min-height: 38px;
         display: flex;
         align-items: center;
         justify-content: center;
       }
       .header-actions .btn-reload {
-        grid-column: span 2;
-        font-size: 0.86rem;
-        font-weight: 700;
-        min-height: 42px;
-        padding: 10px 14px;
         border-color: var(--accent);
+      }
+      .workspace-shell {
+        padding: 12px 28px 12px 12px;
+      }
+      .workspace-panel {
+        padding: 12px;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
       }
       .toolbar-section {
         padding: 12px;
         gap: 10px;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
+        min-width: 0;
+        max-width: 100%;
       }
       .filter-chips, .filter-chips-mobile {
         display: flex;
@@ -2195,19 +2240,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         flex-direction: column;
         align-items: stretch;
       }
-      .filter-search-wrap {
-        flex: 1 1 auto;
+      .filter-search-wrap,
+      .filter-select,
+      .filter-reset-btn {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+      }
+      .stats-minibar {
+        padding: 12px;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
       }
       .stats-kpis {
-        gap: 10px 14px;
+        gap: 6px 12px;
       }
       .stats-details-panel.open {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .stats-trend-bars {
+        gap: 4px;
       }
       .filter-options {
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
+      }
+      .filter-active-summary {
+        overflow-wrap: anywhere;
       }
       .matched-count {
         font-size: 0.75rem;
@@ -2228,7 +2289,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         gap: 8px;
         width: 100%;
         padding-top: 8px;
-        border-top: 1px dashed rgba(255, 255, 255, 0.08);
+        border-top: 1px dashed var(--border-hairline);
       }
       .sat-header-right .badge-status {
         order: -1;
@@ -2249,7 +2310,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       .telemetry-panel .telemetry-grid {
         grid-template-columns: 1fr;
-        gap: 6px;
+        gap: 8px;
       }
       .telemetry-item {
         flex-direction: row;
@@ -2259,10 +2320,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         gap: 6px;
         padding: 8px 10px;
       }
+      .telemetry-label-row {
+        flex-shrink: 0;
+      }
       .telemetry-val {
         margin-top: 0;
         text-align: right;
         font-size: 0.85rem;
+        word-break: normal;
+        overflow-wrap: anywhere;
+        min-width: 0;
       }
       .file-row, .file-row-mobile {
         flex-direction: column;
@@ -2351,9 +2418,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       .clipper-input-group input[type="number"] {
         padding: 6px;
         font-size: 0.9rem;
+        min-width: 0;
+        width: 0;
+        flex: 1 1 40px;
       }
       .galactic-viz-grid {
         grid-template-columns: 1fr;
+      }
+      .galactic-panel-card {
+        padding: 12px;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
       }
     }
     html, body {
@@ -2535,17 +2611,55 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         gap: 6px 12px;
       }
       .stats-details-panel {
-        grid-template-columns: 1fr !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      .stats-sat-table,
+      .stats-sat-table thead,
+      .stats-sat-table tbody,
+      .stats-sat-table tr,
+      .stats-sat-table td {
+        display: block;
       }
       .stats-sat-table {
-        min-width: 460px;
+        min-width: 0;
+        width: 100%;
         font-size: 0.74rem;
       }
-      .stats-sat-table th,
-      .stats-sat-table td {
-        white-space: nowrap;
-        padding: 6px 8px;
+      .stats-sat-table thead {
+        display: none;
       }
+      .stats-sat-table tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .stats-sat-table tr.stats-sat-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+          "sat next"
+          "rate next"
+          "out next"
+          "el next";
+        gap: 2px 8px;
+        padding: 8px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-hairline);
+        border-radius: 2px;
+        align-items: center;
+      }
+      .stats-sat-table td {
+        padding: 0;
+        border-bottom: none;
+        white-space: normal;
+        min-width: 0;
+      }
+      .stats-sat-table td:nth-child(1) { grid-area: sat; font-size: 0.8rem; overflow-wrap: anywhere; }
+      .stats-sat-table td:nth-child(2) { grid-area: rate; color: var(--text-secondary); font-size: 0.74rem; }
+      .stats-sat-table td:nth-child(3) { grid-area: out; color: var(--text-muted); font-size: 0.72rem; }
+      .stats-sat-table td:nth-child(4) { grid-area: el; color: var(--text-muted); font-size: 0.72rem; }
+      .stats-sat-table td:nth-child(4)::before { content: "平均仰角 "; }
+      .stats-sat-table td:nth-child(5) { grid-area: next; align-self: center; }
       .filter-chips,
       .filter-chips-mobile {
         gap: 6px;
@@ -2705,6 +2819,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     @media (max-width: 420px) {
       .galactic-mini-grid {
         grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) !important;
+      }
+      .clipper-inputs-grid {
+        grid-template-columns: 1fr !important;
       }
     }
   </style>
@@ -3242,7 +3359,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <!-- Section 4: Scientific Principles & Deep Dive Primer (Why & How We Know) -->
-        <div id="galacticScienceGuide" class="galactic-insight-card" style="margin-top:16px; padding:16px;">
+        <div id="galacticScienceGuide" class="galactic-insight-card" style="margin-top:16px; padding:16px; overflow-wrap:anywhere;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; cursor:pointer;" onclick="galacticToggleGuide('galacticGuideBody')">
             <div>
               <span style="font-family:var(--font-serif); font-weight:600; color:var(--text-primary); font-size:0.98rem;">観測科学・DSP 解説: どうやって銀河構造と暗黒物質を算出しているか</span>
@@ -3777,7 +3894,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             pillsHtml += `<span class="mono-num" style="font-size:0.72rem; color:var(--text-secondary);">+${dayPasses.length - 5}</span>`;
           }
 
-          const starHtml = hasGolden ? '<span class="calendar-day-golden-star" title="スカイウィンドウ直撃パスあり">WIN</span>' : '';
+          const starHtml = hasGolden ? '<span class="calendar-day-golden-star" title="スカイウィンドウ直撃パスあり">*</span>' : '';
           const cellClasses = ['calendar-cell'];
           if (hasGolden) cellClasses.push('has-golden');
           if (isToday) cellClasses.push('is-today');
