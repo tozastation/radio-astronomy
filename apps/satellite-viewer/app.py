@@ -603,6 +603,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: flex;
       gap: 8px;
       align-items: center;
+      flex-wrap: wrap;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
     .badge-status {
       font-family: var(--font-mono);
@@ -1179,16 +1182,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .modal-header {
       padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-hairline);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 8px;
     }
     .modal-title {
       font-size: 0.95rem;
-      font-weight: 700;
+      font-weight: 600;
       color: var(--accent);
-      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow-wrap: anywhere;
     }
     .modal-close {
       background: transparent;
@@ -1203,6 +1211,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-items: center;
       justify-content: center;
       padding: 4px;
+      flex-shrink: 0;
     }
     .modal-body {
       padding: 16px;
@@ -3338,8 +3347,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Section 3: Recent Scans Table -->
         <div class="galactic-panel-card" style="margin-top:16px;">
           <div style="font-weight:600; color:var(--text-primary); font-size:0.9rem; margin-bottom:8px;">直近の銀河スキャン履歴 (Garage S3)</div>
-          <div style="overflow-x:auto;">
-            <table class="mono-num" style="width:100%; border-collapse:collapse; font-size:0.8rem; text-align:left;">
+          <div style="overflow-x:auto; max-width:100%; -webkit-overflow-scrolling:touch;">
+            <table class="mono-num" style="width:100%; border-collapse:collapse; font-size:0.8rem; text-align:left; white-space:nowrap;">
               <thead>
                 <tr style="border-bottom:1px solid var(--border-hairline); color:var(--text-muted);">
                   <th style="padding:8px;">観測日時 (UTC)</th>
@@ -3352,7 +3361,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </tr>
               </thead>
               <tbody id="galacticScansTableBody">
-                <tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted);">スキャン履歴を読み込み中</td></tr>
+                <tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted); white-space:normal;">スキャン履歴を読み込み中</td></tr>
               </tbody>
             </table>
           </div>
@@ -3510,7 +3519,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="replay-layout">
           <!-- Left: Sky Dome Radar -->
           <div class="radar-wrapper">
-            <div style="width:100%; max-width:440px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div style="width:100%; max-width:440px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
               <span class="mono-num" style="font-size:0.8rem; font-weight:600; color:var(--text-primary);">2D 天球レーダー</span>
               <button id="btnToggleHeatmap" class="btn-sm" onclick="toggleSkyHeatmap()">実績ヒートマップ: OFF</button>
             </div>
@@ -4607,7 +4616,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       const listEl = document.getElementById('futurePassesList');
       if (!listEl) return;
-      listEl.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-secondary); font-family:var(--font-mono); font-size:0.8rem;">CALCULATING 24H SGP4 PASSES...</div>';
+      listEl.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-secondary); font-family:var(--font-mono); font-size:0.8rem;">CALCULATING 24H SGP4 PASSES</div>';
       if (modal) modal.classList.add('active');
       if (btn) btn.classList.add('active');
 
@@ -4621,7 +4630,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           return;
         }
 
-        let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap:10px;">';
+        let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap:12px;">';
         data.passes.forEach(p => {
           const aosJst = new Date(p.aos_time).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
           const isExcellent = p.quality_score.includes('EXCELLENT');
@@ -4632,39 +4641,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           const prob = p.success_probability !== undefined && p.success_probability !== null ? Math.round(p.success_probability * 100) : null;
           const probColor = prob !== null ? (prob >= 70 ? 'var(--status-ok)' : (prob >= 40 ? 'var(--accent)' : (prob >= 20 ? 'var(--status-warn)' : 'var(--text-secondary)'))) : 'var(--text-secondary)';
           const driftBadge = p.time_drift_seconds !== undefined && p.time_drift_seconds !== null ? `
-            <div class="mono-num" style="font-size:0.72rem; color:var(--text-secondary); margin-top:6px;">
+            <div class="mono-num" style="font-size:0.72rem; color:var(--text-secondary); margin-top:8px;">
               TLE DRIFT: <strong style="color:var(--text-primary);">${p.time_drift_seconds > 0 ? '+' : ''}${p.time_drift_seconds}s</strong>
             </div>
           ` : '';
 
           const probBar = prob !== null ? `
             <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border-hairline);">
-              <div class="mono-num" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:0.74rem;">
+              <div class="mono-num" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px; margin-bottom:4px; font-size:0.74rem;">
                 <span style="color:var(--text-secondary);">DECODE PROB: <strong style="color:${probColor};">${prob}%</strong></span>
-                <span style="color:var(--text-muted); font-size:0.7rem;">${p.history_summary || ''}</span>
+                <span style="color:var(--text-muted); font-size:0.72rem;">${p.history_summary || ''}</span>
               </div>
-              <div style="width:100%; background:var(--bg-surface); border:1px solid var(--border-hairline); height:5px;">
+              <div style="width:100%; background:var(--bg-surface); border:1px solid var(--border-hairline); height:4px;">
                 <div style="background:${probColor}; width:${prob}%; height:100%;"></div>
               </div>
             </div>
           ` : '';
 
           html += `
-            <div style="background:var(--bg-inset); border:1px solid var(--border-hairline); border-radius:2px; padding:10px 12px;">
+            <div style="background:var(--bg-inset); border:1px solid var(--border-hairline); border-radius:2px; padding:12px; min-width:0;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
-                <span style="font-family:var(--font-serif); font-weight:700; color:var(--text-primary); font-size:0.95rem;">${p.satellite}</span>
-                <span class="mono-num" style="border:1px solid ${badgeColor}; color:${badgeColor}; font-size:0.72rem; padding:1px 6px; border-radius:2px; font-weight:600;">${p.quality_score}</span>
+                <span style="font-family:var(--font-serif); font-weight:600; color:var(--text-primary); font-size:0.95rem;">${p.satellite}</span>
+                <span class="mono-num" style="border:1px solid ${badgeColor}; color:${badgeColor}; font-size:0.72rem; padding:2px 8px; border-radius:2px; font-weight:500;">${p.quality_score}</span>
               </div>
               <div class="mono-num" style="display:flex; flex-direction:column; gap:4px; font-size:0.76rem; color:var(--text-secondary);">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px;">
                   <span>AOS (JST)</span>
                   <strong style="color:var(--text-primary);">${aosJst}</strong>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px;">
                   <span>MAX EL</span>
                   <strong style="color:var(--text-primary);">${p.max_elevation}° <span style="color:var(--text-muted); font-weight:normal;">(Az ${p.max_elevation_azimuth}°)</span></strong>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 8px;">
                   <span>WINDOW</span>
                   <strong style="color:var(--accent);">${p.window_duration_seconds} s</strong>
                 </div>
