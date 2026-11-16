@@ -704,7 +704,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertEqual(res["solar_current"], "261 mA")
         self.assertEqual(res["system_current"], "224 mA")
         self.assertEqual(res["tx_power"], "324 mW")
-        self.assertIn("☀️ 日照中", res["orbit_sunlight"])
+        self.assertIn("日照中", res["orbit_sunlight"])
         self.assertEqual(res["sequence_number"], "#1001931")
         self.assertEqual(res["safe_mode"], "NORMAL")
         self.assertEqual(res["reboot_count"], "1,475")
@@ -1079,6 +1079,53 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn(".replay-telemetry-grid .telemetry-item", HTML_TEMPLATE)
         self.assertIn(".workspace-nav::-webkit-scrollbar", HTML_TEMPLATE)
         self.assertIn(".stats-sat-table", HTML_TEMPLATE)
+
+    def test_unslop_design_compliance(self):
+        # 1. 旧スレートブルー / 紫 / シアン / 汎用グラデーション / transition: all の排除
+        for forbidden in (
+            "#0f172a",
+            "rgba(15, 23, 42",
+            "rgba(15,23,42",
+            "#080d1a",
+            "#081024",
+            "#020617",
+            "#38bdf8",
+            "#06b6d4",
+            "#a855f7",
+            "linear-gradient(",
+            "transition: all",
+        ):
+            self.assertNotIn(forbidden, HTML_TEMPLATE)
+
+        # 2. UI テンプレート内に装飾絵文字が含まれないこと
+        for line_no, line in enumerate(HTML_TEMPLATE.splitlines(), 1):
+            has_emoji = any(ord(c) > 0x1F000 or (0x2600 <= ord(c) <= 0x27BF) for c in line)
+            self.assertFalse(has_emoji, f"Emoji found in HTML_TEMPLATE line {line_no}: {line.strip()}")
+
+        # 3. レイアウト重なり防止・統一クラスの存在
+        for cls_name in (
+            "replay-telemetry-header",
+            "window-status-badge",
+            "archive-actions-grid",
+            "galactic-panel-card",
+            "galactic-insight-card",
+        ):
+            self.assertIn(cls_name, HTML_TEMPLATE)
+
+        # 4. 古い summary.json が display_icon に絵文字を持っていてもカード描画に出力しないこと
+        p_legacy = {
+            "satellite": "METEOR-M2 3",
+            "pass_id": "METEOR-M2 3_20261103_004421",
+            "files": {},
+            "summary": {
+                "status": "completed",
+                "display_icon": "🛰️",
+                "packets_count": 1,
+            },
+            "packets": None,
+        }
+        card_html = render_card_html(p_legacy)
+        self.assertIn('<div class="sat-name"><span class="sat-code-tag">[METEOR]</span>METEOR-M2 3</div>', card_html)
 
 
 if __name__ == "__main__":

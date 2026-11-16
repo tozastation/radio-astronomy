@@ -391,10 +391,10 @@ class OrbitCalculator:
                     targets.append((sat_name, tle[0], tle[1]))
 
         meta_colors = {
-            "METEOR-M2 3": "#38bdf8",
-            "METEOR-M2 4": "#06b6d4",
-            "ISS (ZARYA)": "#f43f5e",
-            "FUNCUBE-1 (AO-73)": "#eab308",
+            "METEOR-M2 3": "#E07A38",
+            "METEOR-M2 4": "#6CA8C4",
+            "ISS (ZARYA)": "#C9534B",
+            "FUNCUBE-1 (AO-73)": "#D4A039",
         }
         meta_freqs = {
             "METEOR-M2 3": 137.9,
@@ -406,7 +406,7 @@ class OrbitCalculator:
         satellites_info = [
             {
                 "name": t[0],
-                "color": meta_colors.get(t[0], "#a855f7"),
+                "color": meta_colors.get(t[0], "#9E9B93"),
                 "freq_mhz": meta_freqs.get(t[0], 145.0),
             }
             for t in targets
