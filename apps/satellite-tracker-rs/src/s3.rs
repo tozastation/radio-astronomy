@@ -58,6 +58,20 @@ impl S3Uploader {
 
     /// 指定ファイルを S3 へ PUT アップロードし、成功時にローカルファイルを安全に削除
     pub async fn upload_and_cleanup(&self, local_path: &Path, s3_key: &str) -> Result<bool> {
+        self.upload_file_internal(local_path, s3_key, true).await
+    }
+
+    /// 指定ファイルを S3 へ PUT アップロード (ローカルファイルは保持)
+    pub async fn upload_file_keep_local(&self, local_path: &Path, s3_key: &str) -> Result<bool> {
+        self.upload_file_internal(local_path, s3_key, false).await
+    }
+
+    async fn upload_file_internal(
+        &self,
+        local_path: &Path,
+        s3_key: &str,
+        remove_after: bool,
+    ) -> Result<bool> {
         if !local_path.exists() {
             warn!("S3Uploader: File not found: {:?}", local_path);
             return Ok(false);
@@ -68,14 +82,16 @@ impl S3Uploader {
                 "S3Uploader [MOCK]: Uploaded {:?} to s3://{}/{}",
                 local_path, self.bucket_name, s3_key
             );
-            fs::remove_file(local_path)
-                .with_context(|| format!("ローカルモックファイルの削除に失敗: {:?}", local_path))?;
-            info!("S3Uploader [MOCK]: Cleaned up local file: {:?}", local_path);
+            if remove_after {
+                fs::remove_file(local_path)
+                    .with_context(|| format!("ローカルモックファイルの削除に失敗: {:?}", local_path))?;
+                info!("S3Uploader [MOCK]: Cleaned up local file: {:?}", local_path);
+            }
             return Ok(true);
         }
 
         let file_bytes = fs::read(local_path)
-            .with_context(|| format!("WAVファイルの読み込みに失敗: {:?}", local_path))?;
+            .with_context(|| format!("アップロード対象ファイルの読み込みに失敗: {:?}", local_path))?;
 
         let url_str = format!(
             "{}/{}/{}",
@@ -109,10 +125,10 @@ impl S3Uploader {
         headers.insert("host", host_header.parse().unwrap());
         headers.insert("x-amz-date", amz_date.parse().unwrap());
         headers.insert("x-amz-content-sha256", payload_hash.parse().unwrap());
-        let content_type = if local_path.extension().map(|e| e == "json").unwrap_or(false) {
-            "application/json"
-        } else {
-            "audio/wav"
+        let content_type = match local_path.extension().and_then(|e| e.to_str()) {
+            Some("json") => "application/json",
+            Some("txt") => "text/plain; charset=utf-8",
+            _ => "audio/wav",
         };
         headers.insert("content-type", content_type.parse().unwrap());
 
@@ -145,11 +161,12 @@ impl S3Uploader {
             Ok(resp) if resp.status().is_success() => {
                 info!("S3Uploader: Successfully uploaded: {}", s3_key);
 
-                // アップロード成功後にローカルファイルを安全に削除
-                if let Err(e) = fs::remove_file(local_path) {
-                    warn!("S3Uploader: Failed to delete local file {:?}: {}", local_path, e);
-                } else {
-                    info!("S3Uploader: Cleaned up local temporary file: {:?}", local_path);
+                if remove_after {
+                    if let Err(e) = fs::remove_file(local_path) {
+                        warn!("S3Uploader: Failed to delete local file {:?}: {}", local_path, e);
+                    } else {
+                        info!("S3Uploader: Cleaned up local temporary file: {:?}", local_path);
+                    }
                 }
 
                 Ok(true)

@@ -4,11 +4,12 @@ use log::{info, warn};
 use satellite_tracker_rs::dsp::DspProcessor;
 use satellite_tracker_rs::galactic::{generate_synthetic_galactic_iq, GalacticScanSession};
 use satellite_tracker_rs::metrics::MetricsExporter;
-use satellite_tracker_rs::orbit::{parse_tle_catalog, OrbitPredictor};
+use satellite_tracker_rs::orbit::OrbitPredictor;
 use satellite_tracker_rs::receiver::{build_rtl_fm_args, build_rtl_sdr_args, create_wav_header, is_raw_iq_target};
 use satellite_tracker_rs::s3::S3Uploader;
 use satellite_tracker_rs::sdr::SdrCollector;
 use satellite_tracker_rs::spooler::AudioSpooler;
+use satellite_tracker_rs::tle::{load_runtime_targets, refresh_tle_cache_if_needed};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -87,102 +88,6 @@ async fn stop_and_upload_active_process(
     }
 }
 
-/// 対象衛星の初期定義 (CelesTrak 等の外部通信不通時も自律稼働するフォールバック)
-struct TargetSatellite {
-    name: &'static str,
-    norad_id: u32,
-    line1: &'static str,
-    line2: &'static str,
-    freq_hz: f64,
-}
-
-#[derive(Clone)]
-struct RuntimeTarget {
-    name: &'static str,
-    norad_id: u32,
-    line1: String,
-    line2: String,
-    freq_hz: f64,
-}
-
-const DEFAULT_TARGETS: &[TargetSatellite] = &[
-    TargetSatellite {
-        name: "ISS (ZARYA)",
-        norad_id: 25544,
-        line1: "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996",
-        line2: "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
-        freq_hz: 145_825_000.0,
-    },
-    TargetSatellite {
-        name: "METEOR-M2 3",
-        norad_id: 57166,
-        line1: "1 57166U 23091A   26296.25648911 -.00000011  00000+0  13974-4 0  9991",
-        line2: "2 57166  98.5934 348.5131 0004559 145.3247 214.8230 14.24054780172745",
-        freq_hz: 137_900_000.0,
-    },
-    TargetSatellite {
-        name: "METEOR-M2 4",
-        norad_id: 59051,
-        line1: "1 59051U 24039A   26296.27566674  .00000005  00000+0  21993-4 0  9998",
-        line2: "2 59051  98.7198 254.0636 0007418 151.3257 208.8330 14.22441005137473",
-        freq_hz: 137_900_000.0,
-    },
-    TargetSatellite {
-        name: "FUNCUBE-1 (AO-73)",
-        norad_id: 39444,
-        line1: "1 39444U 13066AE  26294.20736285  .00008239  00000+0  48957-3 0  9993",
-        line2: "2 39444  97.8439 268.5385 0036409 132.3370 228.0953 15.10994851698683",
-        freq_hz: 145_935_000.0,
-    },
-];
-
-/// ローカル TLE キャッシュファイルが存在すれば優先読込し、不在時は DEFAULT_TARGETS にフォールバック
-fn load_runtime_targets() -> Vec<RuntimeTarget> {
-    let mut candidates = Vec::new();
-    if let Ok(env_path) = std::env::var("TLE_FILE_PATH") {
-        candidates.push(PathBuf::from(env_path));
-    }
-    candidates.push(PathBuf::from("/etc/satellite-tracker/tles.txt"));
-    candidates.push(PathBuf::from("apps/ground-station/data/cache/tles.txt"));
-    candidates.push(PathBuf::from("data/cache/tles.txt"));
-
-    let mut catalog = std::collections::HashMap::new();
-    for path in candidates {
-        if path.exists() {
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                let parsed = parse_tle_catalog(&text);
-                if !parsed.is_empty() {
-                    catalog = parsed;
-                    break;
-                }
-            }
-        }
-    }
-
-    DEFAULT_TARGETS
-        .iter()
-        .map(|t| {
-            if let Some((_, l1, l2)) = catalog.get(&t.norad_id) {
-                RuntimeTarget {
-                    name: t.name,
-                    norad_id: t.norad_id,
-                    line1: l1.clone(),
-                    line2: l2.clone(),
-                    freq_hz: t.freq_hz,
-                }
-            } else {
-                RuntimeTarget {
-                    name: t.name,
-                    norad_id: t.norad_id,
-                    line1: t.line1.to_string(),
-                    line2: t.line2.to_string(),
-                    freq_hz: t.freq_hz,
-                }
-            }
-        })
-        .collect()
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -238,6 +143,13 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "300.0".to_string())
         .parse()
         .unwrap_or(300.0);
+    let enable_live_tle_fetch: bool = std::env::var("ENABLE_LIVE_TLE_FETCH")
+        .map(|v| v == "true" || v == "1" || v == "yes")
+        .unwrap_or(!mock_sdr);
+    let tle_refresh_interval_sec: u64 = std::env::var("TLE_REFRESH_INTERVAL_SEC")
+        .unwrap_or_else(|_| "21600".to_string())
+        .parse()
+        .unwrap_or(21_600);
 
     info!(
         "Config: Observer=[Lat={:.4}, Lon={:.4}, Alt={:.1}m], Balcony={}, MockSDR={}, Port={}, Gating=[Meteor={:.1}°, Default={:.1}°], Beam=[Az={:.1}°, El={:.1}°]",
@@ -278,6 +190,14 @@ async fn main() -> Result<()> {
     info!("Entering autonomous edge tracking loop (power-saving enabled)...");
     let _ = uploader.sync_pending_spool(&spool_dir).await;
 
+    let mut runtime_targets = load_runtime_targets(&spool_dir);
+    if enable_live_tle_fetch {
+        if let Some(updated) = refresh_tle_cache_if_needed(&spool_dir, tle_refresh_interval_sec, Some(&uploader)).await {
+            runtime_targets = updated;
+        }
+    }
+    let mut last_tle_check = tokio::time::Instant::now();
+
     loop {
         tokio::select! {
             _ = signal::ctrl_c() => {
@@ -289,7 +209,17 @@ async fn main() -> Result<()> {
                 let mut visible_candidates = Vec::new();
                 let mut earliest_next_aos_sec = f64::MAX;
 
-                let runtime_targets = load_runtime_targets();
+                if !pass_in_progress && last_tle_check.elapsed() >= Duration::from_secs(tle_refresh_interval_sec.max(7200)) {
+                    last_tle_check = tokio::time::Instant::now();
+                    if enable_live_tle_fetch {
+                        if let Some(updated) = refresh_tle_cache_if_needed(&spool_dir, tle_refresh_interval_sec, Some(&uploader)).await {
+                            runtime_targets = updated;
+                        }
+                    } else {
+                        runtime_targets = load_runtime_targets(&spool_dir);
+                    }
+                }
+
                 for sat in &runtime_targets {
                     let _ = sat.norad_id;
                     match predictor.calculate_position(sat.name, &sat.line1, &sat.line2, sat.freq_hz, now_utc) {

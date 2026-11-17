@@ -159,3 +159,55 @@ def test_funcube_decoder_decode_raw_no_binary():
         if os.path.exists(raw_path):
             os.remove(raw_path)
 
+
+def test_funcube_decoder_removes_dc_and_preserves_multichunk_continuity(tmp_path):
+    """5秒チャンク境界を跨ぐ BPSK トーンの位相連続性と 0Hz DC オフセット除去を検証"""
+    decoder = FUNcubeDecoder(binary_path="gr_satellites")
+    decoder.has_binary = True
+
+    sample_rate = 48000
+    target_rate = 9600  # decim = 5, chunk_samples = 240000 (5秒)
+    duration_sec = 6.0  # 5秒チャンク + 1秒チャンク (境界を跨ぐ)
+    num_samples = int(sample_rate * duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    # +15 LSB の大きな DC オフセット + 600 Hz の複素正弦波 (ドップラー補正後を模擬)
+    sig_freq_hz = 600.0
+    phase = 2.0 * np.pi * sig_freq_hz * t
+    i_val = np.clip(np.round(127.5 + 15.0 + 40.0 * np.cos(phase)), 0, 255).astype(np.uint8)
+    q_val = np.clip(np.round(127.5 - 12.0 + 40.0 * np.sin(phase)), 0, 255).astype(np.uint8)
+    raw_bytes = np.empty(num_samples * 2, dtype=np.uint8)
+    raw_bytes[0::2] = i_val
+    raw_bytes[1::2] = q_val
+
+    raw_path = str(tmp_path / "fc_multichunk.raw")
+    with open(raw_path, "wb") as f:
+        f.write(raw_bytes.tobytes())
+
+    captured_iq = {}
+
+    def fake_run(cmd, capture_output, text, timeout):
+        cs16_path = cmd[3]
+        raw_i16 = np.fromfile(cs16_path, dtype=np.int16).astype(np.float32)
+        captured_iq["iq"] = raw_i16[0::2] + 1j * raw_i16[1::2]
+        return MagicMock(stdout="", returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_run):
+        decoder.decode_raw(
+            raw_path=raw_path,
+            sample_rate=sample_rate,
+            target_sample_rate=target_rate,
+            pass_start_utc=None,
+        )
+
+    iq = captured_iq["iq"]
+    assert len(iq) == int(target_rate * duration_sec)
+    # DC 成分が除去されていること
+    assert abs(np.mean(iq)) < 200.0
+    # チャンク境界 (5秒目 = 48000 サンプル付近) で振幅・位相の破綻がないこと
+    boundary = 5 * target_rate
+    phase_diffs = np.angle(iq[boundary - 10 : boundary + 10] * np.conj(iq[boundary - 11 : boundary + 9]))
+    expected_step = 2.0 * np.pi * sig_freq_hz / target_rate
+    assert np.all(np.abs(phase_diffs - expected_step) < 0.2)
+
+
