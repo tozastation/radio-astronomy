@@ -231,3 +231,86 @@ def test_resolve_fallback_tle_for_all_satellites():
     assert _resolve_fallback_tle("UNKNOWN-SAT") is None
 
 
+def test_demodulate_rejects_dc_spike_and_residual_carrier_offset(tmp_path):
+    """LO漏洩 DC スパイク(+25 LSB)および残留キャリアオフセット(+800Hz)があってもゼロDC・1200Hzトーンを復元できること"""
+    demod = ISSDspDemodulator()
+    sample_rate = 240000
+    duration_sec = 0.5
+    num_samples = int(sample_rate * duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    # +800 Hz 残留オフセット + 1200 Hz AFSK FM 変調
+    residual_offset_hz = 800.0
+    fm_dev_hz = 3000.0
+    mod_freq_hz = 1200.0
+    inst_freq = residual_offset_hz + fm_dev_hz * np.sin(2.0 * np.pi * mod_freq_hz * t)
+    phase = 2.0 * np.pi * np.cumsum(inst_freq) / sample_rate
+
+    # 強い DC バイアス (+25 / -20 LSB) を重畳
+    i_val = np.clip(np.round(127.5 + 25.0 + 40.0 * np.cos(phase)), 0, 255).astype(np.uint8)
+    q_val = np.clip(np.round(127.5 - 20.0 + 40.0 * np.sin(phase)), 0, 255).astype(np.uint8)
+    raw_bytes = np.empty(num_samples * 2, dtype=np.uint8)
+    raw_bytes[0::2] = i_val
+    raw_bytes[1::2] = q_val
+
+    raw_path = str(tmp_path / "dc_offset_iss.raw")
+    with open(raw_path, "wb") as f:
+        f.write(raw_bytes.tobytes())
+
+    out_wav = demod.demodulate_raw_iq(
+        raw_path=raw_path,
+        sample_rate=sample_rate,
+        output_wav_path=str(tmp_path / "dc_offset_out.wav"),
+    )
+    assert os.path.exists(out_wav)
+    with wave.open(out_wav, "rb") as wf:
+        audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float64)
+
+    # 音声バンドパス (300-3500 Hz) により残留オフセット由来の DC バイアスがほぼゼロであること
+    assert abs(np.mean(audio)) < 300.0
+
+    fft_mag = np.abs(np.fft.rfft(audio))
+    freqs = np.fft.rfftfreq(len(audio), 1.0 / 48000)
+    peak_idx = np.argmax(fft_mag[10:]) + 10
+    assert abs(freqs[peak_idx] - 1200.0) < 40.0
+
+
+def test_demodulate_predetection_filter_rejects_out_of_band_interferer(tmp_path):
+    """検波前 ±8kHz フィルタが帯域外 (+16kHz) の強力妨害波を抑圧して 1200Hz 信号を保護することを検証"""
+    demod = ISSDspDemodulator()
+    sample_rate = 240000
+    duration_sec = 0.5
+    num_samples = int(sample_rate * duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    fm_phase = 2.0 * np.pi * 3000.0 * np.cumsum(np.sin(2.0 * np.pi * 1200.0 * t)) / sample_rate
+    desired = 25.0 * np.exp(1j * fm_phase)
+    # 帯域外 (+16 kHz) に希望波より強い妨害キャリアを重畳
+    interferer = 60.0 * np.exp(1j * 2.0 * np.pi * 16000.0 * t)
+    combined = desired + interferer
+
+    i_val = np.clip(np.round(127.5 + np.real(combined)), 0, 255).astype(np.uint8)
+    q_val = np.clip(np.round(127.5 + np.imag(combined)), 0, 255).astype(np.uint8)
+    raw_bytes = np.empty(num_samples * 2, dtype=np.uint8)
+    raw_bytes[0::2] = i_val
+    raw_bytes[1::2] = q_val
+
+    raw_path = str(tmp_path / "interferer_iss.raw")
+    with open(raw_path, "wb") as f:
+        f.write(raw_bytes.tobytes())
+
+    out_wav = demod.demodulate_raw_iq(
+        raw_path=raw_path,
+        sample_rate=sample_rate,
+        output_wav_path=str(tmp_path / "interferer_out.wav"),
+    )
+    with wave.open(out_wav, "rb") as wf:
+        audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float64)
+
+    fft_mag = np.abs(np.fft.rfft(audio))
+    freqs = np.fft.rfftfreq(len(audio), 1.0 / 48000)
+    peak_idx = np.argmax(fft_mag[10:]) + 10
+    assert abs(freqs[peak_idx] - 1200.0) < 40.0
+
+
+

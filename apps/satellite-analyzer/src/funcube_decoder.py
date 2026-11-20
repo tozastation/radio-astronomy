@@ -8,12 +8,9 @@ import subprocess
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from tle_resolver import DEFAULT_FUNCUBE_TLE, resolve_latest_tle
 
-DEFAULT_FUNCUBE_TLE: Tuple[str, str] = (
-    "1 39444U 13066AE  26294.20736285  .00008239  00000+0  48957-3 0  9993",
-    "2 39444  97.8439 268.5385 0036409 132.3370 228.0953 15.10994851698683",
-)
+logger = logging.getLogger(__name__)
 
 
 def parse_pass_time_from_path(path_or_str: str) -> Optional[datetime.datetime]:
@@ -108,7 +105,7 @@ class FUNcubeDecoder:
 
             # SGP4 軌道伝搬モデルに基づく瞬時ドップラー偏移列の事前計算
             dt_utc = pass_start_utc or parse_pass_time_from_path(raw_path)
-            tle = tle_lines or DEFAULT_FUNCUBE_TLE
+            tle = resolve_latest_tle("FUNCUBE-1 (AO-73)", explicit_tle=tle_lines) or DEFAULT_FUNCUBE_TLE
             d_shifts = None
 
             if dt_utc and tle:
@@ -126,12 +123,15 @@ class FUNcubeDecoder:
                 except Exception as e:
                     logger.warning(f"Doppler compensation precomputation skipped for {raw_path}: {e}")
 
-            decim = sample_rate // target_sample_rate
-            chunk_samples = sample_rate  # 1秒ごとにチャンク処理 (メモリ使用量を数MBに極小化)
+            decim = max(1, sample_rate // target_sample_rate)
+            chunk_samples = max(decim, (sample_rate * 5 // decim) * decim)
+            pad_in = 100 * decim
+            pad_out = 100
 
             with tempfile.NamedTemporaryFile(suffix=".cs16", delete=True) as tmp_file:
                 phase_acc = 0.0
-                scale = 10000.0
+                prev_tail_x = None
+                scale = 4000.0
                 scale_determined = False
 
                 with open(raw_path, "rb") as f_in:
@@ -145,13 +145,15 @@ class FUNcubeDecoder:
                         if chunk_len == 0:
                             break
 
-                        i = (u8[0::2].astype(np.float32) - 128.0)
-                        q = (u8[1::2].astype(np.float32) - 128.0)
+                        x = np.empty(chunk_len, dtype=np.complex64)
+                        x.real = u8[0 : chunk_len * 2 : 2].astype(np.float32) - 127.5
+                        x.imag = u8[1 : chunk_len * 2 : 2].astype(np.float32) - 127.5
                         del u8
-                        x = i + 1j * q
-                        del i, q
 
-                        # ドップラー補正位相回転の適用
+                        # RTL-SDR LO 自己漏洩等による 0Hz DC スパイクをドップラー回転前に除去
+                        x -= np.mean(x)
+
+                        # ドップラー補正位相回転の適用 (位相連続性を保持)
                         if d_shifts is not None and len(d_shifts) > 0:
                             t_start_s = sample_idx / float(sample_rate)
                             t_end_s = (sample_idx + chunk_len) / float(sample_rate)
@@ -159,20 +161,33 @@ class FUNcubeDecoder:
                             shifts = np.interp(t_steps, np.arange(len(d_shifts)), d_shifts)
                             phase = phase_acc + np.cumsum(-2.0 * np.pi * shifts / float(sample_rate))
                             phase_acc = float(phase[-1] % (2.0 * np.pi))
-                            x *= np.exp(1j * phase)
+                            phase_f32 = phase.astype(np.float32)
+                            del phase, shifts, t_steps
+                            rotator = np.empty(chunk_len, dtype=np.complex64)
+                            rotator.real = np.cos(phase_f32)
+                            rotator.imag = np.sin(phase_f32)
+                            del phase_f32
+                            x *= rotator
+                            del rotator
 
-                        # デシメーション (アンチエイリアシング LPF 適用)
+                        # デシメーション (アンチエイリアシング LPF 適用 + チャンク境界オーバーラップ保持)
                         if decim > 1:
-                            x_target = scipy.signal.resample_poly(x, 1, decim)
+                            if prev_tail_x is not None:
+                                x_padded = np.concatenate((prev_tail_x, x))
+                                x_target = scipy.signal.resample_poly(x_padded, 1, decim)[pad_out:]
+                                del x_padded
+                            else:
+                                x_target = scipy.signal.resample_poly(x, 1, decim)
+                            prev_tail_x = x[-pad_in:].copy() if chunk_len >= pad_in else None
                         else:
                             x_target = x
                         del x
 
-                        # 初回チャンクの振幅から RMS スケーリング係数を決定
-                        if not scale_determined:
-                            rms = np.sqrt(np.mean(np.abs(x_target) ** 2))
+                        # 初回チャンクの RMS からクリップ余裕 (18dB headroom) を持たせて int16 スケーリング係数を決定
+                        if not scale_determined and len(x_target) > 0:
+                            rms = float(np.sqrt(np.mean(np.abs(x_target) ** 2)))
                             if rms > 1e-6:
-                                scale = min(10000.0 / rms, 30000.0)
+                                scale = min(4000.0 / rms, 20000.0)
                             scale_determined = True
 
                         cs16 = np.empty((len(x_target) * 2,), dtype=np.int16)

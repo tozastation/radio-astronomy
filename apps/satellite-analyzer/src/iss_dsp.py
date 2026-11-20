@@ -183,7 +183,20 @@ class ISSDspDemodulator:
         pad_in = 500  # resample_poly 境界過渡応答除去用オーバーラップ (500 % 5 == 0)
         pad_out = pad_in // decim
 
-        sos = signal.butter(4, 3500.0 / (fs_if / 2.0), btype="low", output="sos")
+        # 検波前 16kHz (±8kHz) 複素チャネルフィルタ (Carson帯域幅 10.4kHz + 余裕)
+        if_cutoff_hz = min(8000.0, fs_if * 0.42)
+        sos_if = signal.butter(4, if_cutoff_hz / (fs_if / 2.0), btype="low", output="sos")
+        zi_if = np.zeros((sos_if.shape[0], 2), dtype=np.complex128)
+
+        # 検波後 AFSK 音声帯域フィルタ (300Hz〜3.5kHz BP で残留周波数オフセット由来のDCバイアスを除去)
+        audio_high_hz = min(3500.0, fs_if * 0.45)
+        audio_low_hz = min(300.0, audio_high_hz * 0.25)
+        sos = signal.butter(
+            4,
+            [audio_low_hz / (fs_if / 2.0), audio_high_hz / (fs_if / 2.0)],
+            btype="bandpass",
+            output="sos",
+        )
         zi = np.zeros((sos.shape[0], 2), dtype=np.float64)
 
         phase_acc = 0.0
@@ -211,6 +224,9 @@ class ISSDspDemodulator:
                     x.real = (raw_u8[0 : actual_complex * 2 : 2].astype(np.float32) - 127.5) / 128.0
                     x.imag = (raw_u8[1 : actual_complex * 2 : 2].astype(np.float32) - 127.5) / 128.0
                     del raw_u8
+
+                    # RTL-SDR LO 自己漏洩等による 0Hz DC スパイクをドップラー回転前に除去 (FM キャプチャ抑圧)
+                    x -= np.mean(x)
 
                     # ドップラー周波数偏移列 (このチャンク分のみ補間)
                     chunk_shifts = None
@@ -265,6 +281,12 @@ class ISSDspDemodulator:
                     if len(x_if) == 0:
                         sample_offset += actual_complex
                         continue
+
+                    # 検波前 ±8kHz チャネル帯域制限 (帯域外雑音除去による FM スレッショルド改善)
+                    x_if_filt, zi_if = signal.sosfilt(sos_if, x_if, zi=zi_if)
+                    del x_if
+                    x_if = x_if_filt.astype(np.complex64)
+                    del x_if_filt
 
                     # 位相差分 FM 復調 (Polar Discriminator at 48kSPS)
                     if prev_x_if_last is not None:

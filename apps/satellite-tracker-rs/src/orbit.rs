@@ -366,11 +366,24 @@ fn calculate_topo_pos_and_range(
     Ok((el_deg, az_deg, range))
 }
 
-/// 3行フォーマットのTLEカタログテキストをパースし、SGP4構文検証を通過した衛星のみ NORAD ID をキーに格納
-pub fn parse_tle_catalog(
+/// TLE Line 1 から Epoch (YYDDD.DDDDDDDD) を比較可能な数値 (year * 1000.0 + day_fraction) へ変換
+pub fn parse_tle_epoch(line1: &str) -> f64 {
+    let parts: Vec<&str> = line1.split_whitespace().collect();
+    if parts.len() >= 4 && parts[0] == "1" && parts[3].len() >= 3 {
+        let epoch_str = parts[3];
+        if let (Ok(yy), Ok(day_frac)) = (epoch_str[..2].parse::<i32>(), epoch_str[2..].parse::<f64>()) {
+            let full_year = if yy < 57 { 2000 + yy } else { 1900 + yy };
+            return (full_year as f64) * 1000.0 + day_frac;
+        }
+    }
+    0.0
+}
+
+/// 3行フォーマットのTLEテキストを既存カタログへマージ (同一 NORAD ID は常に最新 Epoch を優先)
+pub fn merge_tle_catalog(
     text: &str,
-) -> std::collections::HashMap<u32, (String, String, String)> {
-    let mut map = std::collections::HashMap::new();
+    map: &mut std::collections::HashMap<u32, (String, String, String)>,
+) {
     let lines: Vec<&str> = text
         .lines()
         .map(|s| s.trim())
@@ -386,7 +399,14 @@ pub fn parse_tle_catalog(
             if line2.len() >= 7 {
                 if let Ok(norad_id) = line2[2..7].trim().parse::<u32>() {
                     if Elements::from_tle(Some(sat_name.clone()), line1.as_bytes(), line2.as_bytes()).is_ok() {
-                        map.insert(norad_id, (sat_name, line1, line2));
+                        let new_epoch = parse_tle_epoch(&line1);
+                        let should_insert = match map.get(&norad_id) {
+                            Some((_, existing_l1, _)) => new_epoch > parse_tle_epoch(existing_l1),
+                            None => true,
+                        };
+                        if should_insert {
+                            map.insert(norad_id, (sat_name, line1, line2));
+                        }
                     }
                 }
             }
@@ -395,6 +415,14 @@ pub fn parse_tle_catalog(
             i += 1;
         }
     }
+}
+
+/// 3行フォーマットのTLEカタログテキストをパースし、SGP4構文検証を通過した衛星のみ NORAD ID をキーに格納
+pub fn parse_tle_catalog(
+    text: &str,
+) -> std::collections::HashMap<u32, (String, String, String)> {
+    let mut map = std::collections::HashMap::new();
+    merge_tle_catalog(text, &mut map);
     map
 }
 
@@ -441,5 +469,29 @@ METEOR-M2 4
         assert_eq!(catalog.len(), 2);
         assert!(catalog.contains_key(&57166));
         assert!(catalog.contains_key(&59051));
+    }
+
+    #[test]
+    fn test_parse_tle_epoch_and_merge_prefers_latest() {
+        let ep_old = parse_tle_epoch("1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996");
+        let ep_new = parse_tle_epoch("1 25544U 98067A   26319.91560506  .00009214  00000+0  17269-3 0  9996");
+        assert!(ep_new > ep_old);
+        assert!((ep_old - 2026294.04791053).abs() < 1e-6);
+
+        let old_text = "\
+ISS (ZARYA)
+1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996
+2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263
+";
+        let new_text = "\
+ISS (ZARYA)
+1 25544U 98067A   26319.91560506  .00009214  00000+0  17269-3 0  9996
+2 25544  51.6321 269.2481 0007362  30.2971 329.8442 15.49402183595279
+";
+        let mut catalog = parse_tle_catalog(new_text);
+        // 古い TLE でマージしても新しい Epoch が維持されること
+        merge_tle_catalog(old_text, &mut catalog);
+        let (_, l1, _) = catalog.get(&25544).unwrap();
+        assert!(l1.contains("26319.91560506"));
     }
 }

@@ -14,37 +14,15 @@ from meteor_decoder import MeteorDecoder
 from iss_dsp import ISSDspDemodulator
 from spectrogram_generator import SpectrogramGenerator
 from retention import archive_and_rotate_raw_recording, preserve_golden_raw_recording
+from tle_resolver import (
+    DEFAULT_ISS_TLE,
+    DEFAULT_METEOR_M2_3_TLE,
+    DEFAULT_METEOR_M2_4_TLE,
+    resolve_fallback_tle as _resolve_fallback_tle,
+    resolve_latest_tle,
+)
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_ISS_TLE = (
-    "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996",
-    "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263",
-)
-
-DEFAULT_METEOR_M2_3_TLE = (
-    "1 57166U 23091A   26296.25648911 -.00000011  00000+0  13974-4 0  9991",
-    "2 57166  98.5934 348.5131 0004559 145.3247 214.8230 14.24054780172745",
-)
-
-DEFAULT_METEOR_M2_4_TLE = (
-    "1 59051U 24039A   26296.27566674  .00000005  00000+0  21993-4 0  9998",
-    "2 59051  98.7198 254.0636 0007418 151.3257 208.8330 14.22441005137473",
-)
-
-
-def _resolve_fallback_tle(satellite: str):
-    """衛星名に応じたフォールバック TLE タプルを返す"""
-    upper = (satellite or "").upper()
-    if "ISS" in upper:
-        return DEFAULT_ISS_TLE
-    if "FUNCUBE" in upper or "AO-73" in upper:
-        return DEFAULT_FUNCUBE_TLE
-    if "METEOR-M2 3" in upper or "METEOR M2-3" in upper:
-        return DEFAULT_METEOR_M2_3_TLE
-    if "METEOR-M2 4" in upper or "METEOR M2-4" in upper:
-        return DEFAULT_METEOR_M2_4_TLE
-    return None
 
 def compute_file_duration_seconds(file_path: str, default_sample_rate: int = 240000) -> float:
     """録音ファイル (生 IQ または WAV) の正確な収録時間 [秒] を算出"""
@@ -166,10 +144,11 @@ async def decode_packets_activity(wav_path: str, satellite: str = "") -> Dict[st
         if ext in (".raw", ".u8", ".cu8"):
             demod = ISSDspDemodulator()
             pass_time = parse_pass_time_from_path(wav_path)
+            iss_tle = resolve_latest_tle(satellite or "ISS (ZARYA)") or DEFAULT_ISS_TLE
             effective_wav = demod.demodulate_raw_iq(
                 raw_path=wav_path,
                 pass_start_utc=pass_time,
-                tle_lines=DEFAULT_ISS_TLE,
+                tle_lines=iss_tle,
                 center_freq_hz=145825000.0,
                 sample_rate=240000,
             )
@@ -305,6 +284,12 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         info = classify_satellite(satellite)
         category = info["category"]
         effective_wav = local_wav
+        resolved_tle = resolve_latest_tle(
+            satellite,
+            explicit_tle=params.get("tle_lines"),
+            s3_client=s3,
+            bucket=bucket,
+        )
 
         if category == "amateur_packet" or not satellite:
             ext = os.path.splitext(local_wav)[1].lower()
@@ -312,7 +297,7 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
             if ext in (".raw", ".u8", ".cu8"):
                 demod = ISSDspDemodulator()
                 pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
-                tle_lines = params.get("tle_lines") or DEFAULT_ISS_TLE
+                tle_lines = resolved_tle or DEFAULT_ISS_TLE
                 effective_wav = demod.demodulate_raw_iq(
                     raw_path=local_wav,
                     pass_start_utc=pass_time,
@@ -345,8 +330,7 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         elif category == "cubesat_telemetry":
             decoder = FUNcubeDecoder()
             pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
-            tle_lines = params.get("tle_lines")
-            frames = decoder.decode(local_wav, sample_rate=240000, pass_start_utc=pass_time, tle_lines=tle_lines)
+            frames = decoder.decode(local_wav, sample_rate=240000, pass_start_utc=pass_time, tle_lines=resolved_tle)
             packets_count = len(frames)
             packets = [f.to_dict() for f in frames]
             if packets_count > 0:
@@ -390,7 +374,7 @@ async def analyze_satellite_pass_activity(params: Dict[str, Any]) -> Dict[str, A
         # 録音時間および TCA タイムドリフト・推定 SNR の算出
         rec_duration_sec = compute_file_duration_seconds(local_wav)
         pass_time = parse_pass_time_from_path(local_wav) or parse_pass_time_from_path(pass_id)
-        tle_lines = params.get("tle_lines") or _resolve_fallback_tle(satellite)
+        tle_lines = resolved_tle or _resolve_fallback_tle(satellite)
 
         tca_drift_sec = None
         snr_db = None
