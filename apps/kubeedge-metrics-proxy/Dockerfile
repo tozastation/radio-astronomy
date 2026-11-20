@@ -4,6 +4,6 @@ WORKDIR /app
 COPY proxy.py .
 
 ENV PYTHONUNBUFFERED=1
-EXPOSE 10351
+EXPOSE 19095
 
 CMD ["python", "proxy.py"]
