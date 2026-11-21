@@ -91,14 +91,14 @@ grafana:
   enabled: true
   adminPassword: "admin"
   
-  # リソース制限 (Grafana 13.x 初期化フットプリントに対応)
+  # リソース制限 (Grafana 13.x 初期化フットプリントおよび OOMKilled 回避に対応)
   resources:
     requests:
       cpu: 50m
       memory: 150Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 768Mi
   
   # ブラウザから直接アクセスできるよう NodePort を設定 (ポート 30080)
   service:
