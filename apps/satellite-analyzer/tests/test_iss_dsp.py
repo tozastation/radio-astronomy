@@ -313,4 +313,62 @@ def test_demodulate_predetection_filter_rejects_out_of_band_interferer(tmp_path)
     assert abs(freqs[peak_idx] - 1200.0) < 40.0
 
 
+def test_estimate_tca_drift_rejects_out_of_band_rfi_and_detects_inband(tmp_path):
+    """帯域外 (+100kHz) の強力 RFI による偽 TCA/SNR 誤検出を防ぎ、帯域内信号ピークのみ正しく検出すること"""
+    demod = ISSDspDemodulator()
+    sample_rate = 240000
+    duration_sec = 20
+    num_samples = sample_rate * duration_sec
+    t = np.arange(num_samples) / sample_rate
+
+    line1 = "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996"
+    line2 = "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263"
+    start_time = datetime(2026, 10, 20, 0, 54, 50, tzinfo=timezone.utc)
+
+    # ケース1: 帯域外 (+100kHz) に時間変化する強大な RFI のみ存在 (帯域内は白色雑音)
+    rng = np.random.default_rng(7)
+    noise = (rng.normal(0.0, 2.0, num_samples) + 1j * rng.normal(0.0, 2.0, num_samples))
+    rfi_env = np.exp(-0.5 * ((t - 5.0) / 1.5) ** 2) * 40.0
+    rfi = rfi_env * np.exp(1j * 2.0 * np.pi * 100000.0 * t)
+    sig_rfi_only = noise + rfi
+
+    rfi_path = str(tmp_path / "iss_oob_rfi.raw")
+    cu8 = np.empty(num_samples * 2, dtype=np.uint8)
+    cu8[0::2] = np.clip(np.round(127.5 + np.real(sig_rfi_only)), 0, 255).astype(np.uint8)
+    cu8[1::2] = np.clip(np.round(127.5 + np.imag(sig_rfi_only)), 0, 255).astype(np.uint8)
+    with open(rfi_path, "wb") as f:
+        f.write(cu8.tobytes())
+
+    drift_rfi, snr_rfi = demod.estimate_tca_drift(
+        file_path=rfi_path,
+        pass_start_utc=start_time,
+        tle_lines=(line1, line2),
+        center_freq_hz=145825000.0,
+        sample_rate=sample_rate,
+    )
+    assert drift_rfi is None
+    assert snr_rfi is None or snr_rfi < 2.0
+
+    # ケース2: 帯域内 (+1kHz) に t=10s ピークの衛星信号が存在
+    sat_env = np.exp(-0.5 * ((t - 10.0) / 2.0) ** 2) * 15.0
+    sat_sig = noise + sat_env * np.exp(1j * 2.0 * np.pi * 1000.0 * t)
+    inband_path = str(tmp_path / "iss_inband.raw")
+    cu8_in = np.empty(num_samples * 2, dtype=np.uint8)
+    cu8_in[0::2] = np.clip(np.round(127.5 + np.real(sat_sig)), 0, 255).astype(np.uint8)
+    cu8_in[1::2] = np.clip(np.round(127.5 + np.imag(sat_sig)), 0, 255).astype(np.uint8)
+    with open(inband_path, "wb") as f:
+        f.write(cu8_in.tobytes())
+
+    drift_in, snr_in = demod.estimate_tca_drift(
+        file_path=inband_path,
+        pass_start_utc=start_time,
+        tle_lines=(line1, line2),
+        center_freq_hz=145825000.0,
+        sample_rate=sample_rate,
+    )
+    assert snr_in is not None and snr_in >= 5.0
+    assert drift_in is not None
+
+
+
 

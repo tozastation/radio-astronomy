@@ -128,9 +128,9 @@ async fn main() -> Result<()> {
         .parse()
         .unwrap_or(25.0);
     let rtl_gain: f64 = std::env::var("RTL_SDR_GAIN")
-        .unwrap_or_else(|_| "48.0".to_string())
+        .unwrap_or_else(|_| "45.0".to_string())
         .parse()
-        .unwrap_or(48.0);
+        .unwrap_or(45.0);
     let beam_az_deg: f64 = std::env::var("BEAM_AZ_DEG")
         .unwrap_or_else(|_| "30.0".to_string())
         .parse()

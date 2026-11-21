@@ -211,3 +211,51 @@ def test_funcube_decoder_removes_dc_and_preserves_multichunk_continuity(tmp_path
     assert np.all(np.abs(phase_diffs - expected_step) < 0.2)
 
 
+def test_funcube_decoder_rejects_out_of_band_rfi(tmp_path):
+    """48kSPS デシメーション後の ±4kHz LPF が帯域外 (+10kHz) の強力 RFI を抑圧し希望波を保護すること"""
+    decoder = FUNcubeDecoder(binary_path="gr_satellites")
+    decoder.has_binary = True
+
+    sample_rate = 240000
+    target_rate = 48000
+    duration_sec = 0.5
+    num_samples = int(sample_rate * duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    # 希望波 (+600 Hz) + 強力な帯域外干渉波 (+10 kHz)
+    desired = 20.0 * np.exp(1j * 2.0 * np.pi * 600.0 * t)
+    rfi = 80.0 * np.exp(1j * 2.0 * np.pi * 10000.0 * t)
+    combined = desired + rfi
+
+    raw_bytes = np.empty(num_samples * 2, dtype=np.uint8)
+    raw_bytes[0::2] = np.clip(np.round(127.5 + np.real(combined)), 0, 255).astype(np.uint8)
+    raw_bytes[1::2] = np.clip(np.round(127.5 + np.imag(combined)), 0, 255).astype(np.uint8)
+
+    raw_path = str(tmp_path / "fc_rfi.raw")
+    with open(raw_path, "wb") as f:
+        f.write(raw_bytes.tobytes())
+
+    captured_iq = {}
+
+    def fake_run(cmd, capture_output, text, timeout):
+        raw_i16 = np.fromfile(cmd[3], dtype=np.int16).astype(np.float32)
+        captured_iq["iq"] = raw_i16[0::2] + 1j * raw_i16[1::2]
+        return MagicMock(stdout="", returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_run):
+        decoder.decode_raw(
+            raw_path=raw_path,
+            sample_rate=sample_rate,
+            target_sample_rate=target_rate,
+            pass_start_utc=None,
+        )
+
+    iq = captured_iq["iq"]
+    spec = np.abs(np.fft.fftshift(np.fft.fft(iq * np.hanning(len(iq))))) ** 2
+    freqs = np.fft.fftshift(np.fft.fftfreq(len(iq), 1.0 / target_rate))
+    pwr_600 = float(np.max(spec[np.abs(freqs - 600.0) < 200.0]))
+    pwr_10k = float(np.max(spec[np.abs(freqs - 10000.0) < 500.0]))
+    assert pwr_600 > pwr_10k * 100.0  # +10kHz RFI が 20dB 以上抑圧されていること
+
+
+
