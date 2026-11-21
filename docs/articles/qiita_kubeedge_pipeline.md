@@ -19,8 +19,8 @@ slide: false
 ## 前回の振り返りと今回の課題
 
 これまでの歩みは次のとおりです。
-- 第1弾: [【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信してみる](https://qiita.com/tozastation/items/b7e411ba034ddf46be22)
-- 第2弾: [【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録](https://github.com/tozastation/radio-astronomy/blob/main/docs/articles/qiita_kubeedge_satellite_tracker.md)
+- 第1弾: [【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信する](https://qiita.com/tozastation/items/d875aa90dc07ee06ce29)
+- 第2弾: [【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録](https://qiita.com/tozastation/items/8a1ca95fe3280e19138b)
 
 第2弾では、手のひらサイズの UMPC（GPD Pocket3: Ubuntu 26.04 LTS）上で k3s（CloudCore）と KubeEdge（EdgeCore）を 1台に同居させ、頭上を通過する人工衛星（ISS や CubeSat 等）の電波を SGP4 軌道予測で自動追尾し、Prometheus と Grafana で可視化するエッジ観測の足場を固めました。
 

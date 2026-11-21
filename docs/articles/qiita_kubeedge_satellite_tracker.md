@@ -18,7 +18,7 @@ slide: false
 ## 前回の振り返りと今回の動機
 
 前回の記事はこちらです。  
-[【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信してみる 〜公式ドライバビルドの罠からSSHストリーミングまで〜](https://qiita.com/tozastation/items/b7e411ba034ddf46be22)
+[【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信する](https://qiita.com/tozastation/items/d875aa90dc07ee06ce29)
 
 前回（Day 1）では、Windows 11 + WSL2 の環境で RTL-SDR Blog V4 を動かし、ベランダのエアコン室外機の上にアンテナを置いて電波を受信するところまで行きました。  
 しかし、記事の最後のオチでこう書きました。
