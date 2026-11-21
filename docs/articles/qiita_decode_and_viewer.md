@@ -19,7 +19,7 @@ slide: false
 ## 前回の振り返りと今回のテーマ
 
 これまでの歩みは次のとおりです。
-- 第1弾: [【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信してみる](https://qiita.com/tozastation/items/b7e411ba034ddf46be22)
+- 第1弾: [【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信する](https://qiita.com/tozastation/items/d875aa90dc07ee06ce29)
 - 第2弾: [【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録](https://qiita.com/tozastation/items/8a1ca95fe3280e19138b)
 - 第3弾: [【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築](https://qiita.com/tozastation/items/81b7bafbf4f4fc3893d9)
 
