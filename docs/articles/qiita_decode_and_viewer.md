@@ -20,8 +20,8 @@ slide: false
 
 これまでの歩みは次のとおりです。
 - 第1弾: [【ベランダ電波観測所 #1】RTL-SDR Blog V4 と WSL2 で電波を受信してみる](https://qiita.com/tozastation/items/b7e411ba034ddf46be22)
-- 第2弾: [【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録](https://github.com/tozastation/radio-astronomy/blob/main/docs/articles/qiita_kubeedge_satellite_tracker.md)
-- 第3弾: [【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築](https://github.com/tozastation/radio-astronomy/blob/main/docs/articles/qiita_kubeedge_pipeline.md)
+- 第2弾: [【ベランダ電波観測所 #2】KubeEdge×SDRで始める衛星電波観測と単一ノード運用の記録](https://qiita.com/tozastation/items/8a1ca95fe3280e19138b)
+- 第3弾: [【ベランダ電波観測所 #3】KubeEdgeを活かした衛星電波解析パイプラインの構築](https://qiita.com/tozastation/items/81b7bafbf4f4fc3893d9)
 
 第3弾では、Rust 製の軽量エッジ観測アプリで衛星の電波を受信し、Garage S3 と Temporal と KEDA を組み合わせて自動解析するパイプラインを構築しました。
 
