@@ -18,9 +18,13 @@
 
 北向きベランダの Vダイポールアンテナ（開き角 120°、エレメント長約 53cm）と RTL-SDR Blog V4 で受信し、自動解析パイプラインで復調したロシアの極軌道気象衛星 METEOR-M2 の気象画像です。AVHRR の自然色風マルチスペクトル合成で、解像度は 1568 × 792 ピクセルあります。
 
-![METEOR-M2 高解像度気象衛星写真（AVHRR 自然色風合成）](docs/images/meteor_highres_decode_20261026/msu_mr_rgb_AVHRR_221_False_Color.png)
+| 復調そのまま（AVHRR 221） | AI 欠損補完後（`ml-astronomy` / 11ch Prev-Guided） |
+| :---: | :---: |
+| ![METEOR-M2 高解像度気象衛星写真（AVHRR 自然色風合成）](docs/images/meteor_highres_decode_20261026/msu_mr_rgb_AVHRR_221_False_Color.png) | ![METEOR-M2 AI 欠損補完画像（AVHRR 自然色風合成）](docs/images/meteor_highres_decode_20261026/avhrr_221_inpainted.png) |
 
 3 分以上 OQPSK シンボル同期が切れずに保てたおかげで、中央を南北に走る間宮海峡と樺太がはっきり写りました。西側には初雪を被ったロシア極東や中国東北部の山脈とアムール川水系、東側には北海道東方沖から千島列島へ渦を巻く低気圧の雲海が広がっています。復調の仕組みや DSP パイプラインを直した経緯は [docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md](docs/qa/21_meteor_lrpt_reception_diagnosis_and_dsp_remediation.md) にまとめました。
+
+また、電波の瞬断によって生じる黒帯欠損は、姉妹リポジトリ [`tozastation/ml-astronomy`](https://github.com/tozastation/ml-astronomy) の欠損補完モデル（過去観測と較正地表アトラスを融合する 11ch 時系列モデル等）を用いて Mac（Apple Silicon MPS）で推定補完できます。補完成果物は Garage S3 の `ml_inpainted/` 配下へ転送され、`satellite-viewer` 上で実測走査線と推定補完領域をマスクおよび Before/After スライダーで区別しながら確認できます。
 
 ---
 
@@ -36,7 +40,7 @@
 
 ワークスペースは用途ごとに 4 つに分かれています。
 
-- `01 / CONSOLE` では、上部の統計バーやカテゴリと状態のフィルタ、次のベストパス表示に加えて、選んだパスの復号画像や宇宙機テレメトリ HUD、スペクトログラム同期リプレイ、GIF 書き出しをその場で展開します。最接近時刻 TCA や最大仰角、ベランダ開口角、ドップラー実測による TCA 補正値の横にある ⓘ をタップすると、物理の解説が読めます（[docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md)）。
+- `01 / CONSOLE` では、上部の統計バーやカテゴリと状態のフィルタ（`AI INPAINTED` 絞り込みを含む）、次のベストパス表示に加えて、選んだパスの復号画像や宇宙機テレメトリ HUD、スペクトログラム同期リプレイ（AI 補完画像の優先表示）、GIF 書き出しをその場で展開します。[`ml-astronomy`](https://github.com/tozastation/ml-astronomy) から Garage S3 へ転送された AI 補完済み METEOR パスには専用パネルが表示され、`COMPARE`（Before/After 比較スライダー）、`AI 221` / `AI 124` / `RAW` / `MASK`（実測・補完領域可視化）の切り替えに対応しています。最接近時刻 TCA や最大仰角、ベランダ開口角、ドップラー実測による TCA 補正値の横にある ⓘ をタップすると、物理の解説が読めます（[docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md)）。
 - `02 / ORBIT & MAP` は軌道予測と電波伝搬の画面で、過去の実績をもとにベイズ確率モデルで精度を更新する通過予測カレンダーと、世界地図上のフットプリントや電波伝搬のアニメーションを出します。
 - `03 / GALACTIC 21CM` では、衛星を待っている間に実行した 21cm 水素線ドリフトスキャン（1420.406 MHz ON と 1423.000 MHz OFF の周波数スイッチング）の視線速度スペクトルと銀河俯瞰図を見られます（[docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md](docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md)）。
 - `04 / ARCHIVE` は Garage S3 バケットの統計確認と、フルバックアップやリストアの操作用です。
@@ -98,6 +102,10 @@ flowchart TB
         end
     end
 
+    subgraph Mac["母艦 Mac（手動バッチ実行）"]
+        ML["ml-astronomy<br/>PyTorch MPS 欠損補完"]
+    end
+
     Ant --> SDR
     SDR -->|USB| Tracker
     EdgeCtl -->|"Pod の定義"| Tracker
@@ -107,6 +115,8 @@ flowchart TB
     Temporal --> KEDA
     KEDA -->|"0 台から起動（上限 2）"| Worker
     Worker -->|"復号とスペクトログラムを残す"| Garage
+    Garage -->|"復調済み METEOR 画像を取得"| ML
+    ML -->|"補完画像 ml_inpainted/ を転送"| Garage
     Tracker -.->|"メトリクス"| Graf
 ```
 
@@ -114,7 +124,8 @@ flowchart TB
 | :--- | :--- | :--- |
 | `satellite-tracker-rs` | 衛星通過中は受信・Garage へ転送、待機中は銀河 21cm ドリフトスキャンを実行 | アンテナ側 Pod (`gpd-pocket3-edge`) |
 | Garage / Temporal / KEDA / `satellite-analyzer` | オブジェクトストレージ、イベント駆動ワークフロー、オンデマンド解析 | 同じ PC 上の Kubernetes |
-| `satellite-viewer` | 統合ダッシュボード（`CONSOLE` / `ORBIT & MAP` / `GALACTIC 21CM` / `ARCHIVE`）とワークフロー自動起動（NodePort 30088） | 同じ PC 上の Kubernetes |
+| `satellite-viewer` | 統合ダッシュボード（`CONSOLE` / `ORBIT & MAP` / `GALACTIC 21CM` / `ARCHIVE`）、AI 補完比較表示、ワークフロー起動（NodePort 30088） | 同じ PC 上の Kubernetes |
+| `ml-astronomy` | 復調済み METEOR 画像の欠損補完推論と Garage S3 (`ml_inpainted/`) への転送 | 外部連携（母艦 Mac 手動実行） |
 | `kubeedge-metrics-proxy` | アンテナ側コンテナの CPU・メモリ使用量を Prometheus へ中継 | アンテナ側 |
 | Prometheus / Grafana | 監視ダッシュボード（NodePort 30080） | 同じ PC 上の Kubernetes |
 
@@ -148,7 +159,7 @@ flowchart TB
 | :--- | :--- |
 | `apps/satellite-tracker-rs` | アンテナ側の追尾（Rust）。北向き見通し角と Pass Gating を判定し、衛星受信・21cm スキャン結果を Garage へアップロード |
 | `apps/satellite-analyzer` | Temporal の解析ワーカー（Python）。パケット・画像・生 IQ の復号およびスペクトログラム生成 |
-| `apps/satellite-viewer` | 観測結果ビューア（Python/Flask）。4 ワークスペース統合 UI と未解析録音のワークフロー起動（NodePort 30088） |
+| `apps/satellite-viewer` | 観測結果ビューア（Python）。4 ワークスペース統合 UI、AI 補完画像の Before/After 比較表示、未解析録音のワークフロー起動（NodePort 30088） |
 | `apps/kubeedge-metrics-proxy` | アンテナ側コンテナのリソースメトリクスを Prometheus へ中継 |
 | `apps/satellite-tracker` | アンテナ側追尾のプロトタイプ実装（Python 版） |
 | `apps/ground-station` | Rust の地上局クレート（通過予測、SGP4 軌道計算、ドップラー計算、復調、`solar-station`） |
