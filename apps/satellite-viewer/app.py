@@ -44,6 +44,25 @@ ENABLE_AUTO_DISPATCH = os.environ.get("ENABLE_AUTO_DISPATCH", "true").lower() in
 
 triggered_passes = set()
 
+INPAINT_PREFIX = "ml_inpainted/"
+INPAINT_META_FILE = "ml_inpainted/metadata.json"
+
+
+def is_inpainted_file(fname: str) -> bool:
+    """AI 補完成果物ディレクトリ配下のファイルか判定する。"""
+    return str(fname or "").startswith(INPAINT_PREFIX)
+
+
+def has_inpainted_images(p: dict) -> bool:
+    """パスに AI 補完済み画像が存在するか判定する。"""
+    files = p.get("files") or {}
+    file_keys = files.keys() if isinstance(files, dict) else files
+    return any(
+        is_inpainted_file(fname)
+        and any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg"))
+        for fname in file_keys
+    )
+
 s3_client = boto3.client(
     "s3",
     endpoint_url=S3_ENDPOINT_URL,
@@ -2833,6 +2852,237 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         grid-template-columns: 1fr !important;
       }
     }
+    /* AI 欠損補完リコンストラクションパネル */
+    .badge-inpainted {
+      color: var(--status-ok);
+      border-color: rgba(78, 159, 118, 0.45);
+      background: rgba(78, 159, 118, 0.12);
+    }
+    .inpaint-panel {
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      border-left: 2px solid var(--status-ok);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .inpaint-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px 10px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+    .inpaint-title-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .inpaint-title {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--status-ok);
+      letter-spacing: 0.02em;
+    }
+    .inpaint-model-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 1px 6px;
+      border-radius: 2px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      color: var(--text-secondary);
+    }
+    .inpaint-tier-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 1px 6px;
+      border-radius: 2px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .inpaint-tabs {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .inpaint-tab-btn {
+      background: var(--bg-inset);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-hairline);
+      border-radius: 2px;
+      padding: 3px 8px;
+      min-height: 28px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 160ms var(--ease-instrument), border-color 160ms var(--ease-instrument), color 160ms var(--ease-instrument);
+    }
+    .inpaint-tab-btn:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .inpaint-tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg-inset);
+      font-weight: 600;
+    }
+    .inpaint-zoom-btn {
+      background: var(--bg-inset);
+      color: var(--text-primary);
+      border: 1px solid var(--border-strong);
+      border-radius: 2px;
+      padding: 3px 8px;
+      min-height: 28px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 160ms var(--ease-instrument), color 160ms var(--ease-instrument), background-color 160ms var(--ease-instrument);
+    }
+    .inpaint-zoom-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--bg-elevated);
+    }
+    .inpaint-stage {
+      background: var(--bg-inset);
+    }
+    .inpaint-compare-inner {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      background: var(--bg-inset);
+    }
+    .inpaint-img-base {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 420px;
+      object-fit: contain;
+    }
+    .inpaint-img-before {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      clip-path: inset(0 50% 0 0);
+      pointer-events: none;
+    }
+    .inpaint-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      background: var(--accent);
+      pointer-events: none;
+    }
+    .inpaint-corner-label {
+      position: absolute;
+      top: 6px;
+      background: rgba(14, 14, 13, 0.85);
+      border: 1px solid var(--border-hairline);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .inpaint-corner-left {
+      left: 8px;
+      color: var(--text-secondary);
+    }
+    .inpaint-corner-right {
+      right: 8px;
+      color: var(--status-ok);
+    }
+    .inpaint-slider-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-hairline);
+      border-bottom: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+    }
+    .inpaint-slider-range {
+      flex: 1;
+      min-width: 0;
+      accent-color: var(--accent);
+      cursor: ew-resize;
+      height: 20px;
+    }
+    .inpaint-slider-val {
+      min-width: 40px;
+      text-align: right;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .inpaint-single-wrap {
+      position: relative;
+      text-align: center;
+      background: var(--bg-inset);
+    }
+    .inpaint-single-img {
+      width: 100%;
+      height: auto;
+      max-height: 420px;
+      object-fit: contain;
+      display: block;
+      cursor: pointer;
+    }
+    .inpaint-meta-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      padding: 6px 10px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+    }
+    .inpaint-meta-cell strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .inpaint-note {
+      padding: 5px 10px;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-top: 1px solid var(--border-hairline);
+    }
+    @media (max-width: 640px) {
+      .inpaint-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .inpaint-tab-btn,
+      .inpaint-zoom-btn {
+        min-height: 34px;
+        padding: 4px 8px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2931,6 +3181,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </button>
             <button class="chip chip-toggle" id="btnHasImage" onclick="toggleHasImageFilter(this)">
               HAS IMAGE (<span id="count-has-image" class="mono-num">0</span>)
+            </button>
+            <button class="chip chip-toggle" id="btnInpaintedOnly" onclick="inpaintToggleFilter(this)">
+              AI INPAINTED (<span id="count-inpainted" class="mono-num">0</span>)
             </button>
             <button class="chip chip-toggle" id="btnHighEl" onclick="toggleHighElFilter(this)">
               EL 30°+
@@ -5296,6 +5549,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let currentCategory = 'all';
     let isDemodOnly = false;
     let isHasImageOnly = false;
+    let inpaintFilterOnly = false;
     let currentMinEl = 0;
     let currentSatelliteFilter = 'all';
     let currentPeriodFilter = 'all';
@@ -5325,6 +5579,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (currentCategory && currentCategory !== 'all') params.set('category', currentCategory);
         if (isDemodOnly) params.set('demod', '1');
         if (isHasImageOnly) params.set('img', '1');
+        if (inpaintFilterOnly) params.set('ai', '1');
         if (currentMinEl > 0) params.set('min_el', String(currentMinEl));
         if (currentSatelliteFilter && currentSatelliteFilter !== 'all') params.set('sat', currentSatelliteFilter);
         if (currentPeriodFilter && currentPeriodFilter !== 'all') params.set('period', currentPeriodFilter);
@@ -5345,6 +5600,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         currentCategory = params.get('category') || 'all';
         isDemodOnly = params.get('demod') === '1' || params.get('demod_only') === 'true';
         isHasImageOnly = params.get('img') === '1' || params.get('has_image') === 'true';
+        inpaintFilterOnly = params.get('ai') === '1' || params.get('inpainted_only') === 'true';
         currentMinEl = parseFloat(params.get('min_el') || '0') || 0;
         currentSatelliteFilter = params.get('sat') || params.get('satellite') || 'all';
         currentPeriodFilter = params.get('period') || 'all';
@@ -5365,6 +5621,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (btnDemod) btnDemod.classList.toggle('active', isDemodOnly);
       const btnImg = document.getElementById('btnHasImage');
       if (btnImg) btnImg.classList.toggle('active', isHasImageOnly);
+      const btnInpainted = document.getElementById('btnInpaintedOnly');
+      if (btnInpainted) btnInpainted.classList.toggle('active', inpaintFilterOnly);
       const btnHighEl = document.getElementById('btnHighEl');
       if (btnHighEl) btnHighEl.classList.toggle('active', currentMinEl >= 30);
 
@@ -5397,6 +5655,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (currentSatelliteFilter !== 'all') parts.push(`衛星: ${currentSatelliteFilter}`);
       if (isDemodOnly) parts.push('復調成功のみ');
       if (isHasImageOnly) parts.push('画像あり');
+      if (inpaintFilterOnly) parts.push('AI補完済み');
       if (currentMinEl > 0) parts.push(`仰角${currentMinEl}°+`);
       if (currentPeriodFilter !== 'all') parts.push(`期間: ${currentPeriodFilter}`);
       if (currentSearchQuery.trim()) parts.push(`検索: "${currentSearchQuery.trim()}"`);
@@ -5427,6 +5686,67 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (btnElement) btnElement.classList.toggle('active', isHasImageOnly);
       filterSyncUrl();
       loadPasses(1, true);
+    }
+
+    function inpaintToggleFilter(btnElement) {
+      inpaintFilterOnly = !inpaintFilterOnly;
+      if (btnElement) btnElement.classList.toggle('active', inpaintFilterOnly);
+      filterSyncUrl();
+      loadPasses(1, true);
+    }
+
+    function inpaintSwitchTab(btn, mode) {
+      const panel = btn.closest('.inpaint-panel');
+      if (!panel) return;
+      panel.setAttribute('data-active-mode', mode);
+      panel.querySelectorAll('.inpaint-tab-btn').forEach(el => {
+        el.classList.toggle('active', el === btn);
+      });
+      const compareView = panel.querySelector('[data-inpaint-view="compare"]');
+      const singleView = panel.querySelector('[data-inpaint-view="single"]');
+      if (mode === 'compare') {
+        if (compareView) compareView.style.display = 'block';
+        if (singleView) singleView.style.display = 'none';
+      } else {
+        if (compareView) compareView.style.display = 'none';
+        if (singleView) {
+          singleView.style.display = 'block';
+          const img = singleView.querySelector('.inpaint-single-img');
+          const nextSrc = btn.getAttribute('data-img-src') || '';
+          const nextLabel = btn.getAttribute('data-img-label') || mode;
+          if (img && nextSrc) {
+            img.src = nextSrc;
+            img.alt = nextLabel;
+          }
+        }
+      }
+    }
+
+    function inpaintUpdateSlider(rangeInput) {
+      const panel = rangeInput.closest('.inpaint-panel');
+      if (!panel) return;
+      const val = Math.max(0, Math.min(100, parseInt(rangeInput.value, 10) || 0));
+      const beforeImg = panel.querySelector('.inpaint-img-before');
+      const divider = panel.querySelector('.inpaint-divider');
+      const valLabel = panel.querySelector('.inpaint-slider-val');
+      if (beforeImg) beforeImg.style.clipPath = `inset(0 ${100 - val}% 0 0)`;
+      if (divider) divider.style.left = val + '%';
+      if (valLabel) valLabel.textContent = val + '%';
+    }
+
+    function inpaintZoomCurrent(btn) {
+      const panel = btn.closest('.inpaint-panel');
+      if (!panel) return;
+      const activeMode = panel.getAttribute('data-active-mode') || 'compare';
+      let targetUrl = panel.getAttribute('data-default-zoom-src') || '';
+      if (activeMode !== 'compare') {
+        const activeBtn = panel.querySelector(`.inpaint-tab-btn[data-mode="${activeMode}"]`);
+        const src = activeBtn ? activeBtn.getAttribute('data-img-src') : '';
+        if (src) targetUrl = src;
+      }
+      if (targetUrl) {
+        openImageModal(targetUrl);
+      }
     }
 
     function toggleHighElFilter(btnElement) {
@@ -5472,6 +5792,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       currentCategory = 'all';
       isDemodOnly = false;
       isHasImageOnly = false;
+      inpaintFilterOnly = false;
       currentMinEl = 0;
       currentSatelliteFilter = 'all';
       currentPeriodFilter = 'all';
@@ -5531,6 +5852,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         category: currentCategory,
         demod_only: isDemodOnly ? 'true' : 'false',
         has_image: isHasImageOnly ? 'true' : 'false',
+        inpainted_only: inpaintFilterOnly ? 'true' : 'false',
         satellite: currentSatelliteFilter,
         period: currentPeriodFilter,
         min_el: String(currentMinEl),
@@ -5586,6 +5908,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           if (document.getElementById('count-genericsatellite')) document.getElementById('count-genericsatellite').textContent = data.counts.genericsatellite || 0;
           if (document.getElementById('count-demod-success')) document.getElementById('count-demod-success').textContent = data.counts.demod_success || 0;
           if (document.getElementById('count-has-image')) document.getElementById('count-has-image').textContent = data.counts.has_image || 0;
+          if (document.getElementById('count-inpainted')) document.getElementById('count-inpainted').textContent = data.counts.inpainted || 0;
           if (data.counts.satellites) {
             filterUpdateSatelliteDropdown(data.counts.satellites);
           }
@@ -7030,11 +7353,17 @@ def generate_trajectory_data(pass_id: str, cache) -> dict:
         step_seconds=1
     )
 
-    # 復調画像の抽出
+    # 復調画像の抽出（AI 補完済み AVHRR 221 があれば先頭に優先配置）
     files = pdata.get("files") or {}
     images = []
+    inpainted_primary = "ml_inpainted/avhrr_221_inpainted.png"
+    if inpainted_primary in files:
+        images.append({
+            "name": "avhrr_221_inpainted.png",
+            "url": f"/view?key={urllib.parse.quote(files[inpainted_primary], safe='/:')}"
+        })
     for fname, key in files.items():
-        if fname.lower().endswith(".png") and "spectrogram" not in fname.lower():
+        if fname.lower().endswith(".png") and "spectrogram" not in fname.lower() and not is_inpainted_file(fname):
             images.append({
                 "name": os.path.basename(fname),
                 "url": f"/view?key={urllib.parse.quote(key, safe='/:')}"
@@ -7369,18 +7698,19 @@ def get_satellite_type(p: dict) -> str:
 
 
 def has_decoded_images(p: dict) -> bool:
-    """スペクトログラム以外の復調画像ファイルが存在するか判定する。"""
+    """スペクトログラムおよび AI 補完物以外の復調画像ファイルが存在するか判定する。"""
     files = p.get("files") or {}
     file_keys = files.keys() if isinstance(files, dict) else files
     return any(
         any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
         and "spectrogram" not in fname.lower()
+        and not is_inpainted_file(fname)
         for fname in file_keys
     )
 
 
 def count_decoded_images(p: dict) -> int:
-    """スペクトログラム以外の復調画像ファイル数を返す。"""
+    """スペクトログラムおよび AI 補完物以外の復調画像ファイル数を返す。"""
     files = p.get("files") or {}
     file_keys = files.keys() if isinstance(files, dict) else files
     return sum(
@@ -7388,6 +7718,7 @@ def count_decoded_images(p: dict) -> int:
         for fname in file_keys
         if any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".bmp"))
         and "spectrogram" not in fname.lower()
+        and not is_inpainted_file(fname)
     )
 
 
@@ -7492,6 +7823,7 @@ def filter_and_sort_passes(
     category: str = "all",
     demod_only: bool = False,
     has_image: bool = False,
+    inpainted_only: bool = False,
     satellite: str = "all",
     period: str = "all",
     min_el: float = 0.0,
@@ -7513,6 +7845,7 @@ def filter_and_sort_passes(
         "genericsatellite": 0,
         "demod_success": 0,
         "has_image": 0,
+        "inpainted": 0,
         "satellites": [],
     }
     sat_counts = {}
@@ -7525,6 +7858,8 @@ def filter_and_sort_passes(
             counts["demod_success"] += 1
         if has_decoded_images(p):
             counts["has_image"] += 1
+        if has_inpainted_images(p):
+            counts["inpainted"] += 1
         sat_name = p.get("satellite") or ""
         if sat_name:
             sat_counts[sat_name] = sat_counts.get(sat_name, 0) + 1
@@ -7552,6 +7887,8 @@ def filter_and_sort_passes(
         if demod_only and not is_demod_successful(p):
             continue
         if has_image and not has_decoded_images(p):
+            continue
+        if inpainted_only and not has_inpainted_images(p):
             continue
         if cutoff_dt is not None and get_pass_timestamp(p) < cutoff_dt:
             continue
@@ -8333,6 +8670,148 @@ def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
     """
 
 
+def render_inpainted_panel_html(p: dict) -> str:
+    """AI 欠損補完成果物の専用表示・Before/After 比較パネル HTML を生成する。"""
+    if not has_inpainted_images(p):
+        return ""
+
+    files = p.get("files") or {}
+    meta = p.get("inpaint_meta") or {}
+    model_m = meta.get("model") or {}
+    qual_m = meta.get("quality") or {}
+    ist = meta.get("input_stats") or {}
+    reg = meta.get("registration") or {}
+
+    ver_raw = meta.get("generated_at_utc") or model_m.get("config_hash") or ""
+    v_qs = f"&v={urllib.parse.quote(str(ver_raw))}" if ver_raw else ""
+
+    def _view_url(s3_key: str | None) -> str:
+        if not s3_key:
+            return ""
+        return f"/view?key={urllib.parse.quote(s3_key)}{v_qs}"
+
+    avhrr_key = files.get("ml_inpainted/avhrr_221_inpainted.png")
+    if not avhrr_key:
+        avhrr_key = next(
+            (
+                v
+                for k, v in files.items()
+                if is_inpainted_file(k) and k.lower().endswith((".png", ".jpg", ".jpeg"))
+            ),
+            None,
+        )
+    msu124_key = files.get("ml_inpainted/msu_mr_124_inpainted.png")
+    raw_key = files.get("ml_inpainted/raw_avhrr_221_aligned.png") or files.get("msu_mr_rgb_AVHRR_221_False_Color.png")
+    mask_key = files.get("ml_inpainted/inpaint_mask_overlay.png")
+
+    avhrr_url = _view_url(avhrr_key)
+    msu124_url = _view_url(msu124_key)
+    raw_url = _view_url(raw_key)
+    mask_url = _view_url(mask_key)
+
+    can_compare = bool(avhrr_url and raw_url)
+    default_mode = "compare" if can_compare else ("ai221" if avhrr_url else ("ai124" if msu124_url else "mask"))
+    default_single_url = avhrr_url or msu124_url or mask_url or raw_url
+    default_zoom_url = avhrr_url or msu124_url or mask_url or raw_url
+
+    tab_defs = []
+    if can_compare:
+        tab_defs.append(("compare", "COMPARE", avhrr_url, "AI 補完前後比較"))
+    if avhrr_url:
+        tab_defs.append(("ai221", "AI 221", avhrr_url, "AI 補完 AVHRR 221"))
+    if msu124_url:
+        tab_defs.append(("ai124", "AI 124", msu124_url, "AI 補完 MSU-MR 124"))
+    if raw_url:
+        tab_defs.append(("raw", "RAW", raw_url, "補完前 Raw AVHRR 221"))
+    if mask_url:
+        tab_defs.append(("mask", "MASK", mask_url, "実測・AI補完領域マスク"))
+
+    tabs_html = "".join(
+        f'<button type="button" class="inpaint-tab-btn{" active" if m_id == default_mode else ""}" '
+        f'data-mode="{m_id}" data-img-src="{html.escape(m_url)}" data-img-label="{html.escape(m_alt)}" '
+        f'onclick="inpaintSwitchTab(this, \'{m_id}\')">{m_label}</button>'
+        for m_id, m_label, m_url, m_alt in tab_defs
+    )
+
+    mode_code = str(model_m.get("mode") or "")
+    if mode_code == "temporal_prev_11ch":
+        model_badge = "PREV-GUIDED 11CH"
+    elif mode_code == "single_pass_8ch":
+        model_badge = "SINGLE-PASS 8CH"
+    else:
+        model_badge = "AI INPAINT"
+
+    tier_txt = html.escape(str(qual_m.get("tier") or "AI"))
+    valid_str = f"{ist['any_valid_pct']:.1f}%" if isinstance(ist.get("any_valid_pct"), (int, float)) else "-"
+    filled_str = f"{ist['missing_pct']:.1f}%" if isinstance(ist.get("missing_pct"), (int, float)) else "-"
+    gap_str = f"{int(ist['max_gap_px'])} px" if isinstance(ist.get("max_gap_px"), (int, float)) else "-"
+    reg_mode = str(reg.get("mode") or "-")
+    agree = reg.get("clear_agree_pct")
+    reg_str = f"{reg_mode} ({agree:.1f}%)" if isinstance(agree, (int, float)) and agree > 0 else reg_mode
+    reg_esc = html.escape(reg_str)
+    note_esc = html.escape(
+        str(
+            qual_m.get("note")
+            or "実測走査線はそのまま保持し、欠損領域のみを AI 補完しています。補完範囲は MASK タブで確認できます。"
+        )
+    )
+
+    compare_html = ""
+    if can_compare:
+        compare_html = f"""
+        <div class="inpaint-compare-wrap" data-inpaint-view="compare" style="display:{'block' if default_mode == 'compare' else 'none'};">
+          <div class="inpaint-compare-inner">
+            <img class="inpaint-img-base" loading="lazy" src="{html.escape(avhrr_url)}" alt="AI 補完 AVHRR 221">
+            <img class="inpaint-img-before" loading="lazy" src="{html.escape(raw_url)}" alt="補完前 Raw AVHRR 221">
+            <div class="inpaint-divider"></div>
+            <span class="inpaint-corner-label inpaint-corner-left">RAW OBSERVED</span>
+            <span class="inpaint-corner-label inpaint-corner-right">AI RESTORED</span>
+          </div>
+          <div class="inpaint-slider-bar">
+            <span>RAW</span>
+            <input type="range" class="inpaint-slider-range" min="0" max="100" value="50" oninput="inpaintUpdateSlider(this)" aria-label="補完前後比較スライダー">
+            <span>AI</span>
+            <span class="inpaint-slider-val">50%</span>
+          </div>
+        </div>
+        """
+
+    single_display = "none" if default_mode == "compare" else "block"
+    single_html = f"""
+      <div class="inpaint-single-wrap" data-inpaint-view="single" style="display:{single_display};">
+        <img class="inpaint-single-img" loading="lazy" src="{html.escape(default_single_url)}" alt="AI 補完画像" onclick="openImageModal(this.src)">
+        <span class="spectrogram-hint">ZOOM</span>
+      </div>
+    """
+
+    return f"""
+    <div class="inpaint-panel" data-active-mode="{default_mode}" data-default-zoom-src="{html.escape(default_zoom_url)}">
+      <div class="inpaint-header">
+        <div class="inpaint-title-group">
+          <span class="inpaint-title">[AI-ML] 欠損補完リコンストラクション</span>
+          <span class="inpaint-model-tag">{model_badge}</span>
+          <span class="inpaint-tier-tag">{tier_txt}</span>
+        </div>
+        <div class="inpaint-tabs">
+          {tabs_html}
+          <button type="button" class="inpaint-zoom-btn" onclick="inpaintZoomCurrent(this)">ZOOM</button>
+        </div>
+      </div>
+      <div class="inpaint-stage">
+        {compare_html}
+        {single_html}
+      </div>
+      <div class="inpaint-meta-strip">
+        <span class="inpaint-meta-cell">VALID: <strong>{valid_str}</strong></span>
+        <span class="inpaint-meta-cell">FILLED: <strong>{filled_str}</strong></span>
+        <span class="inpaint-meta-cell">MAX GAP: <strong>{gap_str}</strong></span>
+        <span class="inpaint-meta-cell">REG: <strong>{reg_esc}</strong></span>
+      </div>
+      <div class="inpaint-note">{note_esc}</div>
+    </div>
+    """
+
+
 def render_card_html(p: dict) -> str:
     spectrogram_html = ""
     if "spectrogram.png" in p.get("files", {}):
@@ -8344,9 +8823,11 @@ def render_card_html(p: dict) -> str:
         </div>
         """
 
+    inpainted_panel_html = render_inpainted_panel_html(p)
+
     decoded_images_html = ""
     for fname, fkey in p.get("files", {}).items():
-        if fname != "spectrogram.png" and any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg")):
+        if fname != "spectrogram.png" and not is_inpainted_file(fname) and any(fname.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg")):
             decoded_img_url = f"/view?key={urllib.parse.quote(fkey)}"
             decoded_images_html += f"""
             <div class="spectrogram-container" style="margin-top: 8px;">
@@ -8497,6 +8978,8 @@ def render_card_html(p: dict) -> str:
     pass_date_str = base_jst.strftime("%Y-%m-%d")
     pass_date_label = f"{base_jst.year}年{base_jst.month}月{base_jst.day}日"
 
+    inpainted_badge_html = '<span class="badge-tag badge-inpainted">AI RESTORED</span>' if has_inpainted_images(p) else ""
+
     return f"""
     <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}" data-pass-date="{pass_date_str}" data-pass-date-label="{pass_date_label}">
       <div class="card-header">
@@ -8506,6 +8989,7 @@ def render_card_html(p: dict) -> str:
             <span class="badge-tag {badge_class}">{sat_type}</span>
             <span class="badge-tag badge-freq">{freq_label}</span>
             <span class="badge-tag badge-signal">{signal_type}</span>
+            {inpainted_badge_html}
           </div>
           <div class="pass-id">{p.get('pass_id', '')}</div>
         </div>
@@ -8517,6 +9001,7 @@ def render_card_html(p: dict) -> str:
       </div>
       <div class="card-body">
         {spectrogram_html}
+        {inpainted_panel_html}
         {decoded_images_html}
         {summary_box_html}
         {telemetry_panel_html}
@@ -8586,9 +9071,10 @@ class PassDataCache:
                                 "files": {},
                                 "summary": None,
                                 "packets": None,
+                                "inpaint_meta": None,
                             }
                         else:
-                            if mtime > self._passes[pass_id]["last_modified_dt"]:
+                            if not is_inpainted_file(filename) and mtime > self._passes[pass_id]["last_modified_dt"]:
                                 self._passes[pass_id]["last_modified_dt"] = mtime
                                 self._passes[pass_id]["last_modified"] = mtime.strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -8608,6 +9094,12 @@ class PassDataCache:
                     current_mtime = new_file_mtimes.get(pkey)
                     if pdata["packets"] is None or self._file_mtimes.get(pkey) != current_mtime:
                         fetch_tasks.append((pass_id, "packets", pkey))
+
+                if INPAINT_META_FILE in pdata["files"]:
+                    mkey = pdata["files"][INPAINT_META_FILE]
+                    current_mtime = new_file_mtimes.get(mkey)
+                    if pdata.get("inpaint_meta") is None or self._file_mtimes.get(mkey) != current_mtime:
+                        fetch_tasks.append((pass_id, "inpaint_meta", mkey))
 
             def _fetch_s3_json(task):
                 pid, field, key = task
@@ -8678,7 +9170,10 @@ class PassDataCache:
             summary = pdata.get("summary") or {}
             packets_count = summary.get("packets_count", 0)
             files = pdata.get("files") or {}
-            has_images = any(f.lower().endswith(".png") and "spectrogram" not in f.lower() for f in files)
+            has_images = any(
+                f.lower().endswith(".png") and "spectrogram" not in f.lower() and not is_inpainted_file(f)
+                for f in files
+            )
             is_success = (packets_count > 0) or has_images
 
             # パスの観測時刻と経過日数・指数忘却重み (半減期 7.0日)
@@ -8769,7 +9264,10 @@ class PassDataCache:
             summary = pdata.get("summary") or {}
             packets_count = summary.get("packets_count", 0)
             files = pdata.get("files") or {}
-            has_images = any(f.lower().endswith(".png") and "spectrogram" not in f.lower() for f in files)
+            has_images = any(
+                f.lower().endswith(".png") and "spectrogram" not in f.lower() and not is_inpainted_file(f)
+                for f in files
+            )
             if not (packets_count > 0 or has_images):
                 continue
 
@@ -9054,6 +9552,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             demod_only_param = query.get("demod_only", ["false"])[0].lower() in ["true", "1", "yes"]
             filter_demod = has_data_param or demod_only_param
             has_image_param = query.get("has_image", ["false"])[0].lower() in ["true", "1", "yes"]
+            inpainted_only_param = query.get("inpainted_only", ["false"])[0].lower() in ["true", "1", "yes"]
             satellite_param = query.get("satellite", ["all"])[0]
             period_param = query.get("period", ["all"])[0]
             sort_param = query.get("sort", ["newest"])[0]
@@ -9069,6 +9568,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 category=category,
                 demod_only=filter_demod,
                 has_image=has_image_param,
+                inpainted_only=inpainted_only_param,
                 satellite=satellite_param,
                 period=period_param,
                 min_el=min_el_param,

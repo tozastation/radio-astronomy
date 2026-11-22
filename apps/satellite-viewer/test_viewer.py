@@ -1135,6 +1135,137 @@ class TestPerformanceOptimizations(unittest.TestCase):
         self.assertIn(".replay-layout > *", HTML_TEMPLATE)
         self.assertIn("overflow-wrap:anywhere;", HTML_TEMPLATE)
 
+    def test_inpainted_helpers_and_decoded_count_isolation(self):
+        from app import count_decoded_images, has_decoded_images, has_inpainted_images, is_inpainted_file
+
+        self.assertTrue(is_inpainted_file("ml_inpainted/avhrr_221_inpainted.png"))
+        self.assertFalse(is_inpainted_file("msu_mr_rgb_AVHRR_221_False_Color.png"))
+
+        p_only_ai = {
+            "satellite": "METEOR-M2 3",
+            "pass_id": "METEOR-M2 3_20261122_000222",
+            "files": {
+                "spectrogram.png": "results/METEOR-M2 3/p/spectrogram.png",
+                "ml_inpainted/avhrr_221_inpainted.png": "results/METEOR-M2 3/p/ml_inpainted/avhrr_221_inpainted.png",
+                "ml_inpainted/metadata.json": "results/METEOR-M2 3/p/ml_inpainted/metadata.json",
+            },
+            "summary": {"packets_count": 0},
+        }
+        self.assertTrue(has_inpainted_images(p_only_ai))
+        self.assertFalse(has_decoded_images(p_only_ai))
+        self.assertEqual(count_decoded_images(p_only_ai), 0)
+
+    def test_pass_cache_fetches_inpaint_meta_and_preserves_mtime(self):
+        mock_s3 = MagicMock()
+        cache = PassDataCache(s3_client=mock_s3, s3_bucket="test-bucket")
+
+        orig_dt = datetime(2026, 10, 26, 1, 0, 0, tzinfo=timezone.utc)
+        later_dt = datetime(2026, 11, 22, 3, 30, 0, tzinfo=timezone.utc)
+
+        paginator = MagicMock()
+        mock_s3.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{
+            "Contents": [
+                {"Key": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/summary.json", "LastModified": orig_dt},
+                {"Key": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/ml_inpainted/avhrr_221_inpainted.png", "LastModified": later_dt},
+                {"Key": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/ml_inpainted/metadata.json", "LastModified": later_dt},
+            ]
+        }]
+
+        def mock_get_object(Bucket, Key):
+            if Key.endswith("summary.json"):
+                return {"Body": io.BytesIO(b'{"status":"completed","packets_count":0}')}
+            if Key.endswith("ml_inpainted/metadata.json"):
+                return {"Body": io.BytesIO(b'{"schema_version":1,"model":{"mode":"temporal_prev_11ch"},"quality":{"tier":"Tier B"}}')}
+            raise ValueError(f"Unexpected key: {Key}")
+
+        mock_s3.get_object.side_effect = mock_get_object
+        passes = cache.get_all_passes()
+        self.assertEqual(len(passes), 1)
+        p = passes[0]
+        self.assertIsNotNone(p["inpaint_meta"])
+        self.assertEqual(p["inpaint_meta"]["model"]["mode"], "temporal_prev_11ch")
+        # 補完成果物の時刻によって元観測時刻が上書きされないこと
+        self.assertEqual(p["last_modified_dt"], orig_dt)
+
+    def test_filter_and_sort_passes_inpainted_only(self):
+        from app import filter_and_sort_passes
+
+        now_dt = datetime(2026, 11, 22, 4, 0, 0, tzinfo=timezone.utc)
+        passes = [
+            {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261122_000222",
+                "last_modified_dt": datetime(2026, 11, 22, 0, 2, 22, tzinfo=timezone.utc),
+                "summary": {"packets_count": 0},
+                "files": {
+                    "MSU-MR-1.png": "k1",
+                    "ml_inpainted/avhrr_221_inpainted.png": "k2",
+                },
+            },
+            {
+                "satellite": "METEOR-M2 3",
+                "pass_id": "METEOR-M2 3_20261121_002540",
+                "last_modified_dt": datetime(2026, 11, 21, 0, 25, 40, tzinfo=timezone.utc),
+                "summary": {"packets_count": 0},
+                "files": {"MSU-MR-2.png": "k3"},
+            },
+        ]
+        matched, counts = filter_and_sort_passes(passes, inpainted_only=True, now_dt=now_dt)
+        self.assertEqual(counts["inpainted"], 1)
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched[0]["pass_id"], "METEOR-M2 3_20261122_000222")
+
+    def test_render_card_html_with_inpainted_panel(self):
+        p = {
+            "satellite": "METEOR-M2 3",
+            "pass_id": "METEOR-M2 3_20261026_003009",
+            "last_modified": "2026-10-26 00:45:00 UTC",
+            "files": {
+                "spectrogram.png": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/spectrogram.png",
+                "msu_mr_rgb_AVHRR_221_False_Color.png": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/msu_mr_rgb_AVHRR_221_False_Color.png",
+                "ml_inpainted/avhrr_221_inpainted.png": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/ml_inpainted/avhrr_221_inpainted.png",
+                "ml_inpainted/msu_mr_124_inpainted.png": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/ml_inpainted/msu_mr_124_inpainted.png",
+                "ml_inpainted/raw_avhrr_221_aligned.png": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/ml_inpainted/raw_avhrr_221_aligned.png",
+                "ml_inpainted/inpaint_mask_overlay.png": "results/METEOR-M2 3/METEOR-M2 3_20261026_003009/ml_inpainted/inpaint_mask_overlay.png",
+            },
+            "inpaint_meta": {
+                "schema_version": 1,
+                "generated_at_utc": "2026-11-22T03:30:00Z",
+                "model": {"mode": "temporal_prev_11ch", "config_hash": "a84ae13587fa7d7a"},
+                "input_stats": {"any_valid_pct": 51.3, "missing_pct": 48.7, "max_gap_px": 96},
+                "registration": {"mode": "clear_orbital_tps", "clear_agree_pct": 92.0},
+                "quality": {"tier": "Tier B", "note": "テスト補完ノート"},
+            },
+            "summary": {"status": "completed", "packets_count": 0},
+            "packets": None,
+        }
+        card_html = render_card_html(p)
+        self.assertIn("AI RESTORED", card_html)
+        self.assertIn("inpaint-panel", card_html)
+        self.assertIn("PREV-GUIDED 11CH", card_html)
+        self.assertIn("inpaintSwitchTab", card_html)
+        self.assertIn("inpaintUpdateSlider", card_html)
+        self.assertIn("51.3%", card_html)
+        self.assertIn("48.7%", card_html)
+        self.assertIn("96 px", card_html)
+        self.assertIn("clear_orbital_tps (92.0%)", card_html)
+        # AI 補完画像が Raw 復調画像ブロックに重複出力されないこと
+        self.assertNotIn("[IMG] 復調気象画像: ml_inpainted/avhrr_221_inpainted.png", card_html)
+        self.assertIn("[IMG] 復調気象画像: msu_mr_rgb_AVHRR_221_False_Color.png", card_html)
+
+    def test_html_template_has_inpainted_filter_and_prefixed_js(self):
+        for token in (
+            'id="btnInpaintedOnly"',
+            'id="count-inpainted"',
+            "inpaintFilterOnly",
+            "inpaintToggleFilter",
+            "inpaintSwitchTab",
+            "inpaintUpdateSlider",
+            "inpaintZoomCurrent",
+        ):
+            self.assertIn(token, HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()
