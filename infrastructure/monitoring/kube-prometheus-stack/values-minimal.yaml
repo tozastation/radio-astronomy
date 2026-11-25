@@ -123,6 +123,8 @@ prometheus-node-exporter:
 # K8s オブジェクト状態メトリクス (kube-state-metrics)
 kubeStateMetrics:
   enabled: true
+
+kube-state-metrics:
   resources:
     requests:
       cpu: 10m
