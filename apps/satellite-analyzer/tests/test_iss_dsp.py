@@ -370,5 +370,49 @@ def test_estimate_tca_drift_rejects_out_of_band_rfi_and_detects_inband(tmp_path)
     assert drift_in is not None
 
 
+def test_demodulate_preserves_packet_level_against_fm_noise_clicks(tmp_path):
+    """長時間パスの無信号区間 FM クリック雑音でパケット音声の PCM スケーリングが圧迫されないことを検証"""
+    demod = ISSDspDemodulator()
+    sample_rate = 240000
+    duration_sec = 4.0
+    num_samples = sample_rate * int(duration_sec)
+    t = np.arange(num_samples) / sample_rate
+
+    rng = np.random.default_rng(42)
+    rx = rng.normal(0.0, 2.0, num_samples) + 1j * rng.normal(0.0, 2.0, num_samples)
+
+    # t=2.0..2.5s にのみ 3kHz 偏移の 1200Hz AFSK トーンバーストを注入 (残りは無信号白色雑音)
+    burst_start = sample_rate * 2
+    burst_len = sample_rate // 2
+    t_b = np.arange(burst_len) / sample_rate
+    phase_b = 2.0 * np.pi * 3000.0 * np.cumsum(np.sin(2.0 * np.pi * 1200.0 * t_b)) / sample_rate
+    rx[burst_start : burst_start + burst_len] += 30.0 * np.exp(1j * phase_b)
+
+    cu8 = np.empty(num_samples * 2, dtype=np.uint8)
+    cu8[0::2] = np.clip(np.round(127.5 + np.real(rx)), 0, 255).astype(np.uint8)
+    cu8[1::2] = np.clip(np.round(127.5 + np.imag(rx)), 0, 255).astype(np.uint8)
+    raw_path = str(tmp_path / "iss_clicks.raw")
+    with open(raw_path, "wb") as f:
+        f.write(cu8.tobytes())
+
+    out_wav = demod.demodulate_raw_iq(
+        raw_path=raw_path,
+        sample_rate=sample_rate,
+        output_wav_path=str(tmp_path / "iss_clicks.wav"),
+    )
+    with wave.open(out_wav, "rb") as wf:
+        audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+
+    pkt_slice = audio[48000 * 2 + 2400 : 48000 * 2 + 21600]
+    pkt_rms = float(np.sqrt(np.mean(pkt_slice.astype(np.float64) ** 2)))
+    # FM クリックで圧迫されず、16-bit PCM として十分な信号レベル (> 6000 RMS) を維持すること
+    assert pkt_rms > 6000.0
+
+    fft_mag = np.abs(np.fft.rfft(pkt_slice.astype(np.float64)))
+    freqs = np.fft.rfftfreq(len(pkt_slice), 1.0 / 48000)
+    peak_idx = np.argmax(fft_mag[5:]) + 5
+    assert abs(freqs[peak_idx] - 1200.0) < 40.0
+
+
 
 

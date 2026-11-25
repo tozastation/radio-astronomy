@@ -125,6 +125,27 @@ def test_aprs_decoder_parse_atest_output():
     assert frames[0].message == "Hello, world!"
 
 
+def test_aprs_decoder_parse_multihop_repeater_path():
+    """カンマ区切りの複数デジピータ経由パス (RS0ISS*,WIDE2-1 や qAR 等) を正しくパースできること"""
+    decoder = APRSDecoder()
+    raw_output = """
+    [0.1] JA1XXX>APRS,RS0ISS*,WIDE2-1:Hello from Tokyo via ISS!
+    [0.2] JS1ABC-7>CQ,ARISS*,qAR,JH1XYZ:Position report
+    """
+    frames = decoder.parse_atest_output(raw_output)
+    assert len(frames) == 2
+
+    assert frames[0].source == "JA1XXX"
+    assert frames[0].destination == "APRS"
+    assert frames[0].repeater == "RS0ISS*,WIDE2-1"
+    assert frames[0].message == "Hello from Tokyo via ISS!"
+
+    assert frames[1].source == "JS1ABC-7"
+    assert frames[1].destination == "CQ"
+    assert frames[1].repeater == "ARISS*,qAR,JH1XYZ"
+    assert frames[1].message == "Position report"
+
+
 def test_pass_analyzer_e2e(sample_wav, tmp_path):
     """PassAnalyzer が packets.json, spectrogram.png, summary.json を正しく生成することの検証"""
     analyzer = PassAnalyzer()
