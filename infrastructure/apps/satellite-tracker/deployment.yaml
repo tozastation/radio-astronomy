@@ -59,7 +59,7 @@ spec:
             - name: MIN_MAX_EL_DEFAULT_DEG
               value: "25.0"
             - name: RTL_SDR_GAIN
-              value: "48.0"
+              value: "45.0"
             - name: MOCK_SDR
               value: "false"
             - name: METRICS_PORT

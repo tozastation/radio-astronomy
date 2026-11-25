@@ -128,6 +128,17 @@ class FUNcubeDecoder:
             pad_in = 100 * decim
             pad_out = 100
 
+            # 48kSPS デシメーション後に 1200bps BPSK 信号帯域 (±4.0kHz) へ制限し、
+            # 帯域外 RFI スパイクによる gr_satellites FLL 誤ロック・AGC 破綻を防止
+            lpf_cutoff_hz = min(4000.0, target_sample_rate * 0.42)
+            sos_lpf = scipy.signal.butter(
+                4,
+                lpf_cutoff_hz / (target_sample_rate / 2.0),
+                btype="low",
+                output="sos",
+            )
+            zi_lpf = np.zeros((sos_lpf.shape[0], 2), dtype=np.complex128)
+
             with tempfile.NamedTemporaryFile(suffix=".cs16", delete=True) as tmp_file:
                 phase_acc = 0.0
                 prev_tail_x = None
@@ -182,6 +193,12 @@ class FUNcubeDecoder:
                         else:
                             x_target = x
                         del x
+
+                        # ±4.0kHz 複素チャネル LPF 適用 (チャンク間でフィルタ状態 zi_lpf を保持)
+                        if len(x_target) > 0:
+                            x_filt, zi_lpf = scipy.signal.sosfilt(sos_lpf, x_target, zi=zi_lpf)
+                            x_target = x_filt.astype(np.complex64)
+                            del x_filt
 
                         # 初回チャンクの RMS からクリップ余裕 (18dB headroom) を持たせて int16 スケーリング係数を決定
                         if not scale_determined and len(x_target) > 0:

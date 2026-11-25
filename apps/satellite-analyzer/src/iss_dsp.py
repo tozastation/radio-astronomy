@@ -344,6 +344,22 @@ class ISSDspDemodulator:
         logger.info(f"Successfully demodulated raw IQ to 48kHz WAV: {output_wav_path}")
         return output_wav_path
 
+    @staticmethod
+    def _default_band_cutoff_hz(center_freq_hz: float, sample_rate: int) -> float:
+        """受信中心周波数（衛星種別）に応じた帯域内チャネル LPF カットオフ周波数 [Hz] を返す"""
+        if 145_900_000.0 <= center_freq_hz <= 146_000_000.0:
+            # FUNcube-1 (AO-73): 1200bps BPSK (±1.2kHz) + 最大ドップラー (±3.6kHz)
+            target_bw = 5000.0
+        elif 145_750_000.0 <= center_freq_hz < 145_900_000.0:
+            # ISS APRS / VHF NFM: Carson 帯域幅 (±7.2kHz) + 最大ドップラー (±3.5kHz)
+            target_bw = 12000.0
+        elif 137_000_000.0 <= center_freq_hz <= 138_000_000.0:
+            # METEOR-M2 LRPT: OQPSK 72k/80k (±40kHz) + 最大ドップラー (±3.2kHz)
+            target_bw = 45000.0
+        else:
+            target_bw = 45000.0
+        return min(target_bw, sample_rate * 0.42)
+
     def estimate_tca_drift(
         self,
         file_path: str,
@@ -351,11 +367,13 @@ class ISSDspDemodulator:
         tle_lines: Optional[Tuple[str, str]] = None,
         center_freq_hz: float = 145825000.0,
         sample_rate: int = 240000,
+        band_cutoff_hz: Optional[float] = None,
     ) -> Tuple[Optional[float], Optional[float]]:
         """
         実録音データ (生 IQ または WAV) の時間ごとの受信電力エンベロープを解析し、
         実測 TCA と SGP4 予測 TCA のタイムドリフト Δt [秒] (t_actual - t_sgp4)
         および推定ピーク SNR [dB] を算出する。
+        生 IQ 時は衛星種別に応じたチャネル LPF を通し、帯域外 RFI による誤検出を防止する。
         信号が有意でない場合 (SNR < 2.0 dB 等) は (None, None) を返す。
         """
         if not os.path.exists(file_path) or tle_lines is None or pass_start_utc is None:
@@ -367,10 +385,17 @@ class ISSDspDemodulator:
 
         ext = os.path.splitext(file_path)[1].lower()
         power_env = []
-        step_dt = 1.0  # 1秒ごとの平均電力
 
         if ext in (".raw", ".u8", ".cu8"):
             # 生 IQ (240kSPS uint8: 1秒あたり 480,000 bytes)
+            cutoff_hz = (
+                min(band_cutoff_hz, sample_rate * 0.42)
+                if band_cutoff_hz is not None
+                else self._default_band_cutoff_hz(center_freq_hz, sample_rate)
+            )
+            sos_bw = signal.butter(4, cutoff_hz / (sample_rate / 2.0), btype="low", output="sos")
+            zi_bw = np.zeros((sos_bw.shape[0], 2), dtype=np.complex128)
+
             bytes_per_sec = sample_rate * 2
             with open(file_path, "rb") as f:
                 while True:
@@ -378,9 +403,15 @@ class ISSDspDemodulator:
                     if len(buf) < bytes_per_sec // 2:
                         break
                     u8 = np.frombuffer(buf, dtype=np.uint8)
-                    i = (u8[0::2].astype(np.float32) - 127.5) / 128.0
-                    q = (u8[1::2].astype(np.float32) - 127.5) / 128.0
-                    p = np.mean(i ** 2 + q ** 2)
+                    n_c = len(u8) // 2
+                    if n_c == 0:
+                        break
+                    x = np.empty(n_c, dtype=np.complex64)
+                    x.real = (u8[0 : n_c * 2 : 2].astype(np.float32) - 127.5) / 128.0
+                    x.imag = (u8[1 : n_c * 2 : 2].astype(np.float32) - 127.5) / 128.0
+                    x -= np.mean(x)
+                    x_filt, zi_bw = signal.sosfilt(sos_bw, x, zi=zi_bw)
+                    p = np.mean(np.abs(x_filt) ** 2)
                     power_env.append(float(p))
         elif ext == ".wav":
             try:
