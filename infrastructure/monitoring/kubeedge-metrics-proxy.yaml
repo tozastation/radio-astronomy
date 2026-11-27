@@ -19,7 +19,7 @@ spec:
         kubernetes.io/os: linux
       containers:
         - name: proxy
-          image: localhost:5000/kubeedge-metrics-proxy:v1.0.0
+          image: localhost:5000/kubeedge-metrics-proxy:v1.2.0
           imagePullPolicy: Always
           ports:
             - containerPort: 19095
