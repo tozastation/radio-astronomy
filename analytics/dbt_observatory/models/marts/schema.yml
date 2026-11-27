@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: dim_satellites
+    columns:
+      - name: canonical_id
+        tests:
+          - not_null
+          - unique
+  - name: fct_passes
+    columns:
+      - name: pass_id
+        tests:
+          - not_null
+          - unique
+      - name: outcome
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['success', 'failure', 'unknown']
+  - name: fct_inpaint_runs
+    columns:
+      - name: pass_id
+        tests:
+          - not_null
+          - unique
+  - name: fct_galactic_scans
+    columns:
+      - name: scan_id
+        tests:
+          - not_null

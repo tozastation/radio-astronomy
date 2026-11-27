@@ -1,0 +1,104 @@
+version: 1
+
+semantic_models:
+  - name: sem_satellite_qor
+    entity: PASS
+    description: 衛星・期間別の公式受信成功率および RF/軌道品質指標 (unknown と GOLDEN を母数から除外)
+    dimensions:
+      - canonical_sat_id
+      - satellite_type
+      - canonical_signal
+    metrics:
+      - name: effective_qor_pct
+        description: 判定可能パス (success + failure) における success 割合 (%)
+        expr: "ROUND(100.0 * SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN outcome IN ('success', 'failure') THEN 1 ELSE 0 END), 0), 2)"
+        unit: "%"
+      - name: mean_snr_db
+        description: 記録された実測 SNR (dB) の平均
+        expr: "ROUND(AVG(snr_db), 2)"
+        unit: "dB"
+      - name: p95_abs_tca_drift_sec
+        description: TCA ドリフト絶対値の 95 パーセンタイル (秒)
+        expr: "ROUND(QUANTILE_CONT(ABS(actual_tca_drift_sec), 0.95), 2)"
+        unit: "s"
+      - name: avg_packets_per_success
+        description: 成功パスあたりの平均復調パケット数
+        expr: "ROUND(AVG(CASE WHEN outcome = 'success' THEN packets_count END), 2)"
+        unit: "packets"
+
+  - name: sem_galactic_snr
+    entity: GALACTIC_SCAN
+    description: 天の川銀河 21cm ドリフトスキャンの領域別 SNR・中断率・連続波パワー指標
+    dimensions:
+      - sky_type
+    metrics:
+      - name: mean_peak_line_snr_db
+        description: 21cm 輝線ピーク SNR の平均 (dB)
+        expr: "ROUND(AVG(peak_line_snr_db), 2)"
+        unit: "dB"
+      - name: plane_vs_ref_snr_delta_db
+        description: 銀河面 (GALACTIC_PLANE) と参照/高銀緯領域の SNR 差分 (dB)
+        expr: "ROUND(AVG(CASE WHEN sky_type = 'GALACTIC_PLANE' THEN peak_line_snr_db END) - AVG(CASE WHEN sky_type != 'GALACTIC_PLANE' THEN peak_line_snr_db END), 2)"
+        unit: "dB"
+      - name: preemption_rate_pct
+        description: 衛星通過優先によりスキャンが中断された割合 (%)
+        expr: "ROUND(100.0 * SUM(CASE WHEN preempted THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 2)"
+        unit: "%"
+      - name: mean_continuum_power_db
+        description: 連続波パワー (ノイズフロア指標) の平均 (dB)
+        expr: "ROUND(AVG(continuum_power_db), 2)"
+        unit: "dB"
+
+  - name: sem_inpaint_quality
+    entity: INPAINT_RUN
+    description: METEOR-M2 ML 欠損補完の実測品質と次期学習パラメータ設計向け分布指標
+    dimensions:
+      - config_hash
+      - model_mode
+      - reg_mode
+    metrics:
+      - name: tier_distribution
+        description: Tier A / Tier B / Tier C の件数内訳
+        expr: "COUNT(*) FILTER (WHERE tier = 'Tier A') / COUNT(*) FILTER (WHERE tier = 'Tier B') / COUNT(*) FILTER (WHERE tier = 'Tier C')"
+        unit: "count"
+      - name: mean_seam_jump_l1
+        description: 補完境界の継ぎ目段差 (L1) の平均
+        expr: "ROUND(AVG(seam_jump_l1), 4)"
+        unit: "L1"
+      - name: mean_uncertainty
+        description: 欠損域平均不確実性 (NB13 以降) の平均
+        expr: "ROUND(AVG(mean_uncertainty), 4)"
+        unit: "sigma"
+      - name: single_band_dropout_rate_pct
+        description: 単一または複数バンド丸ごと欠落パス (available_channels != '124') の割合 (%)
+        expr: "ROUND(100.0 * SUM(CASE WHEN available_channels != '124' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 2)"
+        unit: "%"
+      - name: large_gap_rate_pct
+        description: 最大連続欠損幅がモデルの patch_size を超過したパスの割合 (%)
+        expr: "ROUND(100.0 * SUM(CASE WHEN max_gap_px > COALESCE(patch_size, 64) THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 2)"
+        unit: "%"
+
+  - name: sem_revision_impact
+    entity: CONFIG_REVISION
+    description: 直近のチューニング PR マージ前後 (7日 vs 7日) における同一衛星別効果比較
+    dimensions:
+      - commit_sha
+      - pr_label
+      - canonical_sat_id
+    metrics:
+      - name: qor_delta_pt
+        description: 変更後 QoR (%) - 変更前 QoR (%)
+        expr: "ROUND(qor_after_pct - qor_before_pct, 2)"
+        unit: "pt"
+      - name: snr_delta_db
+        description: 変更後平均 SNR (dB) - 変更前平均 SNR (dB)
+        expr: "ROUND(snr_after_db - snr_before_db, 2)"
+        unit: "dB"
+      - name: sample_count_before
+        description: 変更前ウィンドウ内の判定可能パス数
+        expr: "sample_count_before"
+        unit: "count"
+      - name: sample_count_after
+        description: 変更後ウィンドウ内の判定可能パス数
+        expr: "sample_count_after"
+        unit: "count"

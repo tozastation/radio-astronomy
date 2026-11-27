@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_passes
+    columns:
+      - name: pass_id
+        tests:
+          - not_null
+          - unique
+      - name: canonical_sat_id
+        tests:
+          - not_null
+  - name: stg_inpaint_runs
+    columns:
+      - name: pass_id
+        tests:
+          - not_null
+          - unique
+  - name: stg_galactic_scans
+    columns:
+      - name: scan_id
+        tests:
+          - not_null
+      - name: sky_type
+        tests:
+          - not_null
+  - name: stg_config_revisions
+    columns:
+      - name: commit_sha
+        tests:
+          - not_null
+          - unique

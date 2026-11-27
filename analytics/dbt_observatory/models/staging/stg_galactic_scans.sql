@@ -1,0 +1,25 @@
+select
+    s3_key,
+    scan_id,
+    'tokyo-north-balcony' as station_id,
+    timestamp_utc,
+    integration_sec,
+    coalesce(preempted, false) as preempted,
+    az_deg,
+    el_deg,
+    lst_deg,
+    ra_deg,
+    dec_deg,
+    gal_l_deg,
+    gal_b_deg,
+    region_label,
+    coalesce(nullif(trim(sky_type), ''), 'UNKNOWN') as sky_type,
+    lsr_correction_km_s,
+    center_freq_on_hz,
+    center_freq_off_hz,
+    continuum_power_db,
+    peak_line_snr_db,
+    peak_v_lsr_km_s,
+    last_modified_utc
+from {{ source('raw', 'raw_galactic_scans') }}
+where scan_id is not null

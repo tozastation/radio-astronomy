@@ -1,0 +1,47 @@
+version: 1
+
+pass_diagnosis_thresholds:
+  high_snr_db: 8.0
+  tca_drift_sec: 15.0
+  seam_jump_l1_degraded: 0.035
+  degraded_tiers:
+    - Tier C
+
+tuning_signals:
+  - signal_id: RF_DECODER_TUNING
+    description: 直近7日間で高SNRにもかかわらず復号失敗したパスが多発している
+    lookback_days: 7
+    min_count: 2
+    severity: high
+    recommended_action: apps/satellite-analyzer のデコーダ設定 (ゲイン、スケルチ、サンプリング周波数オフセット等) を点検する
+
+  - signal_id: TLE_OR_CLOCK_DRIFT
+    description: 直近7日間の TCA ドリフト 95 パーセンタイルが閾値を超過している
+    lookback_days: 7
+    p95_abs_tca_drift_sec_threshold: 15.0
+    min_samples: 5
+    severity: medium
+    recommended_action: satellite-tracker-rs の TLE 更新周期およびホスト時刻同期 (chrony/systemd-timesyncd) を確認する
+
+  - signal_id: REVISION_REGRESSION
+    description: 直近のチューニング PR 適用後、十分なサンプル数のもとで QoR が大幅に悪化している
+    min_samples_per_window: 5
+    qor_drop_pt_threshold: -15.0
+    severity: high
+    recommended_action: 該当 PR の変更内容をレビューし、閾値・パラメータのロールバックまたは再調整を検討する
+
+  - signal_id: ML_MASK_DISTRIBUTION_SHIFT
+    description: 実測パスにおけるパッチサイズ超過欠損または単一バンド欠落の割合が学習時の想定を上回っている
+    large_gap_rate_pct_threshold: 30.0
+    single_band_dropout_rate_pct_threshold: 25.0
+    severity: medium
+    recommended_action: ml-astronomy (projects/radio-ml) の次期学習でパッチサイズ拡大やバンドドロップ拡張比率の見直しを検討する
+
+  - signal_id: GALACTIC_NOISE_FLOOR_SPIKE
+    description: 直近7日間の 21cm 連続波パワー平均が過去30日平均より大幅に上昇している (RFI 増加疑い)
+    lookback_days: 7
+    baseline_days: 30
+    continuum_delta_db_threshold: 3.0
+    min_scans: 10
+    severity: medium
+    recommended_action: 1420 MHz 帯周辺のローカル RFI 発生源や SDR ゲイン設定の変動を確認する

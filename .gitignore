@@ -25,3 +25,9 @@ venv/
 
 # 観測地の実座標（seestar-plan の場所の ConfigMap の元）
 apps/seestar-plan/site.local.json
+
+# Analytics (DuckDB / dbt)
+analytics/state/
+analytics/dbt_observatory/target/
+analytics/dbt_observatory/logs/
+analytics/dbt_observatory/dbt_packages/

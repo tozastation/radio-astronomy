@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: main
+    tables:
+      - name: raw_passes
+      - name: raw_inpaint_runs
+      - name: raw_galactic_scans
+      - name: raw_config_revisions
+      - name: ref_ground_stations
+      - name: ref_satellites
+      - name: ref_satellite_aliases
+      - name: ref_model_versions

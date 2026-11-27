@@ -45,8 +45,20 @@ git fetch origin main
 git checkout main
 git pull --ff-only origin main
 
-# 4. 直近観測データの集計
-python3 scripts/summarize_recent_observations.py --days "$LOOKBACK_DAYS" > "$SUMMARY_FILE"
+# 4. 直近観測データの集計 (analytics が構築済みならセマンティック/オントロジー診断を使用)
+ANALYTICS_VENV="$REPO_DIR/analytics/.venv"
+if [[ -x "$ANALYTICS_VENV/bin/python" ]] && [[ -x "$ANALYTICS_VENV/bin/dbt" ]]; then
+  echo "[info] Generating ontology/semantic review context via analytics/.venv"
+  if PATH="$ANALYTICS_VENV/bin:$PATH" "$ANALYTICS_VENV/bin/python" "$REPO_DIR/analytics/scripts/sync_s3_to_duckdb.py" \
+    && PATH="$ANALYTICS_VENV/bin:$PATH" "$ANALYTICS_VENV/bin/python" "$REPO_DIR/analytics/scripts/generate_review_context.py" --run-dbt --days "$LOOKBACK_DAYS" > "$SUMMARY_FILE"; then
+    echo "[info] Ontology review summary saved to $SUMMARY_FILE"
+  else
+    echo "[warn] Analytics pipeline failed; falling back to summarize_recent_observations.py"
+    python3 scripts/summarize_recent_observations.py --days "$LOOKBACK_DAYS" > "$SUMMARY_FILE"
+  fi
+else
+  python3 scripts/summarize_recent_observations.py --days "$LOOKBACK_DAYS" > "$SUMMARY_FILE"
+fi
 echo "[info] Observation summary saved to $SUMMARY_FILE"
 
 # 5. 作業用ブランチを作成 (変更がなければ後で削除する)
@@ -94,7 +106,7 @@ $(cat "$SUMMARY_FILE")
 2. 改善の根拠が明確にある場合のみ、関連するファイル（設定値、閾値、デコーダや DSP のパラメータ・ロジック等）を編集し、変更箇所に対応するテスト（pytest や cargo test 等）を実行してパスすることを確認してください。
 3. 根拠が不十分な場合や現状維持が妥当な場合は、ファイルを一切編集せず should_open_pr を false にしてください。
 4. commit_message は日本語・絵文字禁止・Conventional Commits 形式（例: fix: ..., feat: ..., perf: ...）で簡潔に記述してください。
-5. pr_body_markdown には、実測サマリの根拠、変更内容、実行したテスト結果を Markdown でまとめてください。
+5. pr_body_markdown には、可視化されたデータ根拠（実測メトリクスの Markdown 表、原因分類・前回 PR 前後比較表、必要に応じて Mermaid チャート `xychart-beta` 等、および対象期間・サンプル数）を必ず掲載し、変更内容と実行したテスト結果を Markdown でまとめてください。
 EOF
 )"
 

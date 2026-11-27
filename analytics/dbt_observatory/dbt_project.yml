@@ -1,0 +1,37 @@
+name: 'dbt_observatory'
+version: '0.1.0'
+config-version: 2
+
+profile: 'dbt_observatory'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  high_snr_db: 8.0
+  tca_drift_sec: 15.0
+  seam_jump_l1_degraded: 0.035
+  rf_decoder_min_count: 2
+  min_samples_per_window: 5
+  qor_drop_pt_threshold: -15.0
+  large_gap_rate_pct_threshold: 30.0
+  single_band_dropout_rate_pct_threshold: 25.0
+  continuum_delta_db_threshold: 3.0
+  galactic_min_scans: 10
+  tle_min_samples: 5
+
+models:
+  dbt_observatory:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+    semantic:
+      +materialized: table
+    ontology:
+      +materialized: table

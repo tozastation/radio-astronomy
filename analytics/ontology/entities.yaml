@@ -1,0 +1,66 @@
+version: 1
+
+ground_stations:
+  - station_id: tokyo-north-balcony
+    name: 東京都 北向きベランダ地上局
+    lat_deg: 35.6895
+    lon_deg: 139.6917
+    elevation_m: 30.0
+    clear_az_start_deg: 270.0
+    clear_az_end_deg: 90.0
+    obstruction_note: 南〜南西は鉄筋コンクリート建物により遮蔽
+
+satellites:
+  - canonical_id: METEOR-M2-3
+    satellite_type: WeatherSatellite
+    canonical_signal: LRPT_QPSK_72K
+    expected_artifact: decoded_image
+    nominal_freq_mhz: 137.900
+    aliases:
+      - METEOR-M2 3
+      - METEOR-M2-3
+    signal_aliases:
+      - LRPT (QPSK 72kbps)
+
+  - canonical_id: METEOR-M2-4
+    satellite_type: WeatherSatellite
+    canonical_signal: LRPT_QPSK_72K
+    expected_artifact: decoded_image
+    nominal_freq_mhz: 137.900
+    aliases:
+      - METEOR-M2 4
+      - METEOR-M2-4
+    signal_aliases:
+      - LRPT (QPSK 72kbps)
+
+  - canonical_id: FUNCUBE-1
+    satellite_type: CubeSat
+    canonical_signal: BPSK_1200
+    expected_artifact: crc_packets
+    nominal_freq_mhz: 145.935
+    aliases:
+      - FUNCUBE-1 (AO-73)
+      - FUNCUBE-1
+      - AO-73
+    signal_aliases:
+      - BPSK (1200bps Telemetry)
+      - 1200bps BPSK (AO-40 Telemetry)
+
+  - canonical_id: ISS
+    satellite_type: SpaceStation
+    canonical_signal: APRS_AFSK_1200
+    expected_artifact: crc_packets
+    nominal_freq_mhz: 145.825
+    aliases:
+      - ISS (ZARYA)
+      - ISS
+    signal_aliases:
+      - APRS / AX.25 (1200bps AFSK)
+
+epistemic_statuses:
+  - id: Observed
+    description: 実測信号から直接復調・観測されたデータ
+  - id: PartiallyRecovered
+    description: 一部バンド欠損を他バンド実測値から補完救済した領域を含むデータ
+  - id: ModelEstimated
+    description: 全バンド欠損領域に対して ML モデルおよび過去アトラスから推定された補完データ

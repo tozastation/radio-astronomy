@@ -1,0 +1,7 @@
+dbt_observatory:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('OBSERVATORY_DUCKDB_PATH', '../state/observatory.duckdb') }}"
+      threads: 4

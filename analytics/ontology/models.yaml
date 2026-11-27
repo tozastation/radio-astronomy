@@ -1,0 +1,48 @@
+version: 1
+
+model_versions:
+  - config_hash: "46546fee33518457"
+    model_name: CoastlineGuidedSharpResSEUNet
+    model_mode: single_pass_8ch
+    notebook_ref: NB09
+    input_channels: 8
+    patch_size: 64
+    gate_channels: 1
+    loss_profile: L1+Sobel+FFT+PatchGAN
+    extreme_mask_ratio: 0.0
+    train_patch_count: 4000
+    val_psnr_db: 28.39
+    val_sobel_pct: 83.2
+    blind80_sobel_pct: null
+    unc_corr_r: null
+
+  - config_hash: "a84ae13587fa7d7a"
+    model_name: PrevImageGuidedResSEUNet
+    model_mode: temporal_prev_11ch
+    notebook_ref: NB11
+    input_channels: 11
+    patch_size: 64
+    gate_channels: 1
+    loss_profile: L1+Sobel+FFT+TemporalTrust
+    extreme_mask_ratio: 0.35
+    train_patch_count: 4000
+    val_psnr_db: 28.14
+    val_sobel_pct: 87.7
+    blind80_sobel_pct: null
+    unc_corr_r: null
+
+  # 今後 NB12 / NB13 等のモデルを実運用へ投入する際は以下に config_hash を追加する:
+  # - config_hash: "<sha256_prefix>"
+  #   model_name: "<ModelClass>"
+  #   model_mode: "temporal_prev_11ch"
+  #   notebook_ref: "NB13"
+  #   input_channels: 11
+  #   patch_size: 128
+  #   gate_channels: 3
+  #   loss_profile: "L1+Sobel+FFT+NLL"
+  #   extreme_mask_ratio: 0.35
+  #   train_patch_count: 4000
+  #   val_psnr_db: 26.50
+  #   val_sobel_pct: 109.2
+  #   blind80_sobel_pct: 26.4
+  #   unc_corr_r: 0.4939

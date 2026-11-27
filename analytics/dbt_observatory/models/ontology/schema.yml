@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: ont_pass_diagnosis
+    columns:
+      - name: pass_id
+        tests:
+          - not_null
+          - unique
+      - name: failure_cause
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - GoldenBenchmark
+                  - UnverifiableSignal
+                  - HighSNRDecodeFailure
+                  - TcaDriftAnomaly
+                  - LowSNRWeakSignal
+                  - InpaintDegraded
+                  - Healthy
+      - name: epistemic_status
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Observed
+                  - PartiallyRecovered
+                  - ModelEstimated
+  - name: ont_tuning_signals
+    columns:
+      - name: signal_id
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - RF_DECODER_TUNING
+                  - TLE_OR_CLOCK_DRIFT
+                  - REVISION_REGRESSION
+                  - ML_MASK_DISTRIBUTION_SHIFT
+                  - GALACTIC_NOISE_FLOOR_SPIKE
