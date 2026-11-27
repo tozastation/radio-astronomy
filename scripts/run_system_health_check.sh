@@ -8,8 +8,8 @@ export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$HOME/.cargo/bin:/us
 
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 LOG_DIR="${LOG_DIR:-$HOME/.local/state/radio-astronomy-health}"
-AGY_MODEL="${AGY_MODEL:-gemini-4-hydrogen}"
-AGY_EFFORT="${AGY_EFFORT:-high}"
+AGY_MODEL="${AGY_MODEL:-gemini-4-neon}"
+AGY_EFFORT="${AGY_EFFORT:-medium}"
 AGY_TIMEOUT="${AGY_TIMEOUT:-15m}"
 DRY_RUN="${DRY_RUN:-false}"
 

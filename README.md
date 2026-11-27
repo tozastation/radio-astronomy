@@ -227,7 +227,7 @@ kubectl get pods -A
 
 ### 3. 定期運用レビュー・監視ジョブ（cron + agy）
 
-サーバ（GPD Pocket3）では、`agy --model gemini-4-hydrogen --effort high` を使った 2 つの定期ジョブを `cron`（`CRON_TZ=Asia/Tokyo`）で動かしています。いずれも改善・修正可能な根拠がある場合のみブランチを作成し、テスト確認のうえ `gh pr create` で PR を起票します。
+サーバ（GPD Pocket3）では、`agy --model gemini-4-neon --effort medium` を使った 2 つの定期ジョブを `cron`（`CRON_TZ=Asia/Tokyo`）で動かしています。いずれも改善・修正可能な根拠がある場合のみブランチを作成し、テスト確認のうえ `gh pr create` で PR を起票します。
 
 1. **観測データの定期チューニングレビュー（毎日 JST 05:00）**
    - 集計スクリプト: [scripts/summarize_recent_observations.py](scripts/summarize_recent_observations.py)（Garage S3 の `results/`、`galactic/`、`raw/` を直近 7 日分並列集計）
