@@ -322,7 +322,11 @@ class ISSDspDemodulator:
                     sample_offset += actual_complex
 
             # 3. 16-bit PCM WAV スケーリング & 出力 (ストリーミング書き出し)
-            scale = (24000.0 / max_val) if max_val > 1e-6 else 0.0
+            # 無信号区間の FM ディスクリミネータクリック雑音 (最大 ±pi rad) でパス全体のゲインが
+            # 圧迫されないよう、正規化基準値を NFM 実効最大偏移 (±6kHz 相当) で上限クランプする
+            nominal_max_rad = 2.0 * math.pi * min(6000.0, fs_if * 0.25) / float(fs_if)
+            ref_val = min(max_val, nominal_max_rad)
+            scale = (24000.0 / ref_val) if ref_val > 1e-6 else 0.0
             read_block_samples = fs_if * 10  # 480,000 samples (1.92 MB)
             with open(tmp_f32_path, "rb") as tmp_f, wave.open(output_wav_path, "wb") as wf:
                 wf.setnchannels(1)

@@ -74,9 +74,9 @@ class APRSDecoder:
         frames: List[APRSFrame] = []
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-        # パターン: [0.1] JA1XXX>CQ,ARISS*::Hello from Tokyo via ISS! または SOURCE>DEST,PATH:MESSAGE
+        # パターン: [0.1] JA1XXX>CQ,ARISS*::Hello from Tokyo via ISS! または SOURCE>DEST,PATH1,PATH2:MESSAGE
         pattern = re.compile(
-            r"(?:\[[\d\.]+\]\s*)?([A-Z0-9\-_]+)>([A-Z0-9\-_]+)(?:,([A-Z0-9\-_*]+))?(?::|::)(.*)"
+            r"(?:\[[\d\.]+\]\s*)?([A-Za-z0-9\-_]+)>([A-Za-z0-9\-_]+)(?:,([A-Za-z0-9\-_*,]+))?(?::|::)(.*)"
         )
 
         ignore_prefixes = (
