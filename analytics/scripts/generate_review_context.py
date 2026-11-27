@@ -4,10 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +20,12 @@ import duckdb
 import yaml
 
 ANALYTICS_DIR = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = ANALYTICS_DIR / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import sync_s3_to_duckdb as sync_mod  # noqa: E402
+
 DEFAULT_DB_PATH = ANALYTICS_DIR / "state" / "observatory.duckdb"
 DEFAULT_ONTOLOGY_DIR = ANALYTICS_DIR / "ontology"
 DEFAULT_DBT_DIR = ANALYTICS_DIR / "dbt_observatory"
@@ -170,10 +181,56 @@ def build_review_context(db_path: Path, days: int = 7) -> dict[str, Any]:
             ORDER BY scan_count DESC
             """,
         )
+        galactic_daily_trend = _fetch_dicts(
+            conn,
+            """
+            WITH anchor AS (
+                SELECT COALESCE(MAX(timestamp_utc), CURRENT_TIMESTAMP) AS ref_ts
+                FROM fct_galactic_scans
+            )
+            SELECT CAST(g.scan_date_utc AS VARCHAR) AS scan_date_utc,
+                   g.sky_type,
+                   COUNT(*) AS scan_count,
+                   ROUND(AVG(g.peak_line_snr_db), 2) AS mean_peak_line_snr_db,
+                   ROUND(AVG(g.continuum_power_db), 2) AS mean_continuum_power_db
+            FROM fct_galactic_scans g
+            CROSS JOIN anchor a
+            WHERE g.timestamp_utc >= a.ref_ts - INTERVAL '14 day'
+            GROUP BY g.scan_date_utc, g.sky_type
+            ORDER BY g.scan_date_utc ASC, g.sky_type ASC
+            """,
+        )
+        pass_daily_trend = _fetch_dicts(
+            conn,
+            """
+            WITH anchor AS (
+                SELECT COALESCE(MAX(observed_at_utc), CURRENT_TIMESTAMP) AS ref_ts
+                FROM fct_passes
+                WHERE NOT is_golden
+            )
+            SELECT CAST(CAST(p.observed_at_utc AS DATE) AS VARCHAR) AS pass_date_utc,
+                   COUNT(*) AS total_passes,
+                   SUM(CASE WHEN p.outcome = 'success' THEN 1 ELSE 0 END) AS success_count,
+                   SUM(CASE WHEN p.outcome = 'failure' THEN 1 ELSE 0 END) AS failure_count,
+                   ROUND(
+                       100.0 * SUM(CASE WHEN p.outcome = 'success' THEN 1 ELSE 0 END)
+                       / NULLIF(SUM(CASE WHEN p.outcome IN ('success', 'failure') THEN 1 ELSE 0 END), 0),
+                       2
+                   ) AS effective_qor_pct
+            FROM fct_passes p
+            CROSS JOIN anchor a
+            WHERE NOT p.is_golden
+              AND p.observed_at_utc >= a.ref_ts - INTERVAL '14 day'
+            GROUP BY CAST(p.observed_at_utc AS DATE)
+            ORDER BY pass_date_utc ASC
+            """,
+        )
     finally:
         conn.close()
 
     return {
+        "available": True,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "window_days": days,
         "window_label": window_label,
         "tuning_signals": signals,
@@ -183,6 +240,8 @@ def build_review_context(db_path: Path, days: int = 7) -> dict[str, Any]:
         "revision_impact": revision_impact,
         "inpaint_quality": inpaint_quality,
         "galactic_snr": galactic_snr,
+        "galactic_daily_trend": galactic_daily_trend,
+        "pass_daily_trend": pass_daily_trend,
     }
 
 
@@ -295,6 +354,70 @@ def format_markdown(ctx: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def put_json_to_s3(
+    endpoint_url: str,
+    bucket: str,
+    s3_key: str,
+    payload: dict[str, Any],
+    access_key: str,
+    secret_key: str,
+    region: str = "garage",
+    timeout_sec: int = 15,
+) -> None:
+    """AWS SigV4 PUT で JSON ペイロードを Garage S3 へアップロードする。"""
+    body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    parsed = urllib.parse.urlparse(endpoint_url.rstrip("/"))
+    host = parsed.netloc
+    canonical_uri = urllib.parse.quote(f"/{bucket}/{s3_key.lstrip('/')}", safe="/-_.~")
+
+    now = datetime.now(timezone.utc)
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    date_stamp = now.strftime("%Y%m%d")
+    payload_hash = hashlib.sha256(body).hexdigest()
+
+    canonical_headers = (
+        f"content-type:application/json; charset=utf-8\n"
+        f"host:{host}\n"
+        f"x-amz-content-sha256:{payload_hash}\n"
+        f"x-amz-date:{amz_date}\n"
+    )
+    signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date"
+    canonical_request = (
+        f"PUT\n{canonical_uri}\n\n"
+        f"{canonical_headers}\n{signed_headers}\n{payload_hash}"
+    )
+
+    algorithm = "AWS4-HMAC-SHA256"
+    credential_scope = f"{date_stamp}/{region}/s3/aws4_request"
+    string_to_sign = (
+        f"{algorithm}\n{amz_date}\n{credential_scope}\n"
+        f"{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
+    )
+    signing_key = sync_mod._get_signature_key(secret_key, date_stamp, region, "s3")
+    signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    authorization = (
+        f"{algorithm} Credential={access_key}/{credential_scope}, "
+        f"SignedHeaders={signed_headers}, Signature={signature}"
+    )
+
+    url = f"{endpoint_url.rstrip('/')}{canonical_uri}"
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="PUT",
+        headers={
+            "Host": host,
+            "Content-Type": "application/json; charset=utf-8",
+            "x-amz-date": amz_date,
+            "x-amz-content-sha256": payload_hash,
+            "Authorization": authorization,
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+        resp.read()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate ontology/semantic review context from DuckDB.")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="DuckDB file path")
@@ -303,6 +426,18 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=7, help="Lookback window in days")
     parser.add_argument("--run-dbt", action="store_true", help="Run dbt build before querying")
     parser.add_argument("--json-out", type=Path, default=None, help="Optional path to save structured JSON")
+    parser.add_argument("--publish-s3", action="store_true", help="Upload report JSON to Garage S3 for satellite-viewer")
+    parser.add_argument(
+        "--endpoint",
+        default=os.environ.get("GARAGE_S3_ENDPOINT", "http://localhost:30900"),
+        help="Garage S3 endpoint URL",
+    )
+    parser.add_argument(
+        "--bucket",
+        default=os.environ.get("GARAGE_BUCKET", "satellite-recordings"),
+        help="Garage S3 bucket name",
+    )
+    parser.add_argument("--s3-key", default="analytics/latest_report.json", help="Target S3 key for report JSON")
     args = parser.parse_args()
 
     if args.run_dbt:
@@ -312,6 +447,28 @@ def main() -> int:
     if args.json_out is not None:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps(ctx, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.publish_s3:
+        ak = os.environ.get("GARAGE_ACCESS_KEY", "")
+        sk = os.environ.get("GARAGE_SECRET_KEY", "")
+        if not ak or not sk:
+            ak, sk = sync_mod.load_credentials_from_k8s()
+        if not ak or not sk:
+            print(
+                "[warn] --publish-s3 skipped: GARAGE_ACCESS_KEY / GARAGE_SECRET_KEY unavailable.",
+                file=sys.stderr,
+            )
+        else:
+            put_json_to_s3(
+                endpoint_url=args.endpoint,
+                bucket=args.bucket,
+                s3_key=args.s3_key,
+                payload=ctx,
+                access_key=ak,
+                secret_key=sk,
+                region=os.environ.get("GARAGE_REGION", "garage"),
+            )
+            print(f"[info] Published analytics report to s3://{args.bucket}/{args.s3_key}", file=sys.stderr)
 
     print(format_markdown(ctx))
     return 0

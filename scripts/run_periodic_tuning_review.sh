@@ -50,7 +50,7 @@ ANALYTICS_VENV="$REPO_DIR/analytics/.venv"
 if [[ -x "$ANALYTICS_VENV/bin/python" ]] && [[ -x "$ANALYTICS_VENV/bin/dbt" ]]; then
   echo "[info] Generating ontology/semantic review context via analytics/.venv"
   if PATH="$ANALYTICS_VENV/bin:$PATH" "$ANALYTICS_VENV/bin/python" "$REPO_DIR/analytics/scripts/sync_s3_to_duckdb.py" \
-    && PATH="$ANALYTICS_VENV/bin:$PATH" "$ANALYTICS_VENV/bin/python" "$REPO_DIR/analytics/scripts/generate_review_context.py" --run-dbt --days "$LOOKBACK_DAYS" > "$SUMMARY_FILE"; then
+    && PATH="$ANALYTICS_VENV/bin:$PATH" "$ANALYTICS_VENV/bin/python" "$REPO_DIR/analytics/scripts/generate_review_context.py" --run-dbt --days "$LOOKBACK_DAYS" --publish-s3 > "$SUMMARY_FILE"; then
     echo "[info] Ontology review summary saved to $SUMMARY_FILE"
   else
     echo "[warn] Analytics pipeline failed; falling back to summarize_recent_observations.py"

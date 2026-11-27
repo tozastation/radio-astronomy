@@ -20,6 +20,7 @@ from app import (
     generate_future_passes_data,
     generate_s3_backup_stream,
     get_s3_backup_stats,
+    fetch_analytics_report,
 )
 
 
@@ -1265,6 +1266,33 @@ class TestPerformanceOptimizations(unittest.TestCase):
             "inpaintZoomCurrent",
         ):
             self.assertIn(token, HTML_TEMPLATE)
+
+    def test_analytics_tab_and_fetch_report(self):
+        for token in (
+            'id="wsTabAnalytics"',
+            'id="wsAnalytics"',
+            "05 / ANALYTICS",
+            "analyticsLoadReport",
+            "analyticsQorCanvas",
+            "analyticsCauseCanvas",
+            "analyticsGalacticCanvas",
+            "analyticsRevisionCanvas",
+        ):
+            self.assertIn(token, HTML_TEMPLATE)
+
+        mock_s3 = MagicMock()
+        sample_payload = {"available": True, "window_days": 7, "tuning_signals": []}
+        mock_s3.get_object.return_value = {
+            "Body": io.BytesIO(json.dumps(sample_payload).encode("utf-8"))
+        }
+        res_ok = fetch_analytics_report(mock_s3, "test-bucket")
+        self.assertTrue(res_ok["available"])
+        self.assertEqual(res_ok["window_days"], 7)
+
+        mock_s3.get_object.side_effect = RuntimeError("NoSuchKey")
+        res_err = fetch_analytics_report(mock_s3, "test-bucket")
+        self.assertFalse(res_err["available"])
+        self.assertIn("NoSuchKey", res_err["error"])
 
 
 if __name__ == "__main__":

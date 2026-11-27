@@ -3083,6 +3083,106 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         padding: 4px 8px;
       }
     }
+    /* 05 / ANALYTICS Workspace */
+    .analytics-status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+    .analytics-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .analytics-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      padding: 12px 14px;
+    }
+    .analytics-card-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .analytics-card-sub {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    .analytics-canvas {
+      width: 100%;
+      height: 240px;
+      display: block;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+    }
+    .analytics-signal-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 10px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      margin-bottom: 8px;
+      font-size: 0.8rem;
+    }
+    .analytics-badge-high {
+      background: rgba(217, 83, 79, 0.16);
+      color: var(--status-err);
+      border: 1px solid var(--status-err);
+      padding: 2px 6px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .analytics-badge-medium {
+      background: rgba(212, 160, 57, 0.16);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 2px 6px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .analytics-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+    }
+    .analytics-table th,
+    .analytics-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-hairline);
+      text-align: left;
+    }
+    .analytics-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    @media (max-width: 900px) {
+      .analytics-grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -3097,6 +3197,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button type="button" id="wsTabOrbit" class="ws-tab-btn" onclick="switchWorkspace('orbit')">02 / ORBIT &amp; MAP</button>
       <button type="button" id="wsTabGalactic" class="ws-tab-btn" onclick="switchWorkspace('galactic')">03 / GALACTIC 21CM</button>
       <button type="button" id="wsTabArchive" class="ws-tab-btn" onclick="switchWorkspace('archive')">04 / ARCHIVE</button>
+      <button type="button" id="wsTabAnalytics" class="ws-tab-btn" onclick="switchWorkspace('analytics')">05 / ANALYTICS</button>
     </nav>
     <div class="header-actions">
       <button type="button" id="btnFuturePassesToggle" class="btn-refresh btn-passes" onclick="openFuturePassesModal()">
@@ -3759,6 +3860,90 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
   </div><!-- /#wsArchive -->
+
+    <!-- 05 / ANALYTICS Workspace -->
+    <div id="wsAnalytics" class="workspace-pane">
+      <div class="workspace-panel">
+        <div class="workspace-panel-header">
+          <div>
+            <span class="workspace-panel-code">ONT-05</span>
+            <span class="workspace-panel-title">観測オントロジー ＆ セマンティック診断ダッシュボード</span>
+          </div>
+          <button type="button" class="btn-refresh" onclick="analyticsLoadReport(true)">REFRESH</button>
+        </div>
+
+        <div id="analyticsStatusBar" class="analytics-status-bar">
+          <span>STATUS: 待機中...</span>
+          <span class="mono-num">S3: analytics/latest_report.json</span>
+        </div>
+
+        <div class="analytics-card" style="margin-bottom: 14px;">
+          <div class="analytics-card-title">
+            <span>PRIORITY TUNING SIGNALS (ont_tuning_signals)</span>
+            <span class="analytics-card-sub">自動検知された改善シグナル</span>
+          </div>
+          <div id="analyticsSignalsContainer">
+            <div style="color: var(--text-muted); font-size: 0.8rem;">読み込み中...</div>
+          </div>
+        </div>
+
+        <div class="analytics-grid-2">
+          <div class="analytics-card">
+            <div class="analytics-card-title">
+              <span>SATELLITE EFFECTIVE QOR (%)</span>
+              <span class="analytics-card-sub">GOLDEN・unknown 除外</span>
+            </div>
+            <canvas id="analyticsQorCanvas" width="520" height="240" class="analytics-canvas"></canvas>
+          </div>
+
+          <div class="analytics-card">
+            <div class="analytics-card-title">
+              <span>FAILURE CAUSE DIAGNOSIS</span>
+              <span class="analytics-card-sub">ont_pass_diagnosis 原因内訳</span>
+            </div>
+            <canvas id="analyticsCauseCanvas" width="520" height="240" class="analytics-canvas"></canvas>
+          </div>
+
+          <div class="analytics-card">
+            <div class="analytics-card-title">
+              <span>GALACTIC 21CM DAILY SNR (dB)</span>
+              <span class="analytics-card-sub">直近14日 日次平均推移</span>
+            </div>
+            <canvas id="analyticsGalacticCanvas" width="520" height="240" class="analytics-canvas"></canvas>
+          </div>
+
+          <div class="analytics-card">
+            <div class="analytics-card-title">
+              <span>TUNING REVISION IMPACT (QoR Δpt)</span>
+              <span class="analytics-card-sub">直近PR前後7日比較</span>
+            </div>
+            <canvas id="analyticsRevisionCanvas" width="520" height="240" class="analytics-canvas"></canvas>
+          </div>
+        </div>
+
+        <div class="analytics-grid-2">
+          <div class="analytics-card">
+            <div class="analytics-card-title">
+              <span>ML INPAINT QUALITY &amp; FEEDBACK</span>
+              <span class="analytics-card-sub">sem_inpaint_quality</span>
+            </div>
+            <div id="analyticsInpaintContainer" style="overflow-x: auto;">
+              <div style="color: var(--text-muted); font-size: 0.8rem;">読み込み中...</div>
+            </div>
+          </div>
+
+          <div class="analytics-card">
+            <div class="analytics-card-title">
+              <span>TUNABLE ANOMALIES</span>
+              <span class="analytics-card-sub">is_tunable = true</span>
+            </div>
+            <div id="analyticsAnomaliesContainer" style="overflow-x: auto;">
+              <div style="color: var(--text-muted); font-size: 0.8rem;">読み込み中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /#wsAnalytics -->
   </div><!-- /.workspace-shell -->
 
   <!-- Satellite Pass Replay & GIF Clipper Modal -->
@@ -3894,6 +4079,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         orbit: { pane: 'wsOrbit', tab: 'wsTabOrbit' },
         galactic: { pane: 'wsGalactic', tab: 'wsTabGalactic' },
         archive: { pane: 'wsArchive', tab: 'wsTabArchive' },
+        analytics: { pane: 'wsAnalytics', tab: 'wsTabAnalytics' },
       };
       if (!map[ws]) ws = 'console';
       Object.keys(map).forEach(k => {
@@ -3923,6 +4109,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         galacticStartAnimation();
       } else if (ws === 'archive') {
         loadBackupStats();
+      } else if (ws === 'analytics') {
+        analyticsLoadReport(false);
       }
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
@@ -7287,6 +7475,335 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       setupInfiniteScroll();
       timelineInitScrubber();
     });
+
+    let analyticsReportCache = null;
+
+    function analyticsEscapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function analyticsLoadReport(forceReload) {
+      const statusBar = document.getElementById('analyticsStatusBar');
+      if (analyticsReportCache && !forceReload) {
+        analyticsRenderAll(analyticsReportCache);
+        return;
+      }
+      if (statusBar) {
+        statusBar.innerHTML = '<span>STATUS: 診断レポートを取得中...</span><span class="mono-num">S3: analytics/latest_report.json</span>';
+      }
+      try {
+        const resp = await fetch('/api/analytics/report', { cache: 'no-store' });
+        const data = await resp.json();
+        analyticsReportCache = data;
+        analyticsRenderAll(data);
+      } catch (err) {
+        if (statusBar) {
+          statusBar.innerHTML = `<span style="color:var(--status-err);">STATUS: 取得エラー (${analyticsEscapeHtml(err.message)})</span>`;
+        }
+      }
+    }
+
+    function analyticsRenderAll(data) {
+      const statusBar = document.getElementById('analyticsStatusBar');
+      if (!data || !data.available) {
+        const msg = (data && data.error) ? data.error : 'analytics/latest_report.json が未生成です';
+        if (statusBar) {
+          statusBar.innerHTML = `<span style="color:var(--accent);">STATUS: レポート未配信 (${analyticsEscapeHtml(msg)})</span><span class="mono-num">run generate_review_context.py --publish-s3</span>`;
+        }
+        const sigBox = document.getElementById('analyticsSignalsContainer');
+        if (sigBox) {
+          sigBox.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">定期レビューまたは CLI から <code>--publish-s3</code> でレポートを配信するとここにグラフが表示されます。</div>';
+        }
+        return;
+      }
+
+      if (statusBar) {
+        const gen = data.generated_at_utc ? data.generated_at_utc.replace('T', ' ').slice(0, 19) + ' UTC' : '-';
+        statusBar.innerHTML = `<span>STATUS: READY // WINDOW: <strong>${analyticsEscapeHtml(data.window_label || '7d')}</strong> (${analyticsEscapeHtml(data.window_days || 7)}日)</span><span class="mono-num">GENERATED: ${analyticsEscapeHtml(gen)}</span>`;
+      }
+
+      analyticsRenderSignals(data.tuning_signals || []);
+      analyticsDrawQorChart(data.satellite_qor || []);
+      analyticsDrawCauseChart(data.diagnosis_causes || []);
+      analyticsDrawGalacticChart(data.galactic_daily_trend || []);
+      analyticsDrawRevisionChart(data.revision_impact || []);
+      analyticsRenderInpaintTable(data.inpaint_quality || []);
+      analyticsRenderAnomaliesTable(data.tunable_anomalies || []);
+    }
+
+    function analyticsRenderSignals(signals) {
+      const el = document.getElementById('analyticsSignalsContainer');
+      if (!el) return;
+      if (!signals.length) {
+        el.innerHTML = '<div style="color:var(--status-ok); font-size:0.82rem;">発火した優先改善シグナルはありません。</div>';
+        return;
+      }
+      el.innerHTML = signals.map(s => {
+        const badgeCls = s.severity === 'high' ? 'analytics-badge-high' : 'analytics-badge-medium';
+        return `<div class="analytics-signal-row">
+          <span class="${badgeCls}">${analyticsEscapeHtml(String(s.severity || '').toUpperCase())}</span>
+          <div>
+            <div style="font-family:var(--font-mono); font-weight:600; color:var(--text-primary);">${analyticsEscapeHtml(s.signal_id)} // ${analyticsEscapeHtml(s.target_entity)}</div>
+            <div style="color:var(--text-secondary); margin-top:2px;">${analyticsEscapeHtml(s.evidence_summary)}</div>
+            <div style="color:var(--text-muted); font-size:0.74rem; margin-top:2px;">ACTION: ${analyticsEscapeHtml(s.recommended_action)}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function analyticsSetupCanvas(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return null;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#0e0e0d';
+      ctx.fillRect(0, 0, w, h);
+      return { ctx, w, h };
+    }
+
+    function analyticsDrawEmpty(ctx, w, h, msg) {
+      ctx.fillStyle = '#8b8a84';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(msg, w / 2, h / 2);
+    }
+
+    function analyticsDrawQorChart(rows) {
+      const setup = analyticsSetupCanvas('analyticsQorCanvas');
+      if (!setup) return;
+      const { ctx, w, h } = setup;
+      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'NO QOR DATA'); return; }
+
+      const padL = 44, padR = 16, padT = 22, padB = 42;
+      const cw = w - padL - padR;
+      const ch = h - padT - padB;
+
+      ctx.strokeStyle = '#2a2a27';
+      ctx.lineWidth = 1;
+      [0, 25, 50, 75, 100].forEach(v => {
+        const y = padT + ch - (v / 100) * ch;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+        ctx.fillStyle = '#8b8a84';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(v + '%', padL - 6, y + 3);
+      });
+
+      const slot = cw / rows.length;
+      const barW = Math.min(48, slot * 0.55);
+      rows.forEach((r, idx) => {
+        const qor = Number(r.effective_qor_pct || 0);
+        const cx = padL + slot * idx + slot / 2;
+        const bh = Math.max(2, (qor / 100) * ch);
+        const y = padT + ch - bh;
+        ctx.fillStyle = qor >= 20 ? '#5fb878' : (qor > 0 ? '#d4a039' : '#d9534f');
+        ctx.fillRect(cx - barW / 2, y, barW, bh);
+
+        ctx.fillStyle = '#e5e5e0';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(qor.toFixed(1) + '%', cx, y - 5);
+
+        ctx.fillStyle = '#a8a7a0';
+        ctx.fillText(String(r.canonical_sat_id || '').slice(0, 12), cx, h - 22);
+        const snrText = r.mean_snr_db != null ? `SNR ${r.mean_snr_db}dB` : `n=${r.total_passes}`;
+        ctx.fillStyle = '#73726c';
+        ctx.fillText(snrText, cx, h - 8);
+      });
+    }
+
+    function analyticsDrawCauseChart(rows) {
+      const setup = analyticsSetupCanvas('analyticsCauseCanvas');
+      if (!setup) return;
+      const { ctx, w, h } = setup;
+      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'NO DIAGNOSIS DATA'); return; }
+
+      const maxVal = Math.max(1, ...rows.map(r => Number(r.pass_count || 0)));
+      const padL = 160, padR = 46, padT = 18, padB = 18;
+      const cw = w - padL - padR;
+      const rowH = Math.min(34, (h - padT - padB) / rows.length);
+
+      rows.forEach((r, idx) => {
+        const val = Number(r.pass_count || 0);
+        const y = padT + idx * rowH + 6;
+        const barH = Math.max(14, rowH - 12);
+        const bw = (val / maxVal) * cw;
+
+        ctx.fillStyle = '#c8c7c0';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(String(r.failure_cause || ''), padL - 10, y + barH * 0.72);
+
+        let color = '#8b8a84';
+        if (r.failure_cause === 'Healthy') color = '#5fb878';
+        else if (r.is_tunable) color = '#d9534f';
+        else if (r.is_ml_retrain_signal) color = '#d4a039';
+
+        ctx.fillStyle = color;
+        ctx.fillRect(padL, y, Math.max(3, bw), barH);
+
+        ctx.fillStyle = '#e5e5e0';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(val), padL + Math.max(3, bw) + 8, y + barH * 0.72);
+      });
+    }
+
+    function analyticsDrawGalacticChart(rows) {
+      const setup = analyticsSetupCanvas('analyticsGalacticCanvas');
+      if (!setup) return;
+      const { ctx, w, h } = setup;
+      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'NO 21CM TREND DATA'); return; }
+
+      const dates = [...new Set(rows.map(r => r.scan_date_utc))].sort();
+      const skyColors = {
+        WARM_GALACTIC_PLANE: '#d4a039',
+        INTERMEDIATE: '#5fb878',
+        COLD_HALO: '#5b9bd5',
+      };
+      const snrs = rows.map(r => Number(r.mean_peak_line_snr_db || 0));
+      const minY = Math.min(0, Math.floor(Math.min(...snrs)));
+      const maxY = Math.max(2, Math.ceil(Math.max(...snrs) + 0.5));
+
+      const padL = 44, padR = 16, padT = 26, padB = 34;
+      const cw = w - padL - padR;
+      const ch = h - padT - padB;
+
+      ctx.strokeStyle = '#2a2a27';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const v = minY + ((maxY - minY) * i) / 4;
+        const y = padT + ch - ((v - minY) / (maxY - minY)) * ch;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+        ctx.fillStyle = '#8b8a84';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(v.toFixed(1), padL - 6, y + 3);
+      }
+
+      const bySky = {};
+      rows.forEach(r => {
+        if (!bySky[r.sky_type]) bySky[r.sky_type] = {};
+        bySky[r.sky_type][r.scan_date_utc] = Number(r.mean_peak_line_snr_db || 0);
+      });
+
+      let legX = padL;
+      Object.keys(bySky).forEach(sky => {
+        const color = skyColors[sky] || '#a8a7a0';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let started = false;
+        dates.forEach((d, idx) => {
+          if (bySky[sky][d] == null) return;
+          const x = dates.length === 1 ? padL + cw / 2 : padL + (idx / (dates.length - 1)) * cw;
+          const y = padT + ch - ((bySky[sky][d] - minY) / (maxY - minY)) * ch;
+          if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+          ctx.fillStyle = color;
+          ctx.fillRect(x - 2, y - 2, 4, 4);
+        });
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(sky.replace('WARM_GALACTIC_', 'GAL_'), legX, 14);
+        legX += 118;
+      });
+
+      if (dates.length > 0) {
+        ctx.fillStyle = '#8b8a84';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(dates[0].slice(5), padL, h - 10);
+        if (dates.length > 1) {
+          ctx.textAlign = 'right';
+          ctx.fillText(dates[dates.length - 1].slice(5), w - padR, h - 10);
+        }
+      }
+    }
+
+    function analyticsDrawRevisionChart(rows) {
+      const setup = analyticsSetupCanvas('analyticsRevisionCanvas');
+      if (!setup) return;
+      const { ctx, w, h } = setup;
+      const items = rows.filter(r => r.qor_delta_pt != null).slice(0, 7);
+      if (!items.length) { analyticsDrawEmpty(ctx, w, h, 'NO REVISION IMPACT DATA'); return; }
+
+      const maxAbs = Math.max(10, ...items.map(r => Math.abs(Number(r.qor_delta_pt || 0))));
+      const padL = 175, padR = 54, padT = 18, padB = 18;
+      const cw = w - padL - padR;
+      const zeroX = padL + cw / 2;
+      const rowH = Math.min(28, (h - padT - padB) / items.length);
+
+      ctx.strokeStyle = '#4a4a44';
+      ctx.beginPath(); ctx.moveTo(zeroX, padT); ctx.lineTo(zeroX, h - padB); ctx.stroke();
+
+      items.forEach((r, idx) => {
+        const delta = Number(r.qor_delta_pt || 0);
+        const y = padT + idx * rowH + 4;
+        const barH = Math.max(12, rowH - 10);
+        const bw = (Math.abs(delta) / maxAbs) * (cw / 2);
+        const bx = delta >= 0 ? zeroX : zeroX - bw;
+
+        ctx.fillStyle = '#c8c7c0';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        const label = `${String(r.revision || '').slice(0, 14)} ${String(r.canonical_sat_id || '').slice(0, 9)}`;
+        ctx.fillText(label, padL - 8, y + barH * 0.78);
+
+        ctx.fillStyle = delta > 0 ? '#5fb878' : (delta < 0 ? '#d9534f' : '#8b8a84');
+        ctx.fillRect(bx, y, Math.max(2, bw), barH);
+
+        ctx.fillStyle = '#e5e5e0';
+        ctx.textAlign = 'left';
+        ctx.fillText((delta >= 0 ? '+' : '') + delta.toFixed(1) + 'pt', w - padR + 4, y + barH * 0.78);
+      });
+    }
+
+    function analyticsRenderInpaintTable(rows) {
+      const el = document.getElementById('analyticsInpaintContainer');
+      if (!el) return;
+      if (!rows.length) {
+        el.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">データがありません。</div>';
+        return;
+      }
+      const trs = rows.map(r => `<tr>
+        <td>${analyticsEscapeHtml(r.notebook_ref)} (${analyticsEscapeHtml(String(r.config_hash || '').slice(0, 8))})</td>
+        <td>${analyticsEscapeHtml(r.run_count)}</td>
+        <td>${analyticsEscapeHtml(r.tier_a_count)}/${analyticsEscapeHtml(r.tier_b_count)}/${analyticsEscapeHtml(r.tier_c_count)}</td>
+        <td>${analyticsEscapeHtml(r.single_band_dropout_rate_pct)}%</td>
+        <td>${analyticsEscapeHtml(r.large_gap_rate_pct)}%</td>
+      </tr>`).join('');
+      el.innerHTML = `<table class="analytics-table">
+        <thead><tr><th>Model</th><th>Runs</th><th>Tier A/B/C</th><th>Ch Drop</th><th>&gt;Patch</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>`;
+    }
+
+    function analyticsRenderAnomaliesTable(rows) {
+      const el = document.getElementById('analyticsAnomaliesContainer');
+      if (!el) return;
+      if (!rows.length) {
+        el.innerHTML = '<div style="color:var(--status-ok); font-size:0.8rem;">チューニング対象の異常パスはありません。</div>';
+        return;
+      }
+      const trs = rows.map(r => `<tr>
+        <td>${analyticsEscapeHtml(r.pass_id)}</td>
+        <td>${analyticsEscapeHtml(r.failure_cause)}</td>
+        <td>${r.snr_db != null ? analyticsEscapeHtml(r.snr_db) + ' dB' : '-'}</td>
+        <td>${r.actual_tca_drift_seconds != null ? analyticsEscapeHtml(r.actual_tca_drift_seconds) + ' s' : '-'}</td>
+      </tr>`).join('');
+      el.innerHTML = `<table class="analytics-table">
+        <thead><tr><th>Pass ID</th><th>Cause</th><th>SNR</th><th>TCA Drift</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>`;
+    }
   </script>
 </body>
 </html>
@@ -9413,6 +9930,25 @@ class PassDataCache:
 pass_cache = PassDataCache(s3_client, S3_BUCKET)
 
 
+def fetch_analytics_report(
+    s3_client,
+    bucket: str,
+    key: str = "analytics/latest_report.json",
+) -> Dict[str, Any]:
+    """Garage S3 から analytics/latest_report.json を取得する。"""
+    if not s3_client:
+        return {"available": False, "error": "S3 client is not configured"}
+    try:
+        obj = s3_client.get_object(Bucket=bucket, Key=key)
+        data = json.loads(obj["Body"].read().decode("utf-8"))
+        if isinstance(data, dict):
+            data.setdefault("available", True)
+            return data
+        return {"available": False, "error": "Invalid analytics report format"}
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
 def fetch_galactic_observations(
     s3_client,
     bucket: str,
@@ -9662,6 +10198,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/galactic-observations":
             data = fetch_galactic_observations(s3_client, S3_BUCKET)
             body = json.dumps(data).encode("utf-8")
+            self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
+            return
+
+        if path == "/api/analytics/report":
+            data = fetch_analytics_report(s3_client, S3_BUCKET)
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
             self.send_bytes_response(200, "application/json; charset=utf-8", body, cache_control="no-cache")
             return
 

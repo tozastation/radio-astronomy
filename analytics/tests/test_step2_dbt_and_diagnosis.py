@@ -202,6 +202,10 @@ def test_step2_dbt_build_and_diagnosis_e2e(tmp_path: Path) -> None:
     json_out.write_text(json.dumps(ctx, ensure_ascii=False, indent=2), encoding="utf-8")
     md = rev_mod.format_markdown(ctx)
 
+    assert ctx["available"] is True
+    assert "generated_at_utc" in ctx
+    assert len(ctx["galactic_daily_trend"]) >= 1
+    assert len(ctx["pass_daily_trend"]) >= 1
     assert "RF_DECODER_TUNING" in md
     assert "ML_MASK_DISTRIBUTION_SHIFT" in md
     assert "METEOR-M2-3" in md
