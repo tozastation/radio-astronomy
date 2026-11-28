@@ -4,7 +4,7 @@
 
 21cm 中性水素線と銀河の回転曲線の解説は `docs/02_radio_astronomy_guide.md` に、式と用語の参照として残している。いま動いている観測は、KubeEdge 上の衛星ダウンリンクである。太陽は東から南を通って西へ沈む。ベランダは北向きで南側を建物が遮るため、太陽の電波を直接受ける観測には向かない。`solar-station` のコードは残している。
 
-## 👤 ユーザープロファイル & コミュニケーション方針
+## ユーザープロファイル & コミュニケーション方針
 - **バックグラウンド**: ソフトウェアエンジニア（SRE）。インフラ、分散システム、Linux、Python、コンテナ/Kubernetesに精通。
 - **補完領域**: 高校〜大学初年級の数学、デジタル信号処理（DSP）、天文学の専門理論。
 - **コミュニケーション方針**:
@@ -14,7 +14,7 @@
   - **作業内容・意図の丁寧な解説**: コマンド実行やコード変更を行う際は、「今何をしているのか」「なぜその処理が必要なのか」を技術的背景とともに分かりやすく解説しながら進める。
   - **知識・質疑応答の記録**: ユーザーとの間で交わされた電波天文学、DSP、宇宙物理、システム設計等の知識に関する質疑応答は、逐次 [docs/04_qa.md](docs/04_qa.md) に体系的に追記・蓄積する。
   - **ドキュメントの適切な分割**: [docs/04_qa.md](docs/04_qa.md) や各技術ドキュメントにおいて情報量が多くなる場合や特定トピックを詳細に解説する場合は、1ファイルに詰め込みすぎず、適宜個別ファイルへ切り出して親ドキュメントやインデックスからリンクを貼る。
-  - **数式・公式のドキュメント記述ルール**: 数式や公式をドキュメントに記載・解説する際は、数式を単体で提示するだけにせず、必ず以下の3要素をセットで解説する：
+  - **数式・公式のドキュメント記述ルール**: 数式や公式をドキュメントに記載・解説する際は、数式を単体で提示するだけにせず、必ず以下の3要素をセットで解説する。
     1. **記号一覧（テーブル等）**: 式を構成する各変数・定数・演算子の物理的意味や単位の明記。
     2. **日本語での読み解き**: 式が物理的・工学的に何を主張しているのかを平易な日本語で要約。
     3. **展開ステップ・直感イメージ**: 高校数学〜大学初年級の数学（三角関数、複素数、ベクトル、微積分等）や基礎物理で追える途中式の展開や幾何学的・物理的直感イメージの補足。
@@ -25,6 +25,7 @@
 - **ホスト**: GPD Pocket3。Ubuntu 26.04 LTS を直接インストールしている。k3s（制御側の CloudCore）と EdgeCore（アンテナ側でコンテナを動かす部分）を同じ PC で動かす。論理ノードは 2 つ、Kubernetes クラスタは 1 つ。Windows + WSL2 の手順は初日の受信確認（`docs/05_getting_started.md`）である。
 - **アンテナ側 (`gpd-pocket3-edge`)**: `satellite-tracker-rs`。RTL-SDR v4 を上空通過のあいだだけ開き、48 kHz の WAV を Garage の `raw/` へ置いてローカルファイルを消す。MetaManager の SQLite により、k3s が止まっても Pod は継続する。
 - **同じ PC 上の Kubernetes**: Garage S3、Temporal、KEDA、`satellite-analyzer`（待ち時間は 0 台、上限 2）、`satellite-viewer`（NodePort 30088）、kube-prometheus-stack（Grafana は NodePort 30080）。viewer が未解析の WAV を見つけてワークフローを開始する。
+- **オントロジー・セマンティック診断基盤 (`analytics/`)**: DuckDB + `dbt-duckdb` を用い、毎日 05:00 JST に `scripts/run_periodic_tuning_review.sh` で Garage S3・Git 履歴・YAML マスタを増分同期して診断し、`analytics/latest_report.json` を Garage S3 へ公開。`satellite-viewer` の `05 / ANALYTICS` タブで可視化する。
 - **別 PC への分離**: 制御側（CloudCore）を分析用 PC へ移す構成は、あとから移せるようにしてある。いまは 1 台にまとめている。
 - **成功の定義**: 中身が見えること。画像、テレメトリの JSON、復号した文字列。中身を判定しにくい対象は `unknown`。詳細は `docs/qa/10_observation_metrics_and_heuristic_evaluation.md`。
 - **詳細**: [docs/03_system_architecture.md](docs/03_system_architecture.md)。
@@ -32,10 +33,17 @@
 ## 技術スタック
 - **エッジ受信**: Rust（`satellite-tracker-rs`）。`librtlsdr`, `rustfft`, `sgp4`
 - **解析**: Python 3.10+（`satellite-analyzer`, `satellite-viewer`）。NumPy, SciPy, Matplotlib, Temporal, boto3
+- **分析・診断**: Python 3.12（`analytics/`）。DuckDB, `dbt-duckdb`, PyYAML
+- **機械学習連携**: 姉妹リポジトリ `ml-astronomy`（ローカル: `../try-astronomy`、PyTorch Apple Silicon MPS）
 - **ストレージ**: Garage S3（録音と解析結果）。Temporal と MetaManager の状態は SQLite
 - **運用**: KubeEdge, k3s, Prometheus, Grafana, KEDA
 
-## 🚀 パフォーマンス & フロントエンド設計規約
+## 姉妹リポジトリ連携（ml-astronomy / ローカル: ../try-astronomy）
+- **役割分担**: `radio-astronomy` は実観測・DSP・インフラ運用・オントロジー診断を担当し、`ml-astronomy` は母艦 Mac（Apple Silicon MPS）でのモデル学習・METEOR-M2 画像欠損補完推論を担当する。
+- **Garage S3 入出力仕様**: `ml-astronomy`（`projects/radio-ml/scripts/run_inpaint_pipeline.py`）は `results/` の復調済み METEOR-M2 画像を読み込み、`ml_inpainted/<pass_dir>/` へ PNG 4枚（`avhrr_221_inpainted.png` 等）を先行 PUT したのち、最後に完了マーカーとして `metadata.json`（`config_hash`, `model_name`, `tier`, `seam_jump_l1`, `max_contiguous_gap_rows` 等）を PUT する。`results/` や `ml_inpainted/` のパス・スキーマを変更する場合は `ml-astronomy` 側との互換性を必ず確認する。
+- **オントロジー診断結果の改善への活用**: `ml-astronomy` で新モデル（新しい SHA-256 `config_hash`）を実運用へ投入した際は、`analytics/ontology/models.yaml` にメタデータを登録する。`sem_inpaint_quality` や `ML_MASK_DISTRIBUTION_SHIFT` の診断結果は `ml-astronomy` 側の次期モデル改善（パッチサイズ・マスク分布・チャネル欠損対策等）の根拠として共有する。
+
+## パフォーマンス & フロントエンド設計規約
 - **S3 / I/O パイプライン並列化**:
   Garage S3 から複数ファイル（`summary.json`, `packets.json` 等）を取得する際は、単一スレッドの直列同期ループを避け、`ThreadPoolExecutor(max_workers=16)` による並列フェッチを行う（ラウンドトリップ累積の防止）。
 - **起動時バックグラウンド暖機 (Pre-warming)**:
@@ -47,11 +55,11 @@
 - **JavaScript グローバル名前空間の衝突防止 & 構文テスト必須化**:
   単一 HTML テンプレート内で複数機能が共存するため、グローバル変数・関数名・DOM ID には必ず機能プレフィックス（`orbit*`, `replay*` 等）を付与し、`let` の二重宣言や関数上書きを防止する。また、テストコード（`pytest`）で `node -c` によるテンプレート内 JavaScript 構文解析を回帰テストとして常時実行する。
 
-## 📊 チューニング・PR 作成ルール（可視化データによる根拠明示）
+## チューニング・PR 作成ルール（可視化データによる根拠明示）
 - 受信設定・DSP・デコーダ・インフラ等のチューニング PR を作成する際は、必ず**可視化された実測データ**（`analytics/` のセマンティック／オントロジー診断サマリ、衛星別 QoR・SNR・TCA ドリフト表、原因分類 `ont_pass_diagnosis`、直近 PR 前後比較 `sem_revision_impact`、21cm SNR 推移、必要に応じた Mermaid チャートやグラフ画像）を PR 本文の根拠として掲載すること。
 - 対象期間・サンプル数（`GOLDEN`・`unknown` 除外後の母数）を必ず明記し、母数不足や微弱波・遮蔽要因（`LowSNRWeakSignal`）のみに基づく場当たり的な閾値変更を行わないこと。
 
-## 📝 コミットルール
+## コミットルール
 - 日本語で記述する
 - 絵文字は禁止
 - Conventional Commits の形式に従う（例: `feat: ...`, `fix: ...`, `docs: ...`）

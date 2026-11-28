@@ -32,18 +32,19 @@
 
 ### 観測結果ビューア（`satellite-viewer` / NodePort 30088）
 
-[DESIGN.md](DESIGN.md) に沿った黒鉛色の計器盤 UI と 4 つのワークスペースで構成したビューアです。パスごとの音声やスペクトログラム、復調画像、軌道予測、銀河 21cm 分光データをブラウザから確認できます。
+[DESIGN.md](DESIGN.md) に沿った黒鉛色の計器盤 UI と 5 つのワークスペースで構成したビューアです。パスごとの音声やスペクトログラム、復調画像、軌道予測、銀河 21cm 分光データ、日次オントロジー診断グラフをブラウザから確認できます。
 
 | 観測結果ダッシュボード | 天球観測リプレイと実績ヒートマップ |
 | :---: | :---: |
 | ![観測結果ダッシュボード](docs/images/readme_viewer_dashboard.png) | ![天球観測リプレイ](docs/images/readme_viewer_replay.png) |
 
-ワークスペースは用途ごとに 4 つに分かれています。
+ワークスペースは用途ごとに 5 つに分かれています。
 
 - `01 / CONSOLE` では、上部の統計バーやカテゴリと状態のフィルタ（`AI INPAINTED` 絞り込みを含む）、次のベストパス表示に加えて、選んだパスの復号画像や宇宙機テレメトリ HUD、スペクトログラム同期リプレイ（AI 補完画像の優先表示）、GIF 書き出しをその場で展開します。[`ml-astronomy`](https://github.com/tozastation/ml-astronomy) から Garage S3 へ転送された AI 補完済み METEOR パスには専用パネルが表示され、`COMPARE`（Before/After 比較スライダー）、`AI 221` / `AI 124` / `RAW` / `MASK`（実測・補完領域可視化）の切り替えに対応しています。最接近時刻 TCA や最大仰角、ベランダ開口角、ドップラー実測による TCA 補正値の横にある ⓘ をタップすると、物理の解説が読めます（[docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md](docs/qa/29_viewer_geek_telemetry_and_physics_tooltips.md)）。
 - `02 / ORBIT & MAP` は軌道予測と電波伝搬の画面で、過去の実績をもとにベイズ確率モデルで精度を更新する通過予測カレンダーと、世界地図上のフットプリントや電波伝搬のアニメーションを出します。
 - `03 / GALACTIC 21CM` では、衛星を待っている間に実行した 21cm 水素線ドリフトスキャン（1420.406 MHz ON と 1423.000 MHz OFF の周波数スイッチング）の視線速度スペクトルと銀河俯瞰図を見られます（[docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md](docs/qa/33_milky_way_scale_and_21cm_spectroscopy_interpretation.md)）。
 - `04 / ARCHIVE` は Garage S3 バケットの統計確認と、フルバックアップやリストアの操作用です。
+- `05 / ANALYTICS` では、DuckDB と `dbt-duckdb` によるオントロジー・セマンティック診断基盤（`analytics/`）が Garage S3 へ出力した `analytics/latest_report.json` を読み込み、衛星別 QoR・失敗原因分類・21cm 水素線 SNR の日次推移・PR 前後比較（Revision Impact）・AI 補完品質・自動チューニングシグナルをグラフで確認できます。
 
 ### リアルタイム監視ダッシュボード（Grafana / NodePort 30080）
 
@@ -98,6 +99,7 @@ flowchart TB
             Temporal["Temporal"]
             KEDA["KEDA"]
             Worker["satellite-analyzer<br/>待ち時間は 0 台"]
+            Analytics["analytics (DuckDB / dbt-duckdb)<br/>日次オントロジー診断"]
             Graf["Prometheus / Grafana<br/>NodePort 30080"]
         end
     end
@@ -115,8 +117,11 @@ flowchart TB
     Temporal --> KEDA
     KEDA -->|"0 台から起動（上限 2）"| Worker
     Worker -->|"復号とスペクトログラムを残す"| Garage
+    Garage --> Analytics
+    Analytics -->|"latest_report.json"| Garage
     Garage -->|"復調済み METEOR 画像を取得"| ML
     ML -->|"補完画像 ml_inpainted/ を転送"| Garage
+    Analytics -.->|"補完品質・欠損分布フィードバック"| ML
     Tracker -.->|"メトリクス"| Graf
 ```
 
@@ -124,7 +129,8 @@ flowchart TB
 | :--- | :--- | :--- |
 | `satellite-tracker-rs` | 衛星通過中は受信・Garage へ転送、待機中は銀河 21cm ドリフトスキャンを実行 | アンテナ側 Pod (`gpd-pocket3-edge`) |
 | Garage / Temporal / KEDA / `satellite-analyzer` | オブジェクトストレージ、イベント駆動ワークフロー、オンデマンド解析 | 同じ PC 上の Kubernetes |
-| `satellite-viewer` | 統合ダッシュボード（`CONSOLE` / `ORBIT & MAP` / `GALACTIC 21CM` / `ARCHIVE`）、AI 補完比較表示、ワークフロー起動（NodePort 30088） | 同じ PC 上の Kubernetes |
+| `satellite-viewer` | 統合ダッシュボード（`CONSOLE` / `ORBIT & MAP` / `GALACTIC 21CM` / `ARCHIVE` / `ANALYTICS`）、AI 補完比較表示、ワークフロー起動（NodePort 30088） | 同じ PC 上の Kubernetes |
+| `analytics` | DuckDB + `dbt-duckdb` によるオントロジー・セマンティック診断、日次レビューコンテキスト生成と `analytics/latest_report.json` 公開 | 同じ PC 上の cron（毎日 JST 05:00） |
 | `ml-astronomy` | 復調済み METEOR 画像の欠損補完推論と Garage S3 (`ml_inpainted/`) への転送 | 外部連携（母艦 Mac 手動実行） |
 | `kubeedge-metrics-proxy` | アンテナ側コンテナの CPU・メモリ使用量を Prometheus へ中継 | アンテナ側 |
 | Prometheus / Grafana | 監視ダッシュボード（NodePort 30080） | 同じ PC 上の Kubernetes |
@@ -159,7 +165,8 @@ flowchart TB
 | :--- | :--- |
 | `apps/satellite-tracker-rs` | アンテナ側の追尾（Rust）。北向き見通し角と Pass Gating を判定し、衛星受信・21cm スキャン結果を Garage へアップロード |
 | `apps/satellite-analyzer` | Temporal の解析ワーカー（Python）。パケット・画像・生 IQ の復号およびスペクトログラム生成 |
-| `apps/satellite-viewer` | 観測結果ビューア（Python）。4 ワークスペース統合 UI、AI 補完画像の Before/After 比較表示、未解析録音のワークフロー起動（NodePort 30088） |
+| `apps/satellite-viewer` | 観測結果ビューア（Python）。5 ワークスペース統合 UI（`ANALYTICS` グラフタブ含む）、AI 補完画像の Before/After 比較表示、未解析録音のワークフロー起動（NodePort 30088） |
+| `analytics/` | DuckDB + `dbt-duckdb` によるオントロジー定義・セマンティック層・日次診断スクリプト（S3 へ `analytics/latest_report.json` を出力） |
 | `apps/kubeedge-metrics-proxy` | アンテナ側コンテナのリソースメトリクスを Prometheus へ中継 |
 | `apps/satellite-tracker` | アンテナ側追尾のプロトタイプ実装（Python 版） |
 | `apps/ground-station` | Rust の地上局クレート（通過予測、SGP4 軌道計算、ドップラー計算、復調、`solar-station`） |
@@ -230,7 +237,7 @@ kubectl get pods -A
 サーバ（GPD Pocket3）では、`agy --model gemini-4-neon --effort medium` を使った 2 つの定期ジョブを `cron`（`CRON_TZ=Asia/Tokyo`）で動かしています。いずれも改善・修正可能な根拠がある場合のみブランチを作成し、テスト確認のうえ `gh pr create` で PR を起票します。
 
 1. **観測データの定期チューニングレビュー（毎日 JST 05:00）**
-   - 集計スクリプト: [scripts/summarize_recent_observations.py](scripts/summarize_recent_observations.py)（Garage S3 の `results/`、`galactic/`、`raw/` を直近 7 日分並列集計）
+   - 診断・集計基盤: [analytics/scripts/sync_s3_to_duckdb.py](analytics/scripts/sync_s3_to_duckdb.py) および [analytics/scripts/generate_review_context.py](analytics/scripts/generate_review_context.py)（DuckDB + `dbt-duckdb` により `results/`、`ml_inpainted/`、`galactic/`、Git 履歴を増分同期・診断し、`--publish-s3` で `analytics/latest_report.json` を公開）。`analytics/.venv` が未導入の環境では従来の [scripts/summarize_recent_observations.py](scripts/summarize_recent_observations.py) へ自動フォールバックします
    - 実行スクリプト: [scripts/run_periodic_tuning_review.sh](scripts/run_periodic_tuning_review.sh)（ログ保存先: `~/.local/state/radio-astronomy-review/`）
 2. **システム健全性・メトリクス異常チェック（6 時間ごと）**
    - 収集スクリプト: [scripts/collect_system_health.py](scripts/collect_system_health.py)（Prometheus のアラート・ターゲット・リソース指標、Kubernetes ノード・Pod 状態、ホスト負荷・ディスク使用率を収集）
@@ -255,7 +262,7 @@ PR を作らずに差分案だけ確認したい場合は、各スクリプト�
 - [docs/03_system_architecture.md](docs/03_system_architecture.md)：1 台に集約した KubeEdge とイベント駆動パイプラインの全体像
 - [docs/setup/03_kubeedge_deployment_guide.md](docs/setup/03_kubeedge_deployment_guide.md)：Ubuntu 26.04 への k3s と EdgeCore セットアップ手順
 - [infrastructure/kubeedge/README.md](infrastructure/kubeedge/README.md)：クラスタ構成とインフラ運用の目次
-- [docs/04_qa.md](docs/04_qa.md)：技術質疑応答・トピック別インデックス（全アーカイブへの入口）
+- [docs/04_qa.md](docs/04_qa.md)：技術質疑応答・トピック別インデックス（全アーカイブの目次）
 - [docs/qa/32_satellite_viewer_performance_optimization_and_latency.md](docs/qa/32_satellite_viewer_performance_optimization_and_latency.md)：`satellite-viewer` の並列 I/O や暖機、レスポンス最適化
 
 ### 電波天文学・DSP・軌道力学の理論
@@ -286,6 +293,10 @@ PR を作らずに差分案だけ確認したい場合は、各スクリプト�
 ├── GEMINI.md
 ├── Cargo.toml                         # Cargo ワークスペース定義
 ├── docker-compose.yaml                # ローカル検証用構成
+├── analytics/                         # DuckDB + dbt-duckdb オントロジー・セマンティック診断基盤
+│   ├── ontology/                      # エンティティ・モデル・メトリクス・診断ルール (YAML)
+│   ├── dbt_observatory/               # staging / marts / semantic / ontology モデル
+│   └── scripts/                       # S3 同期 & 日次レビュー・レポート生成スクリプト
 ├── apps/
 │   ├── satellite-tracker-rs/          # アンテナ側の衛星追尾 & 21cm スキャン（Rust）
 │   ├── satellite-analyzer/            # Temporal 解析ワーカー（Python）
