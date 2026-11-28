@@ -45,6 +45,7 @@ select
         2
     ) as effective_qor_pct,
     round(avg(snr_db), 2) as mean_snr_db,
+    count(actual_tca_drift_seconds) as tca_drift_sample_count,
     round(quantile_cont(abs(actual_tca_drift_seconds), 0.95), 2) as p95_abs_tca_drift_sec,
     round(avg(case when outcome = 'success' then packets_count end), 2) as avg_packets_per_success
 from scoped

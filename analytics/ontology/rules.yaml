@@ -26,6 +26,7 @@ tuning_signals:
   - signal_id: REVISION_REGRESSION
     description: 直近のチューニング PR 適用後、十分なサンプル数のもとで QoR が大幅に悪化している
     min_samples_per_window: 5
+    min_before_success_count: 3
     qor_drop_pt_threshold: -15.0
     severity: high
     recommended_action: 該当 PR の変更内容をレビューし、閾値・パラメータのロールバックまたは再調整を検討する

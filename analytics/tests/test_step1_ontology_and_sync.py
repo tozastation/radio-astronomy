@@ -205,5 +205,27 @@ def test_sync_all_incremental_and_schema(tmp_path: Path) -> None:
             "SELECT scan_id, sky_type, preempted, peak_line_snr_db FROM raw_galactic_scans"
         ).fetchone()
         assert gal == ("scan_20261127_231828", "INTERMEDIATE", True, 1.78)
+
+        rev_cols = {r[0] for r in conn.execute("DESCRIBE raw_config_revisions").fetchall()}
+        assert "affected_satellites" in rev_cols
     finally:
         conn.close()
+
+
+def test_classify_affected_satellites_and_first_parent_revisions() -> None:
+    assert sync_mod._classify_affected_satellites(["apps/satellite-analyzer/src/aprs_decoder.py"]) == "ISS"
+    assert sync_mod._classify_affected_satellites(["apps/satellite-analyzer/src/iss_dsp.py"]) == "ISS"
+    assert sync_mod._classify_affected_satellites(["apps/satellite-analyzer/src/meteor_decoder.py"]) == "METEOR-M2-3,METEOR-M2-4"
+    assert sync_mod._classify_affected_satellites(["apps/satellite-analyzer/src/funcube_decoder.py"]) == "FUNCUBE-1"
+    assert sync_mod._classify_affected_satellites([
+        "apps/satellite-analyzer/src/aprs_decoder.py",
+        "apps/satellite-analyzer/src/funcube_decoder.py",
+    ]) == "FUNCUBE-1,ISS"
+    assert sync_mod._classify_affected_satellites(["apps/satellite-tracker-rs/src/main.rs"]) == "ALL"
+    assert sync_mod._classify_affected_satellites(["apps/satellite-analyzer/src/activities.py"]) == "ALL"
+    assert sync_mod._classify_affected_satellites(["apps/satellite-viewer/app.py", "README.md"]) == ""
+
+    revs = sync_mod.collect_git_revisions(REPO_ROOT, limit=30)
+    shas = [r["commit_sha"] for r in revs]
+    assert len(shas) == len(set(shas))
+    assert all("affected_satellites" in r for r in revs)

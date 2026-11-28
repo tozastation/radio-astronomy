@@ -21,10 +21,11 @@ tle_drift as (
     select
         canonical_sat_id,
         total_passes,
+        tca_drift_sample_count,
         p95_abs_tca_drift_sec
     from {{ ref('sem_satellite_qor') }}
     where window_label = '7d'
-      and total_passes >= {{ var('tle_min_samples') }}
+      and tca_drift_sample_count >= {{ var('tle_min_samples') }}
       and p95_abs_tca_drift_sec >= {{ var('tca_drift_sec') }}
 ),
 rev_regression as (
@@ -33,12 +34,15 @@ rev_regression as (
         canonical_sat_id,
         sample_count_before,
         sample_count_after,
+        success_count_before,
+        success_count_after,
         qor_before_pct,
         qor_after_pct,
         qor_delta_pt
     from {{ ref('sem_revision_impact') }}
     where sample_count_before >= {{ var('min_samples_per_window') }}
       and sample_count_after >= {{ var('min_samples_per_window') }}
+      and success_count_before >= {{ var('min_before_success_count') }}
       and qor_delta_pt <= {{ var('qor_drop_pt_threshold') }}
 ),
 ml_shift as (
@@ -89,7 +93,7 @@ select
     'TLE_OR_CLOCK_DRIFT' as signal_id,
     'medium' as severity,
     canonical_sat_id as target_entity,
-    '直近7日間の TCA ドリフト p95 が ' || cast(p95_abs_tca_drift_sec as varchar) || ' 秒 (n=' || cast(total_passes as varchar) || ')' as evidence_summary,
+    '直近7日間の TCA ドリフト p95 が ' || cast(p95_abs_tca_drift_sec as varchar) || ' 秒 (有効計測 n=' || cast(tca_drift_sample_count as varchar) || '/' || cast(total_passes as varchar) || ')' as evidence_summary,
     'satellite-tracker-rs の TLE 更新周期およびホスト時刻同期 (chrony/systemd-timesyncd) を確認する' as recommended_action
 from tle_drift
 
