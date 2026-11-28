@@ -3236,20 +3236,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="badge-bucket">S3: __BUCKET__</span>
     </div>
     <nav class="workspace-nav" aria-label="ワークスペース切り替え">
-      <button type="button" id="wsTabConsole" class="ws-tab-btn active" onclick="switchWorkspace('console')">01 / CONSOLE</button>
-      <button type="button" id="wsTabOrbit" class="ws-tab-btn" onclick="switchWorkspace('orbit')">02 / ORBIT &amp; MAP</button>
-      <button type="button" id="wsTabGalactic" class="ws-tab-btn" onclick="switchWorkspace('galactic')">03 / GALACTIC 21CM</button>
-      <button type="button" id="wsTabArchive" class="ws-tab-btn" onclick="switchWorkspace('archive')">04 / ARCHIVE</button>
-      <button type="button" id="wsTabAnalytics" class="ws-tab-btn" onclick="switchWorkspace('analytics')">05 / ANALYTICS</button>
+      <button type="button" id="wsTabConsole" class="ws-tab-btn active" onclick="switchWorkspace('console')">01 / 観測一覧</button>
+      <button type="button" id="wsTabOrbit" class="ws-tab-btn" onclick="switchWorkspace('orbit')">02 / 軌道・地図</button>
+      <button type="button" id="wsTabGalactic" class="ws-tab-btn" onclick="switchWorkspace('galactic')">03 / 銀河 21cm</button>
+      <button type="button" id="wsTabArchive" class="ws-tab-btn" onclick="switchWorkspace('archive')">04 / バックアップ</button>
+      <button type="button" id="wsTabAnalytics" class="ws-tab-btn" onclick="switchWorkspace('analytics')">05 / 分析・診断</button>
     </nav>
     <div class="header-actions">
       <button type="button" id="btnFuturePassesToggle" class="btn-refresh btn-passes" onclick="openFuturePassesModal()">
-        <span class="btn-label-long">24H SCHEDULE</span>
-        <span class="btn-label-short">24H</span>
+        <span class="btn-label-long">24時間予定</span>
+        <span class="btn-label-short">24h予定</span>
       </button>
       <button type="button" class="btn-refresh btn-reload" onclick="refreshAllDashboardData()">
-        <span class="btn-label-long">SYNC</span>
-        <span class="btn-label-short">SYNC</span>
+        <span class="btn-label-long">更新</span>
+        <span class="btn-label-short">更新</span>
       </button>
     </div>
   </header>
@@ -3261,16 +3261,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <section id="futurePassesModal" class="future-passes-dock" aria-label="24時間通過予測">
         <div class="workspace-panel-header">
           <div>
-            <span class="workspace-panel-code">SCH-24H</span>
+            <span class="workspace-panel-code">24時間予定</span>
             <span class="workspace-panel-title">
               <span class="modal-title-long">北向きベランダ通過予測（今後 24 時間）</span>
               <span class="modal-title-short">通過予測 (24h)</span>
             </span>
           </div>
-          <button type="button" class="btn-refresh" onclick="closeFuturePassesModal()">CLOSE</button>
+          <button type="button" class="btn-refresh" onclick="closeFuturePassesModal()">閉じる</button>
         </div>
         <div style="background:var(--bg-inset); border:1px solid var(--border-hairline); border-left:2px solid var(--accent); padding:8px 12px; font-size:0.8rem; margin-bottom:12px; color:var(--text-secondary);">
-          <strong style="color:var(--text-primary);">WINDOW:</strong> 方位角 250°–110°（西〜北〜東）、仰角 25°–60°（手すり下限〜上階庇上限）。南側遮蔽を避けた開口窓通過を SGP4 で予測。
+          <strong style="color:var(--text-primary);">開口窓 (WINDOW):</strong> 方位角 250°–110°（西〜北〜東）、仰角 25°–60°（手すり下限〜上階庇上限）。南側遮蔽を避けた開口窓通過を SGP4 で予測。
         </div>
         <div id="futurePassesList">
           <div style="text-align:center; color:var(--text-secondary); padding:16px;">SGP4 軌道伝搬を計算中...</div>
@@ -3281,13 +3281,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <section id="statsMinibar" class="stats-minibar" aria-label="観測統計サマリー">
         <div class="stats-summary-row">
           <div class="stats-kpis mono-num">
-            <span class="stats-kpi-item">PASSES: <strong id="statTotalPasses">-</strong></span>
-            <span class="stats-kpi-item">DECODED: <strong id="statSuccessRate" class="kpi-accent">-</strong>% (<span id="statSuccessCount">-</span>)</span>
-            <span class="stats-kpi-item">PACKETS: <strong id="statTotalPackets">-</strong></span>
-            <span class="stats-kpi-item">IMAGES: <strong id="statTotalImages">-</strong></span>
-            <span class="stats-kpi-item">RX TIME: <strong id="statTotalHours">-</strong> h</span>
+            <span class="stats-kpi-item">観測数: <strong id="statTotalPasses">-</strong></span>
+            <span class="stats-kpi-item">復調成功: <strong id="statSuccessRate" class="kpi-accent">-</strong>% (<span id="statSuccessCount">-</span>)</span>
+            <span class="stats-kpi-item">パケット: <strong id="statTotalPackets">-</strong></span>
+            <span class="stats-kpi-item">画像: <strong id="statTotalImages">-</strong></span>
+            <span class="stats-kpi-item">受信時間: <strong id="statTotalHours">-</strong> h</span>
           </div>
-          <button type="button" id="statsToggleBtn" class="stats-toggle-btn" onclick="statsToggleDetails()">DETAILS +</button>
+          <button type="button" id="statsToggleBtn" class="stats-toggle-btn" onclick="statsToggleDetails()">詳細 +</button>
         </div>
         <div id="statsDetailsPanel" class="stats-details-panel">
           <div class="stats-detail-box">
@@ -3304,7 +3304,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="stats-detail-box">
             <div class="stats-detail-title">
               <span>直近7日間の推移 (JST)</span>
-              <span style="color:var(--text-muted); font-weight:normal; font-size:0.7rem;">OK / TOTAL</span>
+              <span style="color:var(--text-muted); font-weight:normal; font-size:0.7rem;">成功 / 総数</span>
             </div>
             <div id="statsDailyTrendBody">読み込み中...</div>
           </div>
@@ -3314,23 +3314,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <!-- Filter & Search Toolbar -->
       <div class="toolbar-section">
         <div class="filter-chips">
-          <button class="chip active" data-category="all" onclick="setCategoryFilter('all', this)">ALL (<span id="count-all" class="mono-num">0</span>)</button>
+          <button class="chip active" data-category="all" onclick="setCategoryFilter('all', this)">すべて (<span id="count-all" class="mono-num">0</span>)</button>
           <button class="chip" data-category="SpaceStation" onclick="setCategoryFilter('SpaceStation', this)">ISS (<span id="count-spacestation" class="mono-num">0</span>)</button>
           <button class="chip" data-category="WeatherSatellite" onclick="setCategoryFilter('WeatherSatellite', this)">METEOR (<span id="count-weathersatellite" class="mono-num">0</span>)</button>
           <button class="chip" data-category="CubeSat" onclick="setCategoryFilter('CubeSat', this)">FUNCUBE (<span id="count-cubesat" class="mono-num">0</span>)</button>
-          <button class="chip" data-category="GenericSatellite" onclick="setCategoryFilter('GenericSatellite', this)">OTHER (<span id="count-genericsatellite" class="mono-num">0</span>)</button>
+          <button class="chip" data-category="GenericSatellite" onclick="setCategoryFilter('GenericSatellite', this)">その他 (<span id="count-genericsatellite" class="mono-num">0</span>)</button>
           <div class="chip-group-toggles">
             <button class="chip chip-toggle" id="btnDemodOnly" onclick="toggleDemodFilter(this)">
-              DECODED ONLY (<span id="count-demod-success" class="mono-num">0</span>)
+              復調成功のみ (<span id="count-demod-success" class="mono-num">0</span>)
             </button>
             <button class="chip chip-toggle" id="btnHasImage" onclick="toggleHasImageFilter(this)">
-              HAS IMAGE (<span id="count-has-image" class="mono-num">0</span>)
+              画像あり (<span id="count-has-image" class="mono-num">0</span>)
             </button>
             <button class="chip chip-toggle" id="btnInpaintedOnly" onclick="inpaintToggleFilter(this)">
-              AI INPAINTED (<span id="count-inpainted" class="mono-num">0</span>)
+              AI補完済み (<span id="count-inpainted" class="mono-num">0</span>)
             </button>
             <button class="chip chip-toggle" id="btnHighEl" onclick="toggleHighElFilter(this)">
-              EL 30°+
+              仰角 30°+
             </button>
           </div>
         </div>
@@ -3355,10 +3355,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <option value="max_el_desc">最大仰角が高い順</option>
             <option value="packets_desc">パケット数が多い順</option>
           </select>
-          <button type="button" id="filterResetBtn" class="filter-reset-btn" onclick="resetAllFilters()">RESET</button>
+          <button type="button" id="filterResetBtn" class="filter-reset-btn" onclick="resetAllFilters()">リセット</button>
         </div>
         <div class="filter-options">
-          <span class="matched-count mono-num" id="matchedCount">LOADING...</span>
+          <span class="matched-count mono-num" id="matchedCount">読み込み中...</span>
           <span class="filter-active-summary" id="filterActiveSummary"></span>
         </div>
       </div>
@@ -3366,8 +3366,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div id="noMatchState" class="no-match-state">条件に一致する観測データがありません。</div>
 
       <div id="timelineJumpBanner" class="timeline-jump-banner" aria-live="polite">
-        <span id="timelineJumpLabel" class="mono-num">TIMELINE JUMP</span>
-        <button type="button" class="timeline-jump-reset-btn" onclick="timelineResetToTop()">TOP</button>
+        <span id="timelineJumpLabel" class="mono-num">タイムライン移動</span>
+        <button type="button" class="timeline-jump-reset-btn" onclick="timelineResetToTop()">先頭へ</button>
       </div>
 
       <main id="cardsContainer"></main>
@@ -3401,11 +3401,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="textModal" class="modal" onclick="closeTextModal(event)">
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <span id="textModalTitle" class="modal-title">File Content</span>
+        <span id="textModalTitle" class="modal-title">ファイル内容</span>
         <button class="modal-close" onclick="closeTextModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <pre class="code-block"><code id="textModalContent">Loading...</code></pre>
+        <pre class="code-block"><code id="textModalContent">読み込み中...</code></pre>
       </div>
       <div class="modal-footer">
         <button class="copy-btn" onclick="copyModalContent()">コピー</button>
@@ -3419,18 +3419,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="orbitCalendarModal" class="workspace-panel">
       <div class="workspace-panel-header">
         <div>
-          <span class="workspace-panel-code">02 / ORBIT</span>
+          <span class="workspace-panel-code">02 / 軌道</span>
           <span class="workspace-panel-title">
             <span class="modal-title-long">月間軌道予測カレンダー ＆ 複数衛星電波伝搬アニメーション</span>
             <span class="modal-title-short">軌道予測・電波アニメ</span>
           </span>
         </div>
-        <button type="button" class="btn-refresh" onclick="closeOrbitCalendarModal()">CONSOLE</button>
+        <button type="button" class="btn-refresh" onclick="closeOrbitCalendarModal()">観測一覧</button>
       </div>
       <div>
         <div class="orbit-tabs">
-          <button id="tabBtnCalendar" class="orbit-tab-btn active" onclick="switchOrbitTab('calendar')">MONTHLY CALENDAR</button>
-          <button id="tabBtnAnimation" class="orbit-tab-btn" onclick="switchOrbitTab('animation')">WORLD MAP &amp; PROPAGATION</button>
+          <button id="tabBtnCalendar" class="orbit-tab-btn active" onclick="switchOrbitTab('calendar')">月間カレンダー</button>
+          <button id="tabBtnAnimation" class="orbit-tab-btn" onclick="switchOrbitTab('animation')">世界地図・電波伝搬</button>
         </div>
 
         <!-- Tab 1: Calendar View -->
@@ -3478,7 +3478,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div id="canvasOverlayTelemetries" class="orbit-map-overlay-telemetry">
               <div id="overlaySimTime" style="color:var(--text-primary); font-weight:600; margin-bottom:4px;">UTC: 2026-10-28 12:00:00</div>
-              <div id="overlayRadioStatus" style="color:var(--accent);">BEAM: IDLE</div>
+              <div id="overlayRadioStatus" style="color:var(--accent);">ビーム: 待機中</div>
             </div>
             <div id="canvasLegend" class="orbit-map-overlay-legend">
               <span><span style="color:var(--accent);">●</span> METEOR-M2 3</span>
@@ -3495,7 +3495,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button id="btnOrbitPlayPause" class="btn-refresh" onclick="toggleOrbitPlayPause()" style="min-width:80px;">再生</button>
                 <button id="btnPrevPass" class="btn-refresh" onclick="skipToPass(-1)" title="前のパスへ">&lt;&lt; 前パス</button>
                 <button id="btnNextPass" class="btn-refresh" onclick="skipToPass(1)" title="次のパスへ">次パス &gt;&gt;</button>
-                <button id="btnLiveTime" class="btn-refresh" onclick="resetToLiveTime()" style="border-color:var(--status-ok); color:var(--status-ok);">LIVE</button>
+                <button id="btnLiveTime" class="btn-refresh" onclick="resetToLiveTime()" style="border-color:var(--status-ok); color:var(--status-ok);">現在時刻 (LIVE)</button>
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:0.8rem; color:var(--text-muted);">速度:</span>
@@ -3524,13 +3524,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="galacticModal" class="workspace-panel">
       <div class="workspace-panel-header">
         <div>
-          <span class="workspace-panel-code">03 / GALACTIC</span>
+          <span class="workspace-panel-code">03 / 銀河 21cm</span>
           <span class="workspace-panel-title">
             <span class="modal-title-long">天の川銀河 21cm ドリフトスキャン ＆ 水素線分光モニター</span>
             <span class="modal-title-short">銀河観測モニター</span>
           </span>
         </div>
-        <button type="button" class="btn-refresh" onclick="closeGalacticModal()">CONSOLE</button>
+        <button type="button" class="btn-refresh" onclick="closeGalacticModal()">観測一覧</button>
       </div>
       <div>
         <!-- Error Banner (Shown on fetch error) -->
@@ -3546,7 +3546,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="galactic-panel-card" style="margin-bottom: 16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-              <span class="mono-num" style="font-weight:600; color:var(--accent); font-size:0.95rem;">BEAM: 北東ベランダ固定 (Az 30.0°, El 35.0°)</span>
+              <span class="mono-num" style="font-weight:600; color:var(--accent); font-size:0.95rem;">ビーム: 北東ベランダ固定 (Az 30.0°, El 35.0°)</span>
               <span id="galacticRegionBadge" class="mono-num" style="padding:2px 8px; border-radius:2px; font-size:0.74rem; font-weight:500; background:var(--bg-surface); border:1px solid var(--border-strong); color:var(--text-primary);">判定中</span>
             </div>
             <div class="mono-num" style="font-size:0.8rem; color:var(--text-muted);">
@@ -3564,7 +3564,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
           <!-- Pass Gating Policy Notice -->
           <div class="galactic-subbox" style="margin-top:12px; padding:8px 12px; font-size:0.78rem; color:var(--text-secondary); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <span><strong style="color:var(--text-primary); font-weight:600;">PASS GATING:</strong> METEOR ≥ 25.0° / ISS・CubeSat ≥ 20.0° のみ最優先プリエンプション（低仰角パス時は銀河観測を継続）</span>
+            <span><strong style="color:var(--text-primary); font-weight:600;">優先制御 (PASS GATING):</strong> METEOR ≥ 25.0° / ISS・CubeSat ≥ 20.0° のみ最優先プリエンプション（低仰角パス時は銀河観測を継続）</span>
             <span class="mono-num" style="color:var(--status-ok); font-weight:500;">SDRアイドル時 周波数スイッチング自律積算</span>
           </div>
         </div>
@@ -3707,15 +3707,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
               <div style="display:flex; flex-direction:column; gap:8px; line-height:1.45; color:var(--text-secondary); font-size:0.74rem;">
                 <div class="galactic-scale-row">
-                  <span class="galactic-scale-label" style="color:var(--status-err);">[BUBBLE] 人類の電波バブル (~100光年):</span>
+                  <span class="galactic-scale-label" style="color:var(--status-err);">[電波圏] 人類の電波バブル (~100光年):</span>
                   <span>1900年以降に人類が放った電波の到達限界球。直径10万光年の銀河では <strong style="color:var(--text-primary); font-weight:500;">1画素未満（微小な点）</strong> にすぎません。</span>
                 </div>
                 <div class="galactic-scale-row">
-                  <span class="galactic-scale-label" style="color:var(--accent);">[PERSEUS] ペルセウス腕 (~6,200光年):</span>
+                  <span class="galactic-scale-label" style="color:var(--accent);">[ペルセウス腕] ペルセウス腕 (~6,200光年):</span>
                   <span>今受信している電波は、<strong style="color:var(--text-primary); font-weight:500;">古代縄文・メソポタミア黎明期</strong> に放たれ、光速で宇宙を旅してベランダに届いた光です。</span>
                 </div>
                 <div class="galactic-scale-row">
-                  <span class="galactic-scale-label" style="color:var(--status-warn);">[ORBIT] 太陽系公転周期 (2.3億年):</span>
+                  <span class="galactic-scale-label" style="color:var(--status-warn);">[公転周期] 太陽系公転周期 (2.3億年):</span>
                   <span>太陽系が銀河を1周する時間。前回太陽系がこの位置にいた頃、地球は三畳紀（初期恐竜の時代）でした。</span>
                 </div>
               </div>
@@ -3848,14 +3848,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="backupModal" class="workspace-panel">
       <div class="workspace-panel-header">
         <div>
-          <span class="workspace-panel-code">04 / ARCHIVE</span>
+          <span class="workspace-panel-code">04 / バックアップ</span>
           <span class="workspace-panel-title">S3 フルバックアップ ＆ ディザスタリカバリ</span>
         </div>
-        <button type="button" class="btn-refresh" onclick="closeBackupModal()">CONSOLE</button>
+        <button type="button" class="btn-refresh" onclick="closeBackupModal()">観測一覧</button>
       </div>
       <div style="font-size: 0.88rem; line-height: 1.65;">
         <div style="background: var(--bg-inset); border: 1px solid var(--border-hairline); border-radius: 2px; padding: 16px; margin-bottom: 16px;">
-          <div style="font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.02em;">GARAGE S3 STORAGE STATS</div>
+          <div style="font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.02em;">Garage S3 ストレージ状況</div>
           <div id="backupStatsLoading" style="color: var(--text-secondary);">ストレージ情報を取得中</div>
           <div id="backupStatsContent" style="display: none;">
             <div class="backup-stats-grid mono-num">
@@ -3872,21 +3872,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="archive-actions-grid">
           <div class="archive-action-box">
             <div>
-              <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600;">01 / FULL BACKUP DOWNLOAD</h4>
+              <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600;">01 / フルバックアップ取得</h4>
               <p style="color: var(--text-secondary); font-size: 0.82rem; margin: 0;">
                 Garage S3 内の全成果物（画像・JSON・スペクトログラム）および生 IQ / WAV 音声を単一の <code>.tar</code> アーカイブとしてストリーミング配信します。ダウンロード完了後、外部ストレージへ保管してください。
               </p>
             </div>
             <div>
               <a id="btnDownloadBackup" href="/api/backup/download" class="action-btn" style="display: inline-flex; background: var(--status-ok); border-color: var(--status-ok); color: var(--bg-inset); padding: 8px 16px; font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; text-decoration: none; border-radius: 2px; cursor: pointer;">
-                DOWNLOAD BACKUP (.TAR)
+                バックアップをダウンロード (.tar)
               </a>
             </div>
           </div>
 
           <div class="archive-action-box">
             <div>
-              <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600;">02 / RESTORE FROM ARCHIVE</h4>
+              <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600;">02 / アーカイブから復元</h4>
               <p style="color: var(--text-secondary); font-size: 0.82rem; margin: 0;">
                 バックアップ <code>.tar</code> ファイルを選択すると、Garage S3 へ全データを展開・復元します。数 GB 以上の巨大バックアップ時は、ブラウザタイムアウトを防ぐため同梱の CLI ツール（<code>scripts/restore_backup.py</code>）の利用を推奨します。
               </p>
@@ -3894,7 +3894,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div>
               <div class="restore-input-row">
                 <input type="file" id="restoreFileInput" accept=".tar,.tar.gz" style="color: var(--text-secondary); font-size: 0.82rem; max-width: 100%;">
-                <button id="btnExecuteRestore" class="action-btn" style="background: var(--bg-surface); color: var(--accent); border: 1px solid var(--accent); padding: 8px 16px; font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; border-radius: 2px; cursor: pointer; white-space: nowrap;" onclick="executeRestore()">EXECUTE RESTORE</button>
+                <button id="btnExecuteRestore" class="action-btn" style="background: var(--bg-surface); color: var(--accent); border: 1px solid var(--accent); padding: 8px 16px; font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; border-radius: 2px; cursor: pointer; white-space: nowrap;" onclick="executeRestore()">復元を実行</button>
               </div>
               <div id="restoreStatus" class="mono-num" style="font-size: 0.8rem; color: var(--accent); min-height: 20px; margin-top: 8px;"></div>
             </div>
@@ -3909,20 +3909,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="workspace-panel">
         <div class="workspace-panel-header">
           <div>
-            <span class="workspace-panel-code">ONT-05</span>
+            <span class="workspace-panel-code">05 / 分析・診断</span>
             <span class="workspace-panel-title">観測オントロジー ＆ セマンティック診断ダッシュボード</span>
           </div>
-          <button type="button" class="btn-refresh" onclick="analyticsLoadReport(true)">REFRESH</button>
+          <button type="button" class="btn-refresh" onclick="analyticsLoadReport(true)">更新</button>
         </div>
 
         <div id="analyticsStatusBar" class="analytics-status-bar">
-          <span>STATUS: 待機中...</span>
+          <span>状態: 待機中...</span>
           <span class="mono-num">S3: analytics/latest_report.json</span>
         </div>
 
         <div class="analytics-card" style="margin-bottom: 14px;">
           <div class="analytics-card-title">
-            <span>PRIORITY TUNING SIGNALS (ont_tuning_signals)</span>
+            <span>優先チューニングシグナル (ont_tuning_signals)</span>
             <span class="analytics-card-sub">自動検知された改善シグナル</span>
           </div>
           <div id="analyticsSignalsContainer">
@@ -3933,7 +3933,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="analytics-grid-2">
           <div class="analytics-card">
             <div class="analytics-card-title">
-              <span>SATELLITE EFFECTIVE QOR (%)</span>
+              <span>衛星別 有効復調率 (QoR %)</span>
               <span class="analytics-card-sub">GOLDEN・unknown 除外</span>
             </div>
             <canvas id="analyticsQorCanvas" width="520" height="240" class="analytics-canvas"></canvas>
@@ -3941,7 +3941,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           <div class="analytics-card">
             <div class="analytics-card-title">
-              <span>FAILURE CAUSE DIAGNOSIS</span>
+              <span>失敗原因の内訳</span>
               <span class="analytics-card-sub">ont_pass_diagnosis 原因内訳</span>
             </div>
             <canvas id="analyticsCauseCanvas" width="520" height="240" class="analytics-canvas"></canvas>
@@ -3949,7 +3949,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           <div class="analytics-card">
             <div class="analytics-card-title">
-              <span>GALACTIC 21CM DAILY SNR (dB)</span>
+              <span>銀河 21cm 日次 SNR 推移 (dB)</span>
               <span class="analytics-card-sub">直近14日 日次平均推移</span>
             </div>
             <canvas id="analyticsGalacticCanvas" width="520" height="240" class="analytics-canvas"></canvas>
@@ -3957,7 +3957,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           <div class="analytics-card">
             <div class="analytics-card-title">
-              <span>TUNING REVISION IMPACT (QoR Δpt)</span>
+              <span>チューニング前後比較 (QoR Δpt)</span>
               <span class="analytics-card-sub">直近PR前後7日比較</span>
             </div>
             <canvas id="analyticsRevisionCanvas" width="520" height="240" class="analytics-canvas"></canvas>
@@ -3967,7 +3967,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="analytics-grid-2">
           <div class="analytics-card">
             <div class="analytics-card-title">
-              <span>ML INPAINT QUALITY &amp; FEEDBACK</span>
+              <span>AI画像補完の品質・フィードバック</span>
               <span class="analytics-card-sub">sem_inpaint_quality</span>
             </div>
             <div id="analyticsInpaintContainer" style="overflow-x: auto;">
@@ -3977,7 +3977,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           <div class="analytics-card">
             <div class="analytics-card-title">
-              <span>TUNABLE ANOMALIES</span>
+              <span>改善可能な異常パス</span>
               <span class="analytics-card-sub">is_tunable = true</span>
             </div>
             <div id="analyticsAnomaliesContainer" style="overflow-x: auto;">
@@ -3988,15 +3988,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div class="analytics-card" style="margin-top: 14px;">
           <div class="analytics-card-title">
-            <span>DBT DATA LINEAGE (analytics/dbt_observatory)</span>
+            <span>dbt データリネージュ (analytics/dbt_observatory)</span>
             <span class="analytics-card-sub">ノードクリックで上流・下流をハイライト</span>
           </div>
           <div class="analytics-lineage-legend">
-            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#5c9ead;"></span>SOURCES</span>
-            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#7a9e7e;"></span>STAGING</span>
-            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#d4a039;"></span>MARTS</span>
-            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#e07a38;"></span>SEMANTIC</span>
-            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#c95d63;"></span>ONTOLOGY</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#5c9ead;"></span>SOURCES (入力)</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#7a9e7e;"></span>STAGING (整形)</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#d4a039;"></span>MARTS (集計)</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#e07a38;"></span>SEMANTIC (指標)</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#c95d63;"></span>ONTOLOGY (診断)</span>
           </div>
           <div id="analyticsLineageDetail" class="analytics-lineage-detail">ノードをクリックすると上流・下流の依存関係と詳細を表示します。</div>
           <div class="analytics-lineage-wrap">
@@ -5012,13 +5012,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (overlayRadioEl) {
         if (lockCount > 0) {
           overlayRadioEl.style.color = 'var(--status-ok)';
-          overlayRadioEl.textContent = `LOCKED: ${activeSatName} (仰角 ${Math.round(activeEl)}° / 開口窓内)`;
+          overlayRadioEl.textContent = `受信中 (LOCKED): ${activeSatName} (仰角 ${Math.round(activeEl)}° / 開口窓内)`;
         } else if (blockedCount > 0) {
           overlayRadioEl.style.color = 'var(--status-err)';
-          overlayRadioEl.textContent = `BLOCKED: ${blockedSatName} (仰角 ${Math.round(blockedEl)}° / 建物遮蔽)`;
+          overlayRadioEl.textContent = `遮蔽 (BLOCKED): ${blockedSatName} (仰角 ${Math.round(blockedEl)}° / 建物遮蔽)`;
         } else {
           overlayRadioEl.style.color = 'var(--accent)';
-          overlayRadioEl.textContent = 'BEAM: IDLE (電波伝搬監視中)';
+          overlayRadioEl.textContent = 'ビーム: 待機中 (電波伝搬監視中)';
         }
       }
 
@@ -5118,7 +5118,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       const listEl = document.getElementById('futurePassesList');
       if (!listEl) return;
-      listEl.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-secondary); font-family:var(--font-mono); font-size:0.8rem;">CALCULATING 24H SGP4 PASSES</div>';
+      listEl.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-secondary); font-family:var(--font-mono); font-size:0.8rem;">今後24時間の SGP4 通過予測を計算中...</div>';
       if (modal) modal.classList.add('active');
       if (btn) btn.classList.add('active');
 
@@ -6212,7 +6212,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const panel = document.getElementById('statsDetailsPanel');
       const btn = document.getElementById('statsToggleBtn');
       if (panel) panel.classList.toggle('open', statsDetailsOpen);
-      if (btn) btn.textContent = statsDetailsOpen ? 'DETAILS -' : 'DETAILS +';
+      if (btn) btn.textContent = statsDetailsOpen ? '詳細 -' : '詳細 +';
     }
 
     async function statsLoadSummary() {
@@ -7554,7 +7554,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         return;
       }
       if (statusBar) {
-        statusBar.innerHTML = '<span>STATUS: 診断レポートを取得中...</span><span class="mono-num">S3: analytics/latest_report.json</span>';
+        statusBar.innerHTML = '<span>状態: 診断レポートを取得中...</span><span class="mono-num">S3: analytics/latest_report.json</span>';
       }
       try {
         const resp = await fetch('/api/analytics/report', { cache: 'no-store' });
@@ -7563,7 +7563,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         analyticsRenderAll(data);
       } catch (err) {
         if (statusBar) {
-          statusBar.innerHTML = `<span style="color:var(--status-err);">STATUS: 取得エラー (${analyticsEscapeHtml(err.message)})</span>`;
+          statusBar.innerHTML = `<span style="color:var(--status-err);">状態: 取得エラー (${analyticsEscapeHtml(err.message)})</span>`;
         }
       }
     }
@@ -7573,7 +7573,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (!data || !data.available) {
         const msg = (data && data.error) ? data.error : 'analytics/latest_report.json が未生成です';
         if (statusBar) {
-          statusBar.innerHTML = `<span style="color:var(--accent);">STATUS: レポート未配信 (${analyticsEscapeHtml(msg)})</span><span class="mono-num">run generate_review_context.py --publish-s3</span>`;
+          statusBar.innerHTML = `<span style="color:var(--accent);">状態: レポート未配信 (${analyticsEscapeHtml(msg)})</span><span class="mono-num">run generate_review_context.py --publish-s3</span>`;
         }
         const sigBox = document.getElementById('analyticsSignalsContainer');
         if (sigBox) {
@@ -7584,7 +7584,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       if (statusBar) {
         const gen = data.generated_at_utc ? data.generated_at_utc.replace('T', ' ').slice(0, 19) + ' UTC' : '-';
-        statusBar.innerHTML = `<span>STATUS: READY // WINDOW: <strong>${analyticsEscapeHtml(data.window_label || '7d')}</strong> (${analyticsEscapeHtml(data.window_days || 7)}日)</span><span class="mono-num">GENERATED: ${analyticsEscapeHtml(gen)}</span>`;
+        statusBar.innerHTML = `<span>状態: 取得済み // 対象期間: <strong>${analyticsEscapeHtml(data.window_label || '7d')}</strong> (${analyticsEscapeHtml(data.window_days || 7)}日)</span><span class="mono-num">生成時刻: ${analyticsEscapeHtml(gen)}</span>`;
       }
 
       analyticsRenderSignals(data.tuning_signals || []);
@@ -7611,7 +7611,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div>
             <div style="font-family:var(--font-mono); font-weight:600; color:var(--text-primary);">${analyticsEscapeHtml(s.signal_id)} // ${analyticsEscapeHtml(s.target_entity)}</div>
             <div style="color:var(--text-secondary); margin-top:2px;">${analyticsEscapeHtml(s.evidence_summary)}</div>
-            <div style="color:var(--text-muted); font-size:0.74rem; margin-top:2px;">ACTION: ${analyticsEscapeHtml(s.recommended_action)}</div>
+            <div style="color:var(--text-muted); font-size:0.74rem; margin-top:2px;">推奨アクション: ${analyticsEscapeHtml(s.recommended_action)}</div>
           </div>
         </div>`;
       }).join('');
@@ -7640,7 +7640,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const setup = analyticsSetupCanvas('analyticsQorCanvas');
       if (!setup) return;
       const { ctx, w, h } = setup;
-      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'NO QOR DATA'); return; }
+      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'QoR データなし'); return; }
 
       const padL = 44, padR = 16, padT = 22, padB = 42;
       const cw = w - padL - padR;
@@ -7684,7 +7684,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const setup = analyticsSetupCanvas('analyticsCauseCanvas');
       if (!setup) return;
       const { ctx, w, h } = setup;
-      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'NO DIAGNOSIS DATA'); return; }
+      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, '診断データなし'); return; }
 
       const maxVal = Math.max(1, ...rows.map(r => Number(r.pass_count || 0)));
       const padL = 160, padR = 46, padT = 18, padB = 18;
@@ -7720,7 +7720,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const setup = analyticsSetupCanvas('analyticsGalacticCanvas');
       if (!setup) return;
       const { ctx, w, h } = setup;
-      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, 'NO 21CM TREND DATA'); return; }
+      if (!rows.length) { analyticsDrawEmpty(ctx, w, h, '21cm 推移データなし'); return; }
 
       const dates = [...new Set(rows.map(r => r.scan_date_utc))].sort();
       const skyColors = {
@@ -7771,11 +7771,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         });
         ctx.stroke();
 
+        const skyLegendLabels = {
+          WARM_GALACTIC_PLANE: '銀河面 (WARM)',
+          INTERMEDIATE: '中銀緯 (MID)',
+          COLD_HALO: 'ハロー (COLD)',
+        };
         ctx.fillStyle = color;
         ctx.font = '10px monospace';
         ctx.textAlign = 'left';
-        ctx.fillText(sky.replace('WARM_GALACTIC_', 'GAL_'), legX, 14);
-        legX += 118;
+        ctx.fillText(skyLegendLabels[sky] || sky, legX, 14);
+        legX += 130;
       });
 
       if (dates.length > 0) {
@@ -7795,7 +7800,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (!setup) return;
       const { ctx, w, h } = setup;
       const items = rows.filter(r => r.qor_delta_pt != null).slice(0, 7);
-      if (!items.length) { analyticsDrawEmpty(ctx, w, h, 'NO REVISION IMPACT DATA'); return; }
+      if (!items.length) { analyticsDrawEmpty(ctx, w, h, '前後比較データなし'); return; }
 
       const maxAbs = Math.max(10, ...items.map(r => Math.abs(Number(r.qor_delta_pt || 0))));
       const padL = 175, padR = 54, padT = 18, padB = 18;
@@ -7843,7 +7848,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <td>${analyticsEscapeHtml(r.large_gap_rate_pct)}%</td>
       </tr>`).join('');
       el.innerHTML = `<table class="analytics-table">
-        <thead><tr><th>Model</th><th>Runs</th><th>Tier A/B/C</th><th>Ch Drop</th><th>&gt;Patch</th></tr></thead>
+        <thead><tr><th>モデル</th><th>実行数</th><th>評価 A/B/C</th><th>Ch欠損率</th><th>大欠損率 (&gt;Patch)</th></tr></thead>
         <tbody>${trs}</tbody>
       </table>`;
     }
@@ -7862,7 +7867,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <td>${r.actual_tca_drift_seconds != null ? analyticsEscapeHtml(r.actual_tca_drift_seconds) + ' s' : '-'}</td>
       </tr>`).join('');
       el.innerHTML = `<table class="analytics-table">
-        <thead><tr><th>Pass ID</th><th>Cause</th><th>SNR</th><th>TCA Drift</th></tr></thead>
+        <thead><tr><th>パス ID</th><th>原因</th><th>SNR</th><th>TCA ズレ (Drift)</th></tr></thead>
         <tbody>${trs}</tbody>
       </table>`;
     }
@@ -7893,11 +7898,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         ontology: '#c95d63'
       };
       const layerLabels = {
-        source: 'SOURCES',
-        staging: 'STAGING',
-        marts: 'MARTS',
-        semantic: 'SEMANTIC',
-        ontology: 'ONTOLOGY'
+        source: 'SOURCES (入力)',
+        staging: 'STAGING (整形)',
+        marts: 'MARTS (集計)',
+        semantic: 'SEMANTIC (指標)',
+        ontology: 'ONTOLOGY (診断)'
       };
 
       const grouped = {};
@@ -9116,12 +9121,12 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
               <button type="button" class="geek-tooltip-close" aria-label="解説を閉じる" onclick="closeAllGeekTooltips()">&times;</button>
             </div>
             <div class="geek-tooltip-section">
-              <div class="geek-tooltip-tag">PHYSICAL / MATHEMATICAL DEFINITION</div>
+              <div class="geek-tooltip-tag">物理・数学的定義</div>
               <div class="geek-tooltip-formula">{formula_esc}</div>
               <div class="geek-tooltip-body">{theory_esc}</div>
             </div>
             <div class="geek-tooltip-section">
-              <div class="geek-tooltip-tag">OBSERVATION NOTE</div>
+              <div class="geek-tooltip-tag">ベランダ観測メモ</div>
               <div class="geek-tooltip-body">{balcony_esc}</div>
             </div>
           </div>
@@ -9155,7 +9160,7 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
     norad_id = metrics.get("norad_id")
     norad_str = f"#{norad_id}" if norad_id else "-"
     orbit_type = metrics.get("orbit_type", "LEO")
-    item_norad = make_item("norad", "04", "NORAD / ORBIT", norad_str, f"({orbit_type})", "telemetry-col-left")
+    item_norad = make_item("norad", "04", "NORAD / 軌道", norad_str, f"({orbit_type})", "telemetry-col-left")
 
     # 5. Slant Range
     min_r = metrics.get("min_range_km", 0.0)
@@ -9179,13 +9184,13 @@ def render_telemetry_grid_html(metrics: dict, packets_count: int, sat_type: str,
 
     # 9. Decode Stats
     stats_main = f"{packets_count} パケット" if sat_type == "SpaceStation" else f"{packets_count} フレーム"
-    stats_sub = "CRC-OK" if packets_count > 0 else "NO SIGNAL"
+    stats_sub = "CRC正常" if packets_count > 0 else "信号なし"
     item_decode = make_item("decode", "09", "DECODE STATS (復号)", stats_main, f"({stats_sub})", "telemetry-col-right")
 
     return f"""
     <div class="telemetry-panel">
       <div class="telemetry-panel-header">
-        <span>TELEMETRY &amp; ORBITAL MECHANICS</span>
+        <span>テレメトリ ＆ 軌道諸元 (Telemetry &amp; Orbital)</span>
         <span class="telemetry-panel-hint">ⓘ で物理解説を表示</span>
       </div>
       <div class="telemetry-grid">
@@ -9451,7 +9456,7 @@ def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
             lines_html.append(line)
 
         content_html = hud_grid_html + "".join(lines_html)
-        title_text = f"TELEMETRY PREVIEW ({len(packet_items)} フレーム中 直近 {len(recent_pkts)} 件)"
+        title_text = f"テレメトリプレビュー ({len(packet_items)} フレーム中 直近 {len(recent_pkts)} 件)"
     else:
         # APRS / パケット通信
         lines_html = []
@@ -9477,7 +9482,7 @@ def render_packet_preview_html(packet_items: list, sat_type: str) -> str:
             lines_html.append(line)
 
         content_html = "".join(lines_html)
-        title_text = f"PACKET PREVIEW ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)"
+        title_text = f"パケットプレビュー ({len(packet_items)} 件中 直近 {len(recent_pkts)} 件)"
 
     return f"""
     <div class="packet-preview-container">
@@ -9536,15 +9541,15 @@ def render_inpainted_panel_html(p: dict) -> str:
 
     tab_defs = []
     if can_compare:
-        tab_defs.append(("compare", "COMPARE", avhrr_url, "AI 補完前後比較"))
+        tab_defs.append(("compare", "比較", avhrr_url, "AI 補完前後比較"))
     if avhrr_url:
         tab_defs.append(("ai221", "AI 221", avhrr_url, "AI 補完 AVHRR 221"))
     if msu124_url:
         tab_defs.append(("ai124", "AI 124", msu124_url, "AI 補完 MSU-MR 124"))
     if raw_url:
-        tab_defs.append(("raw", "RAW", raw_url, "補完前 Raw AVHRR 221"))
+        tab_defs.append(("raw", "補完前 (RAW)", raw_url, "補完前 Raw AVHRR 221"))
     if mask_url:
-        tab_defs.append(("mask", "MASK", mask_url, "実測・AI補完領域マスク"))
+        tab_defs.append(("mask", "マスク (MASK)", mask_url, "実測・AI補完領域マスク"))
 
     tabs_html = "".join(
         f'<button type="button" class="inpaint-tab-btn{" active" if m_id == default_mode else ""}" '
@@ -9584,13 +9589,13 @@ def render_inpainted_panel_html(p: dict) -> str:
             <img class="inpaint-img-base" loading="lazy" src="{html.escape(avhrr_url)}" alt="AI 補完 AVHRR 221">
             <img class="inpaint-img-before" loading="lazy" src="{html.escape(raw_url)}" alt="補完前 Raw AVHRR 221">
             <div class="inpaint-divider"></div>
-            <span class="inpaint-corner-label inpaint-corner-left">RAW OBSERVED</span>
-            <span class="inpaint-corner-label inpaint-corner-right">AI RESTORED</span>
+            <span class="inpaint-corner-label inpaint-corner-left">補完前 (生画像)</span>
+            <span class="inpaint-corner-label inpaint-corner-right">AI補完後</span>
           </div>
           <div class="inpaint-slider-bar">
-            <span>RAW</span>
+            <span>補完前</span>
             <input type="range" class="inpaint-slider-range" min="0" max="100" value="50" oninput="inpaintUpdateSlider(this)" aria-label="補完前後比較スライダー">
-            <span>AI</span>
+            <span>AI補完</span>
             <span class="inpaint-slider-val">50%</span>
           </div>
         </div>
@@ -9600,7 +9605,7 @@ def render_inpainted_panel_html(p: dict) -> str:
     single_html = f"""
       <div class="inpaint-single-wrap" data-inpaint-view="single" style="display:{single_display};">
         <img class="inpaint-single-img" loading="lazy" src="{html.escape(default_single_url)}" alt="AI 補完画像" onclick="openImageModal(this.src)">
-        <span class="spectrogram-hint">ZOOM</span>
+        <span class="spectrogram-hint">拡大</span>
       </div>
     """
 
@@ -9614,7 +9619,7 @@ def render_inpainted_panel_html(p: dict) -> str:
         </div>
         <div class="inpaint-tabs">
           {tabs_html}
-          <button type="button" class="inpaint-zoom-btn" onclick="inpaintZoomCurrent(this)">ZOOM</button>
+          <button type="button" class="inpaint-zoom-btn" onclick="inpaintZoomCurrent(this)">拡大</button>
         </div>
       </div>
       <div class="inpaint-stage">
@@ -9622,10 +9627,10 @@ def render_inpainted_panel_html(p: dict) -> str:
         {single_html}
       </div>
       <div class="inpaint-meta-strip">
-        <span class="inpaint-meta-cell">VALID: <strong>{valid_str}</strong></span>
-        <span class="inpaint-meta-cell">FILLED: <strong>{filled_str}</strong></span>
-        <span class="inpaint-meta-cell">MAX GAP: <strong>{gap_str}</strong></span>
-        <span class="inpaint-meta-cell">REG: <strong>{reg_esc}</strong></span>
+        <span class="inpaint-meta-cell">有効画素 (VALID): <strong>{valid_str}</strong></span>
+        <span class="inpaint-meta-cell">補完率 (FILLED): <strong>{filled_str}</strong></span>
+        <span class="inpaint-meta-cell">最大欠損 (MAX GAP): <strong>{gap_str}</strong></span>
+        <span class="inpaint-meta-cell">位置合わせ (REG): <strong>{reg_esc}</strong></span>
       </div>
       <div class="inpaint-note">{note_esc}</div>
     </div>
@@ -9639,7 +9644,7 @@ def render_card_html(p: dict) -> str:
         spectrogram_html = f"""
         <div class="spectrogram-container">
           <img class="spectrogram-img" loading="lazy" src="{img_url}" alt="Spectrogram" onclick="openImageModal('{img_url}')">
-          <span class="spectrogram-hint">ZOOM</span>
+          <span class="spectrogram-hint">拡大</span>
         </div>
         """
 
@@ -9655,7 +9660,7 @@ def render_card_html(p: dict) -> str:
                 [IMG] 復調気象画像: {fname}
               </div>
               <img class="spectrogram-img" loading="lazy" src="{decoded_img_url}" alt="{fname}" onclick="openImageModal('{decoded_img_url}')">
-              <span class="spectrogram-hint">ZOOM</span>
+              <span class="spectrogram-hint">拡大</span>
             </div>
             """
 
@@ -9684,7 +9689,7 @@ def render_card_html(p: dict) -> str:
         pretty_summary = json.dumps(summary, indent=2, ensure_ascii=False)
         summary_accordion = f"""
         <details class="data-accordion">
-          <summary>SUMMARY.JSON (解析サマリ)</summary>
+          <summary>解析サマリ (summary.json)</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>{pretty_summary}</code></pre>
           </div>
@@ -9699,9 +9704,9 @@ def render_card_html(p: dict) -> str:
         packet_items = packets_data.get("packets") or packets_data.get("frames", [])
     if packet_items:
         pretty_packets = "\n\n".join([json.dumps(item, indent=2, ensure_ascii=False) for item in packet_items])
-        accordion_title = f"PACKETS ({len(packet_items)} 件)"
+        accordion_title = f"パケット ({len(packet_items)} 件)"
         if "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
-            accordion_title = f"TELEMETRY FRAMES ({len(packet_items)} 件)"
+            accordion_title = f"テレメトリフレーム ({len(packet_items)} 件)"
         open_attr = " open" if is_success else ""
         packets_accordion = f"""
         <details class="data-accordion"{open_attr}>
@@ -9714,7 +9719,7 @@ def render_card_html(p: dict) -> str:
     elif "ISS" in sat_upper:
         packets_accordion = f"""
         <details class="data-accordion">
-          <summary>APRS PACKETS (0 件)</summary>
+          <summary>APRS パケット (0 件)</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>パケットは検出されませんでした (0 packets)</code></pre>
           </div>
@@ -9723,7 +9728,7 @@ def render_card_html(p: dict) -> str:
     elif "FUNCUBE" in sat_upper or "AO-73" in sat_upper:
         packets_accordion = f"""
         <details class="data-accordion">
-          <summary>BPSK TELEMETRY FRAMES (0 件)</summary>
+          <summary>BPSK テレメトリフレーム (0 件)</summary>
           <div class="accordion-content">
             <pre class="code-block"><code>テレメトリフレームは検出されませんでした (0 frames)</code></pre>
           </div>
@@ -9735,9 +9740,9 @@ def render_card_html(p: dict) -> str:
         dl_url = f"/download?key={urllib.parse.quote(fkey)}"
 
         if fname.endswith(".png"):
-            view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">VIEW</button>"""
+            view_btn = f"""<button class="action-btn btn-view" onclick="openImageModal('/view?key={urllib.parse.quote(fkey)}')">表示</button>"""
         elif fname.endswith(".json") or fname.endswith(".txt"):
-            view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">INSPECT</button>"""
+            view_btn = f"""<button class="action-btn btn-view" onclick="openTextModal('{fname}', '{fkey}')">内容確認</button>"""
         else:
             view_btn = ""
 
@@ -9750,7 +9755,7 @@ def render_card_html(p: dict) -> str:
           </div>
           <div class="file-actions">
             {view_btn}
-            <a class="action-btn btn-download" href="{dl_url}">SAVE</a>
+            <a class="action-btn btn-download" href="{dl_url}">保存</a>
           </div>
         </div>
         """
@@ -9759,7 +9764,7 @@ def render_card_html(p: dict) -> str:
     files_grid_html = "".join(file_rows)
     files_accordion = f"""
     <details class="data-accordion files-accordion">
-      <summary>FILES ({len(file_rows)} 件: プレビュー ＆ ダウンロード)</summary>
+      <summary>ファイル一覧 ({len(file_rows)} 件: プレビュー ＆ ダウンロード)</summary>
       <div class="accordion-content">
         <div class="files-grid">
           {files_grid_html}
@@ -9771,9 +9776,9 @@ def render_card_html(p: dict) -> str:
     has_data_val = "true" if is_success else "false"
 
     if is_success:
-        status_badge_html = '<span class="badge-status badge-status-success">DECODED</span>'
+        status_badge_html = '<span class="badge-status badge-status-success">復調成功</span>'
     else:
-        status_badge_html = '<span class="badge-status badge-status-failure">NO DATA (0)</span>'
+        status_badge_html = '<span class="badge-status badge-status-failure">データなし (0)</span>'
 
     # 地上局テレメトリ諸元 & パケットプレビューの生成
     metrics = resolve_pass_telemetry_metrics(p)
@@ -9798,7 +9803,7 @@ def render_card_html(p: dict) -> str:
     pass_date_str = base_jst.strftime("%Y-%m-%d")
     pass_date_label = f"{base_jst.year}年{base_jst.month}月{base_jst.day}日"
 
-    inpainted_badge_html = '<span class="badge-tag badge-inpainted">AI RESTORED</span>' if has_inpainted_images(p) else ""
+    inpainted_badge_html = '<span class="badge-tag badge-inpainted">AI補完済み</span>' if has_inpainted_images(p) else ""
 
     return f"""
     <div class="card" data-satellite-type="{sat_type}" data-satellite-name="{sat}" data-packets-count="{packets_count}" data-has-data="{has_data_val}" data-pass-date="{pass_date_str}" data-pass-date-label="{pass_date_label}">
@@ -9814,8 +9819,8 @@ def render_card_html(p: dict) -> str:
           <div class="pass-id">{p.get('pass_id', '')}</div>
         </div>
         <div class="sat-header-right">
-          <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">REPLAY</button>
-          <button class="btn-sm btn-grafana" onclick="openGrafanaPass({from_ms}, {to_ms})">GRAFANA</button>
+          <button class="btn-sm btn-replay" onclick="openReplayModal('{p.get('pass_id', '')}')">リプレイ</button>
+          <button class="btn-sm btn-grafana" onclick="openGrafanaPass({from_ms}, {to_ms})">Grafana</button>
           {status_badge_html}
         </div>
       </div>
