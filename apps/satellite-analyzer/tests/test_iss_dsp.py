@@ -414,5 +414,52 @@ def test_demodulate_preserves_packet_level_against_fm_noise_clicks(tmp_path):
     assert abs(freqs[peak_idx] - 1200.0) < 40.0
 
 
+def test_estimate_tca_drift_suppresses_low_snr_drift(tmp_path):
+    """2.0 <= SNR < 5.0 dB の低 SNR パスでは TCA ドリフトを None として誤推定を抑止し、min_tca_snr_db=2.0 明示時のみ返すこと"""
+    demod = ISSDspDemodulator()
+    sample_rate = 240000
+    duration_sec = 20
+    num_samples = sample_rate * duration_sec
+    t = np.arange(num_samples) / sample_rate
+
+    line1 = "1 25544U 98067A   26294.04791053  .00009575  00000+0  18188-3 0  9996"
+    line2 = "2 25544  51.6327  37.2623 0006759 289.5321  70.4938 15.48967427591263"
+    start_time = datetime(2026, 10, 20, 0, 54, 50, tzinfo=timezone.utc)
+
+    # チャネル LPF 通過後に SNR が約 3〜4 dB になるよう帯域内微弱信号を重畳
+    rng = np.random.default_rng(123)
+    noise = rng.normal(0.0, 2.0, num_samples) + 1j * rng.normal(0.0, 2.0, num_samples)
+    weak_env = np.exp(-0.5 * ((t - 10.0) / 2.0) ** 2) * 1.4
+    sig = noise + weak_env * np.exp(1j * 2.0 * np.pi * 1000.0 * t)
+
+    cu8 = np.empty(num_samples * 2, dtype=np.uint8)
+    cu8[0::2] = np.clip(np.round(127.5 + np.real(sig)), 0, 255).astype(np.uint8)
+    cu8[1::2] = np.clip(np.round(127.5 + np.imag(sig)), 0, 255).astype(np.uint8)
+    raw_path = str(tmp_path / "iss_low_snr.raw")
+    with open(raw_path, "wb") as f:
+        f.write(cu8.tobytes())
+
+    drift_default, snr_default = demod.estimate_tca_drift(
+        file_path=raw_path,
+        pass_start_utc=start_time,
+        tle_lines=(line1, line2),
+        center_freq_hz=145825000.0,
+        sample_rate=sample_rate,
+    )
+    assert snr_default is not None and 2.0 <= snr_default < 5.0
+    assert drift_default is None
+
+    drift_relaxed, snr_relaxed = demod.estimate_tca_drift(
+        file_path=raw_path,
+        pass_start_utc=start_time,
+        tle_lines=(line1, line2),
+        center_freq_hz=145825000.0,
+        sample_rate=sample_rate,
+        min_tca_snr_db=2.0,
+    )
+    assert snr_relaxed == snr_default
+    assert drift_relaxed is not None
+
+
 
 

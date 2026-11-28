@@ -3,6 +3,7 @@ select
     pr_label,
     deployed_at_utc,
     changed_scope,
+    affected_satellites,
     summary,
     (
         lower(coalesce(pr_label, '')) like '%tuning-review%'

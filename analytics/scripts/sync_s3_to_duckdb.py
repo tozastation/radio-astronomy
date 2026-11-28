@@ -325,9 +325,14 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
             pr_label VARCHAR,
             deployed_at_utc TIMESTAMPTZ,
             changed_scope VARCHAR,
+            affected_satellites VARCHAR,
             summary VARCHAR,
             synced_at_utc TIMESTAMPTZ
         )
+    """)
+    conn.execute("""
+        ALTER TABLE raw_config_revisions
+        ADD COLUMN IF NOT EXISTS affected_satellites VARCHAR
     """)
 
     conn.execute("""
@@ -480,6 +485,38 @@ def _classify_changed_scope(paths: list[str]) -> str:
     return "other"
 
 
+def _classify_affected_satellites(paths: list[str]) -> str:
+    """変更ファイル一覧から影響を受ける正規化衛星ID群を判定する。
+
+    - 受信全体や共通処理に影響する場合は ``"ALL"`` を返す。
+    - 衛星固有のデコーダ・DSP のみの場合はカンマ区切りの衛星 ID を返す。
+    - テスト・ドキュメント・ビューア・監視設定のみ等で衛星受信に影響しない場合は ``""`` を返す。
+    """
+    all_prefixes = (
+        "apps/satellite-tracker",
+        "infrastructure/apps/satellite-tracker",
+        "apps/satellite-analyzer/src/activities.py",
+        "apps/satellite-analyzer/src/tle_resolver.py",
+        "apps/satellite-analyzer/assets/satdump_tles.txt",
+        "apps/satellite-analyzer/src/main.py",
+        "apps/satellite-analyzer/Dockerfile",
+        "apps/satellite-analyzer/requirements.txt",
+    )
+    for p in paths:
+        if any(p.startswith(prefix) for prefix in all_prefixes):
+            return "ALL"
+
+    sats: set[str] = set()
+    for p in paths:
+        if p.endswith("/aprs_decoder.py") or p.endswith("/iss_dsp.py"):
+            sats.add("ISS")
+        elif p.endswith("/meteor_decoder.py"):
+            sats.update(("METEOR-M2-3", "METEOR-M2-4"))
+        elif p.endswith("/funcube_decoder.py"):
+            sats.add("FUNCUBE-1")
+    return ",".join(sorted(sats))
+
+
 def _extract_pr_label(subject: str) -> str | None:
     m = re.search(r"from\s+[^/\s]+/(\S+)", subject)
     if m:
@@ -499,6 +536,8 @@ def collect_git_revisions(repo_root: Path, limit: int = 100) -> list[dict[str, A
                 "-C",
                 str(repo_root),
                 "log",
+                "--first-parent",
+                "--diff-merges=first-parent",
                 f"-n{limit}",
                 "--name-only",
                 "--format=__COMMIT__%H%x1f%aI%x1f%s",
@@ -518,6 +557,7 @@ def collect_git_revisions(repo_root: Path, limit: int = 100) -> list[dict[str, A
         if current is None:
             return
         current["changed_scope"] = _classify_changed_scope(paths)
+        current["affected_satellites"] = _classify_affected_satellites(paths)
         revisions.append(current)
 
     for line in out.splitlines():
@@ -548,11 +588,12 @@ def sync_git_revisions(conn: duckdb.DuckDBPyConnection, repo_root: Path, limit: 
     if not revs:
         return 0
     now_utc = datetime.now(timezone.utc)
+    conn.execute("DELETE FROM raw_config_revisions")
     conn.executemany(
         """
         INSERT OR REPLACE INTO raw_config_revisions
-        (commit_sha, pr_label, deployed_at_utc, changed_scope, summary, synced_at_utc)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (commit_sha, pr_label, deployed_at_utc, changed_scope, affected_satellites, summary, synced_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -560,6 +601,7 @@ def sync_git_revisions(conn: duckdb.DuckDBPyConnection, repo_root: Path, limit: 
                 r["pr_label"],
                 r["deployed_at_utc"],
                 r["changed_scope"],
+                r["affected_satellites"],
                 r["summary"],
                 now_utc,
             )

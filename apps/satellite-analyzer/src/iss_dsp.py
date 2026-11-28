@@ -372,13 +372,15 @@ class ISSDspDemodulator:
         center_freq_hz: float = 145825000.0,
         sample_rate: int = 240000,
         band_cutoff_hz: Optional[float] = None,
+        min_tca_snr_db: float = 5.0,
     ) -> Tuple[Optional[float], Optional[float]]:
         """
         実録音データ (生 IQ または WAV) の時間ごとの受信電力エンベロープを解析し、
         実測 TCA と SGP4 予測 TCA のタイムドリフト Δt [秒] (t_actual - t_sgp4)
         および推定ピーク SNR [dB] を算出する。
         生 IQ 時は衛星種別に応じたチャネル LPF を通し、帯域外 RFI による誤検出を防止する。
-        信号が有意でない場合 (SNR < 2.0 dB 等) は (None, None) を返す。
+        信号が有意でない場合 (SNR < 2.0 dB) または TCA 推定に十分な SNR がない場合
+        (SNR < min_tca_snr_db、デフォルト 5.0 dB) はドリフトを None として返す。
         """
         if not os.path.exists(file_path) or tle_lines is None or pass_start_utc is None:
             return None, None
@@ -463,6 +465,9 @@ class ISSDspDemodulator:
         snr_db = 10.0 * math.log10(peak_power / noise_floor)
         if snr_db < 2.0:
             # 信号有意性なし (アンビエントノイズのみ)
+            return None, round(snr_db, 1)
+        if snr_db < min_tca_snr_db:
+            # 低 SNR 時は遮蔽や短時間 RFI で電力ピークが歪むため TCA ドリフトのみ無効化する
             return None, round(snr_db, 1)
 
         actual_peak_sec = float(np.argmax(smooth_power))

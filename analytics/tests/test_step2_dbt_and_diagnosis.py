@@ -218,3 +218,191 @@ def test_step2_dbt_build_and_diagnosis_e2e(tmp_path: Path) -> None:
     assert "METEOR-M2-3" in md
     assert "GOLDEN" in md
     assert json_out.exists()
+
+
+def _run_dbt_build(db_path: Path) -> None:
+    env = os.environ.copy()
+    env["OBSERVATORY_DUCKDB_PATH"] = str(db_path)
+    dbt_vars = rev_mod.load_dbt_vars_from_rules(ONTOLOGY_DIR)
+    proc = subprocess.run(
+        [
+            "dbt",
+            "build",
+            "--project-dir",
+            str(DBT_DIR),
+            "--profiles-dir",
+            str(DBT_DIR),
+            "--vars",
+            json.dumps(dbt_vars),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"dbt build failed:\n{proc.stdout}\n{proc.stderr}"
+
+
+def test_tle_drift_requires_min_valid_drift_samples(tmp_path: Path) -> None:
+    """total_passes >= 5 でも非 NULL の actual_tca_drift_seconds が 5 件未満なら TLE_OR_CLOCK_DRIFT が発火しないこと。"""
+    base_dt = datetime(2026, 11, 27, 12, 0, 0, tzinfo=timezone.utc)
+    objects: list[dict] = []
+    payloads: dict[str, dict] = {}
+
+    # 5 パスのうち 1 件だけ 35.0s のドリフト、残り 4 件は None (SNR 不足等)
+    for i in range(5):
+        dt = base_dt - timedelta(hours=i + 1)
+        _make_pass(
+            objects,
+            payloads,
+            "METEOR-M2 3",
+            "METEOR-M2 3",
+            f"METEOR-M2 3_{dt.strftime('%Y%m%d_%H%M%S')}",
+            dt,
+            packets=0,
+            snr_db=3.0,
+            tca_drift=35.0 if i == 0 else None,
+        )
+
+    db_path = tmp_path / "tle_guard.duckdb"
+    sync_mod.sync_all(db_path, ONTOLOGY_DIR, REPO_ROOT, FakeS3Client(objects, payloads))
+    _run_dbt_build(db_path)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        qor_row = conn.execute(
+            "SELECT total_passes, tca_drift_sample_count FROM sem_satellite_qor WHERE window_label = '7d' AND canonical_sat_id = 'METEOR-M2-3'"
+        ).fetchone()
+        assert qor_row == (5, 1)
+        tle_sigs = conn.execute(
+            "SELECT signal_id FROM ont_tuning_signals WHERE signal_id = 'TLE_OR_CLOCK_DRIFT'"
+        ).fetchall()
+        assert tle_sigs == []
+    finally:
+        conn.close()
+
+    # 有効計測を 5 件に増やした場合は発火すること
+    for i in range(5, 9):
+        dt = base_dt - timedelta(hours=i + 1)
+        _make_pass(
+            objects,
+            payloads,
+            "METEOR-M2 3",
+            "METEOR-M2 3",
+            f"METEOR-M2 3_{dt.strftime('%Y%m%d_%H%M%S')}",
+            dt,
+            packets=0,
+            snr_db=6.0,
+            tca_drift=25.0,
+        )
+    sync_mod.sync_all(db_path, ONTOLOGY_DIR, REPO_ROOT, FakeS3Client(objects, payloads))
+    _run_dbt_build(db_path)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        tle_sigs = conn.execute(
+            "SELECT target_entity, evidence_summary FROM ont_tuning_signals WHERE signal_id = 'TLE_OR_CLOCK_DRIFT'"
+        ).fetchall()
+        assert len(tle_sigs) == 1
+        assert tle_sigs[0][0] == "METEOR-M2-3"
+        assert "有効計測 n=5/9" in tle_sigs[0][1]
+    finally:
+        conn.close()
+
+
+def test_revision_regression_scope_and_min_before_success_guard(tmp_path: Path) -> None:
+    """affected_satellites スコープ外および success_count_before < 3 の小母数揺らぎでは REVISION_REGRESSION が発火しないこと。"""
+    deploy_dt = datetime(2026, 11, 25, 0, 0, 0, tzinfo=timezone.utc)
+    objects: list[dict] = []
+    payloads: dict[str, dict] = {}
+
+    # METEOR-M2-3: 適用前 5 件中 2 件成功 (QoR 40%, success_count_before=2 < 3)、適用後 5 件中 0 件成功 (QoR 0%)
+    for i in range(5):
+        dt_b = deploy_dt - timedelta(hours=i + 1)
+        _make_pass(
+            objects,
+            payloads,
+            "METEOR-M2 3",
+            "METEOR-M2 3",
+            f"METEOR-M2 3_b_{i}",
+            dt_b,
+            packets=5 if i < 2 else 0,
+            snr_db=10.0 if i < 2 else 1.5,
+            has_img=i < 2,
+        )
+        dt_a = deploy_dt + timedelta(hours=i + 1)
+        _make_pass(
+            objects,
+            payloads,
+            "METEOR-M2 3",
+            "METEOR-M2 3",
+            f"METEOR-M2 3_a_{i}",
+            dt_a,
+            packets=0,
+            snr_db=1.5,
+            has_img=False,
+        )
+
+    # FUNCUBE-1: 適用前 5 件中 3 件成功 (QoR 60%, success_count_before=3 >= 3)、適用後 5 件中 0 件成功 (QoR 0%)
+    for i in range(5):
+        dt_b = deploy_dt - timedelta(hours=i + 1)
+        _make_pass(
+            objects,
+            payloads,
+            "FUNCUBE-1",
+            "FUNCUBE-1",
+            f"FUNCUBE-1_b_{i}",
+            dt_b,
+            packets=3 if i < 3 else 0,
+            snr_db=9.0 if i < 3 else 1.0,
+            signal_type="BPSK 1200bps",
+        )
+        dt_a = deploy_dt + timedelta(hours=i + 1)
+        _make_pass(
+            objects,
+            payloads,
+            "FUNCUBE-1",
+            "FUNCUBE-1",
+            f"FUNCUBE-1_a_{i}",
+            dt_a,
+            packets=0,
+            snr_db=1.0,
+            signal_type="BPSK 1200bps",
+        )
+
+    db_path = tmp_path / "rev_guard.duckdb"
+    sync_mod.sync_all(db_path, ONTOLOGY_DIR, REPO_ROOT, FakeS3Client(objects, payloads))
+
+    # テスト用にリビジョンテーブルを差し替えてスコープと最小成功数ガードを検証
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute("DELETE FROM raw_config_revisions")
+        now_utc = datetime.now(timezone.utc)
+        conn.executemany(
+            "INSERT INTO raw_config_revisions VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("rev_iss_only", "chore/tuning-review-iss", deploy_dt, "analyzer", "ISS", "fix: iss only", now_utc),
+                ("rev_all_scope", "chore/tuning-review-all", deploy_dt, "tracker", "ALL", "fix: tracker gain", now_utc),
+            ],
+        )
+    finally:
+        conn.close()
+
+    _run_dbt_build(db_path)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        impacts = conn.execute(
+            "SELECT pr_label, canonical_sat_id, success_count_before FROM sem_revision_impact ORDER BY pr_label, canonical_sat_id"
+        ).fetchall()
+        # rev_iss_only は ISS 以外のパスに紐づかないこと
+        assert all(row[0] != "rev_iss_only" for row in impacts)
+
+        sigs = conn.execute(
+            "SELECT target_entity FROM ont_tuning_signals WHERE signal_id = 'REVISION_REGRESSION'"
+        ).fetchall()
+        targets = {r[0] for r in sigs}
+        # METEOR-M2-3 は success_count_before=2 (< 3) のため発火せず、FUNCUBE-1 のみ発火すること
+        assert "FUNCUBE-1 (chore/tuning-review-all)" in targets
+        assert "METEOR-M2-3 (chore/tuning-review-all)" not in targets
+    finally:
+        conn.close()

@@ -18,6 +18,7 @@ vars:
   seam_jump_l1_degraded: 0.035
   rf_decoder_min_count: 2
   min_samples_per_window: 5
+  min_before_success_count: 3
   qor_drop_pt_threshold: -15.0
   large_gap_rate_pct_threshold: 30.0
   single_band_dropout_rate_pct_threshold: 25.0

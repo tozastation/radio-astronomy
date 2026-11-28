@@ -51,6 +51,7 @@ def load_dbt_vars_from_rules(ontology_dir: Path) -> dict[str, Any]:
         "rf_decoder_min_count": rf.get("min_count", 2),
         "tle_min_samples": tle.get("min_samples", 5),
         "min_samples_per_window": rev.get("min_samples_per_window", 5),
+        "min_before_success_count": rev.get("min_before_success_count", 3),
         "qor_drop_pt_threshold": rev.get("qor_drop_pt_threshold", -15.0),
         "large_gap_rate_pct_threshold": ml.get("large_gap_rate_pct_threshold", 30.0),
         "single_band_dropout_rate_pct_threshold": ml.get("single_band_dropout_rate_pct_threshold", 25.0),
@@ -198,7 +199,7 @@ def build_review_context(
             conn,
             f"""
             SELECT canonical_sat_id, total_passes, success_count, failure_count, unknown_count,
-                   effective_qor_pct, mean_snr_db, p95_abs_tca_drift_sec, avg_packets_per_success
+                   effective_qor_pct, mean_snr_db, tca_drift_sample_count, p95_abs_tca_drift_sec, avg_packets_per_success
             FROM sem_satellite_qor
             WHERE window_label = '{window_label}'
             ORDER BY canonical_sat_id
