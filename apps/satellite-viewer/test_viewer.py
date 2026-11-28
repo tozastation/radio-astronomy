@@ -64,7 +64,7 @@ class TestViewerOptimizations(unittest.TestCase):
         self.assertIn("WeatherSatellite", card_html)
         self.assertIn("spectrogram.png", card_html)
         self.assertIn("openReplayModal", card_html)
-        self.assertIn("REPLAY", card_html)
+        self.assertIn("リプレイ", card_html)
 
     def test_mobile_responsive_template_and_card(self):
         # 1. Viewport & media queries
@@ -98,9 +98,9 @@ class TestViewerOptimizations(unittest.TestCase):
         # 2. Header actions responsive labels & workspace navigation
         self.assertIn("btn-label-long", HTML_TEMPLATE)
         self.assertIn("btn-label-short", HTML_TEMPLATE)
-        self.assertIn("04 / ARCHIVE", HTML_TEMPLATE)
-        self.assertIn("24H SCHEDULE", HTML_TEMPLATE)
-        self.assertIn("SYNC", HTML_TEMPLATE)
+        self.assertIn("04 / バックアップ", HTML_TEMPLATE)
+        self.assertIn("24時間予定", HTML_TEMPLATE)
+        self.assertIn("更新", HTML_TEMPLATE)
         self.assertIn("grid-column: span 2", HTML_TEMPLATE)
         self.assertIn("modal-title-long", HTML_TEMPLATE)
         self.assertIn("modal-title-short", HTML_TEMPLATE)
@@ -766,7 +766,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
         }
         card_html_success = render_card_html(p_success)
         self.assertIn('<details class="data-accordion" open>', card_html_success)
-        self.assertIn('TELEMETRY FRAMES (1 件)', card_html_success)
+        self.assertIn('テレメトリフレーム (1 件)', card_html_success)
 
         # 2. 未復調（0件）のパス -> details open が付与されないこと
         p_failure = {
@@ -778,7 +778,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
         }
         card_html_failure = render_card_html(p_failure)
         self.assertNotIn('<details class="data-accordion" open>', card_html_failure)
-        self.assertIn('BPSK TELEMETRY FRAMES (0 件)', card_html_failure)
+        self.assertIn('BPSK テレメトリフレーム (0 件)', card_html_failure)
 
     def test_pass_data_cache_exponential_decay_stats(self):
         from datetime import datetime, timezone, timedelta
@@ -1242,7 +1242,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
             "packets": None,
         }
         card_html = render_card_html(p)
-        self.assertIn("AI RESTORED", card_html)
+        self.assertIn("AI補完済み", card_html)
         self.assertIn("inpaint-panel", card_html)
         self.assertIn("PREV-GUIDED 11CH", card_html)
         self.assertIn("inpaintSwitchTab", card_html)
@@ -1271,7 +1271,7 @@ class TestPerformanceOptimizations(unittest.TestCase):
         for token in (
             'id="wsTabAnalytics"',
             'id="wsAnalytics"',
-            "05 / ANALYTICS",
+            "05 / 分析・診断",
             "analyticsLoadReport",
             "analyticsQorCanvas",
             "analyticsCauseCanvas",

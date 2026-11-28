@@ -132,7 +132,7 @@ class TestReviewFixes(unittest.TestCase):
         self.assertIn('aspect-ratio: 2 / 1', HTML_TEMPLATE)
 
     def test_radio_status_handles_blocked(self):
-        self.assertIn('BLOCKED:', HTML_TEMPLATE)
+        self.assertIn('遮蔽 (BLOCKED):', HTML_TEMPLATE)
         self.assertIn('if (elDeg < 5.0) return;', HTML_TEMPLATE)
 
     def test_raf_cleanup_on_close_and_tab(self):
