@@ -1277,6 +1277,9 @@ class TestPerformanceOptimizations(unittest.TestCase):
             "analyticsCauseCanvas",
             "analyticsGalacticCanvas",
             "analyticsRevisionCanvas",
+            "analyticsLineageSvg",
+            "analyticsLineageDetail",
+            "analyticsRenderLineage",
         ):
             self.assertIn(token, HTML_TEMPLATE)
 

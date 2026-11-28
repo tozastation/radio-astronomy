@@ -3178,6 +3178,49 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: var(--text-muted);
       font-weight: 600;
     }
+    .analytics-lineage-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+    }
+    .analytics-lineage-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .analytics-lineage-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+    .analytics-lineage-detail {
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+    .analytics-lineage-wrap {
+      overflow-x: auto;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-hairline);
+    }
+    .analytics-lineage-node {
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .analytics-lineage-edge {
+      fill: none;
+      transition: opacity 0.15s ease, stroke 0.15s ease;
+    }
     @media (max-width: 900px) {
       .analytics-grid-2 {
         grid-template-columns: 1fr;
@@ -3940,6 +3983,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="analyticsAnomaliesContainer" style="overflow-x: auto;">
               <div style="color: var(--text-muted); font-size: 0.8rem;">読み込み中...</div>
             </div>
+          </div>
+        </div>
+
+        <div class="analytics-card" style="margin-top: 14px;">
+          <div class="analytics-card-title">
+            <span>DBT DATA LINEAGE (analytics/dbt_observatory)</span>
+            <span class="analytics-card-sub">ノードクリックで上流・下流をハイライト</span>
+          </div>
+          <div class="analytics-lineage-legend">
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#5c9ead;"></span>SOURCES</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#7a9e7e;"></span>STAGING</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#d4a039;"></span>MARTS</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#e07a38;"></span>SEMANTIC</span>
+            <span class="analytics-lineage-legend-item"><span class="analytics-lineage-dot" style="background:#c95d63;"></span>ONTOLOGY</span>
+          </div>
+          <div id="analyticsLineageDetail" class="analytics-lineage-detail">ノードをクリックすると上流・下流の依存関係と詳細を表示します。</div>
+          <div class="analytics-lineage-wrap">
+            <svg id="analyticsLineageSvg" width="1060" height="320" viewBox="0 0 1060 320" role="img" aria-label="dbt データリネージュ図"></svg>
           </div>
         </div>
       </div>
@@ -7533,6 +7594,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       analyticsDrawRevisionChart(data.revision_impact || []);
       analyticsRenderInpaintTable(data.inpaint_quality || []);
       analyticsRenderAnomaliesTable(data.tunable_anomalies || []);
+      analyticsRenderLineage(data.dbt_lineage || null);
     }
 
     function analyticsRenderSignals(signals) {
@@ -7803,6 +7865,247 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <thead><tr><th>Pass ID</th><th>Cause</th><th>SNR</th><th>TCA Drift</th></tr></thead>
         <tbody>${trs}</tbody>
       </table>`;
+    }
+
+    function analyticsRenderLineage(lineage) {
+      const svg = document.getElementById('analyticsLineageSvg');
+      const detailEl = document.getElementById('analyticsLineageDetail');
+      if (!svg) return;
+      const nodes = (lineage && Array.isArray(lineage.nodes)) ? lineage.nodes : [];
+      const edges = (lineage && Array.isArray(lineage.edges)) ? lineage.edges : [];
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      if (!nodes.length) {
+        svg.setAttribute('viewBox', '0 0 1060 120');
+        svg.setAttribute('height', '120');
+        if (detailEl) {
+          detailEl.textContent = 'リネージュ情報がレポートに含まれていません（generate_review_context.py --run-dbt --publish-s3 で生成）。';
+        }
+        return;
+      }
+
+      const layerOrder = ['source', 'staging', 'marts', 'semantic', 'ontology'];
+      const layerColors = {
+        source: '#5c9ead',
+        staging: '#7a9e7e',
+        marts: '#d4a039',
+        semantic: '#e07a38',
+        ontology: '#c95d63'
+      };
+      const layerLabels = {
+        source: 'SOURCES',
+        staging: 'STAGING',
+        marts: 'MARTS',
+        semantic: 'SEMANTIC',
+        ontology: 'ONTOLOGY'
+      };
+
+      const grouped = {};
+      layerOrder.forEach(l => { grouped[l] = []; });
+      nodes.forEach(n => {
+        const l = grouped[n.layer] ? n.layer : 'marts';
+        grouped[l].push(n);
+      });
+
+      const maxPerCol = Math.max(1, ...layerOrder.map(l => grouped[l].length));
+      const boxW = 176;
+      const boxH = 38;
+      const colGap = 36;
+      const rowGap = 14;
+      const padX = 18;
+      const topY = 38;
+      const svgW = padX * 2 + layerOrder.length * boxW + (layerOrder.length - 1) * colGap;
+      const svgH = Math.max(220, topY + maxPerCol * boxH + (maxPerCol - 1) * rowGap + 22);
+      svg.setAttribute('width', String(svgW));
+      svg.setAttribute('height', String(svgH));
+      svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+
+      const ns = 'http://www.w3.org/2000/svg';
+      const posById = {};
+      const childrenMap = {};
+      const parentsMap = {};
+      nodes.forEach(n => {
+        childrenMap[n.id] = [];
+        parentsMap[n.id] = [];
+      });
+      edges.forEach(e => {
+        if (childrenMap[e.from] && parentsMap[e.to]) {
+          childrenMap[e.from].push(e.to);
+          parentsMap[e.to].push(e.from);
+        }
+      });
+
+      layerOrder.forEach((layer, colIdx) => {
+        const x = padX + colIdx * (boxW + colGap);
+        const colNodes = grouped[layer];
+        const colHeight = colNodes.length * boxH + Math.max(0, colNodes.length - 1) * rowGap;
+        const startY = topY + Math.max(0, (svgH - topY - 20 - colHeight) / 2);
+
+        const hdr = document.createElementNS(ns, 'text');
+        hdr.setAttribute('x', String(x));
+        hdr.setAttribute('y', '20');
+        hdr.setAttribute('fill', layerColors[layer] || '#9aa4b2');
+        hdr.setAttribute('font-family', 'JetBrains Mono, monospace');
+        hdr.setAttribute('font-size', '10');
+        hdr.setAttribute('font-weight', '700');
+        hdr.textContent = `${layerLabels[layer]} (${colNodes.length})`;
+        svg.appendChild(hdr);
+
+        colNodes.forEach((n, rowIdx) => {
+          posById[n.id] = {
+            x: x,
+            y: startY + rowIdx * (boxH + rowGap),
+            node: n
+          };
+        });
+      });
+
+      const edgeEls = [];
+      const edgeGroup = document.createElementNS(ns, 'g');
+      edges.forEach(e => {
+        const src = posById[e.from];
+        const dst = posById[e.to];
+        if (!src || !dst) return;
+        const x1 = src.x + boxW;
+        const y1 = src.y + boxH / 2;
+        const x2 = dst.x;
+        const y2 = dst.y + boxH / 2;
+        const dx = Math.max(24, (x2 - x1) * 0.5);
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+        path.setAttribute('class', 'analytics-lineage-edge');
+        path.setAttribute('stroke', '#3c4654');
+        path.setAttribute('stroke-width', '1.3');
+        path.setAttribute('opacity', '0.75');
+        edgeGroup.appendChild(path);
+        edgeEls.push({ from: e.from, to: e.to, el: path });
+      });
+      svg.appendChild(edgeGroup);
+
+      let selectedId = null;
+      const nodeEls = {};
+
+      function collectReachable(startId, adj) {
+        const visited = new Set([startId]);
+        const queue = [startId];
+        while (queue.length) {
+          const cur = queue.shift();
+          (adj[cur] || []).forEach(nxt => {
+            if (!visited.has(nxt)) {
+              visited.add(nxt);
+              queue.push(nxt);
+            }
+          });
+        }
+        return visited;
+      }
+
+      function applyHighlight(targetId) {
+        selectedId = targetId;
+        if (!targetId) {
+          Object.keys(nodeEls).forEach(id => { nodeEls[id].setAttribute('opacity', '1'); });
+          edgeEls.forEach(e => {
+            e.el.setAttribute('stroke', '#3c4654');
+            e.el.setAttribute('stroke-width', '1.3');
+            e.el.setAttribute('opacity', '0.75');
+          });
+          if (detailEl) {
+            detailEl.textContent = 'ノードをクリックすると上流・下流の依存関係と詳細を表示します。';
+          }
+          return;
+        }
+
+        const upSet = collectReachable(targetId, parentsMap);
+        const downSet = collectReachable(targetId, childrenMap);
+        const activeSet = new Set([...upSet, ...downSet]);
+        Object.keys(nodeEls).forEach(id => {
+          nodeEls[id].setAttribute('opacity', activeSet.has(id) ? '1' : '0.18');
+        });
+        edgeEls.forEach(e => {
+          const onUp = upSet.has(e.from) && upSet.has(e.to);
+          const onDown = downSet.has(e.from) && downSet.has(e.to);
+          if (onUp || onDown) {
+            e.el.setAttribute('stroke', onDown ? '#d4a039' : '#5c9ead');
+            e.el.setAttribute('stroke-width', '2.1');
+            e.el.setAttribute('opacity', '0.95');
+          } else {
+            e.el.setAttribute('stroke', '#3c4654');
+            e.el.setAttribute('stroke-width', '1.0');
+            e.el.setAttribute('opacity', '0.12');
+          }
+        });
+
+        const info = posById[targetId] ? posById[targetId].node : null;
+        if (detailEl && info) {
+          const rowsText = info.row_count != null ? `${info.row_count} rows` : 'rows: -';
+          const upCnt = Math.max(0, upSet.size - 1);
+          const downCnt = Math.max(0, downSet.size - 1);
+          const desc = info.description ? ` — ${info.description}` : '';
+          detailEl.innerHTML =
+            `<strong>${analyticsEscapeHtml(info.name)}</strong> ` +
+            `[${analyticsEscapeHtml(info.layer)} / ${analyticsEscapeHtml(info.materialized)} / ${analyticsEscapeHtml(rowsText)}] ` +
+            `// upstream: ${upCnt}, downstream: ${downCnt}${analyticsEscapeHtml(desc)}`;
+        }
+      }
+
+      svg.onclick = () => applyHighlight(null);
+
+      const nodeGroup = document.createElementNS(ns, 'g');
+      Object.keys(posById).forEach(id => {
+        const { x, y, node } = posById[id];
+        const color = layerColors[node.layer] || '#9aa4b2';
+        const g = document.createElementNS(ns, 'g');
+        g.setAttribute('class', 'analytics-lineage-node');
+
+        const rect = document.createElementNS(ns, 'rect');
+        rect.setAttribute('x', String(x));
+        rect.setAttribute('y', String(y));
+        rect.setAttribute('width', String(boxW));
+        rect.setAttribute('height', String(boxH));
+        rect.setAttribute('rx', '3');
+        rect.setAttribute('fill', '#181c22');
+        rect.setAttribute('stroke', '#303844');
+        rect.setAttribute('stroke-width', '1');
+        g.appendChild(rect);
+
+        const bar = document.createElementNS(ns, 'rect');
+        bar.setAttribute('x', String(x));
+        bar.setAttribute('y', String(y));
+        bar.setAttribute('width', '4');
+        bar.setAttribute('height', String(boxH));
+        bar.setAttribute('rx', '1');
+        bar.setAttribute('fill', color);
+        g.appendChild(bar);
+
+        const label = document.createElementNS(ns, 'text');
+        label.setAttribute('x', String(x + 10));
+        label.setAttribute('y', String(y + 16));
+        label.setAttribute('fill', '#e6edf3');
+        label.setAttribute('font-family', 'JetBrains Mono, monospace');
+        label.setAttribute('font-size', '10.5');
+        label.setAttribute('font-weight', '600');
+        label.textContent = node.name.length > 20 ? node.name.slice(0, 19) + '…' : node.name;
+        g.appendChild(label);
+
+        const meta = document.createElementNS(ns, 'text');
+        meta.setAttribute('x', String(x + 10));
+        meta.setAttribute('y', String(y + 30));
+        meta.setAttribute('fill', '#8b949e');
+        meta.setAttribute('font-family', 'JetBrains Mono, monospace');
+        meta.setAttribute('font-size', '9');
+        const rc = node.row_count != null ? `${node.row_count} rows` : '-';
+        meta.textContent = `${node.materialized} · ${rc}`;
+        g.appendChild(meta);
+
+        g.onclick = (ev) => {
+          ev.stopPropagation();
+          applyHighlight(selectedId === id ? null : id);
+        };
+
+        nodeGroup.appendChild(g);
+        nodeEls[id] = g;
+      });
+      svg.appendChild(nodeGroup);
     }
   </script>
 </body>

@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -92,9 +93,101 @@ def _fetch_dicts(conn: duckdb.DuckDBPyConnection, query: str) -> list[dict[str, 
     return out
 
 
-def build_review_context(db_path: Path, days: int = 7) -> dict[str, Any]:
+_SAFE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_LAYER_ORDER = {"source": 0, "staging": 1, "marts": 2, "semantic": 3, "ontology": 4}
+
+
+def _detect_dbt_layer(node: dict[str, Any]) -> str:
+    """dbt manifest ノードの fqn / path から層名を判定する。"""
+    fqn = node.get("fqn") or []
+    for part in fqn:
+        if part in _LAYER_ORDER:
+            return str(part)
+    path_str = str(node.get("path") or "")
+    for layer in ("staging", "marts", "semantic", "ontology"):
+        if layer in path_str:
+            return layer
+    return "marts"
+
+
+def _query_row_count(conn: duckdb.DuckDBPyConnection | None, table_name: str) -> int | None:
+    """安全な識別子のみを対象に DuckDB の行数を取得する。"""
+    if conn is None or not _SAFE_IDENT_RE.match(table_name):
+        return None
+    try:
+        row = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
+        return int(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def extract_dbt_lineage(
+    dbt_dir: Path,
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> dict[str, Any]:
+    """dbt target/manifest.json からノード・エッジのリネージュ情報を抽出する。"""
+    manifest_path = dbt_dir / "target" / "manifest.json"
+    if not manifest_path.exists():
+        return {"nodes": [], "edges": []}
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"nodes": [], "edges": []}
+
+    nodes_by_id: dict[str, dict[str, Any]] = {}
+    edges_set: set[tuple[str, str]] = set()
+
+    for src_id, src in (manifest.get("sources") or {}).items():
+        name = str(src.get("name") or src_id.split(".")[-1])
+        relation_name = str(src.get("identifier") or name)
+        nodes_by_id[src_id] = {
+            "id": src_id,
+            "name": name,
+            "layer": "source",
+            "materialized": "table",
+            "description": str(src.get("description") or "").strip(),
+            "row_count": _query_row_count(conn, relation_name),
+        }
+
+    for node_id, node in (manifest.get("nodes") or {}).items():
+        if node.get("resource_type") != "model":
+            continue
+        name = str(node.get("alias") or node.get("name") or node_id.split(".")[-1])
+        layer = _detect_dbt_layer(node)
+        materialized = str((node.get("config") or {}).get("materialized") or "view")
+        nodes_by_id[node_id] = {
+            "id": node_id,
+            "name": name,
+            "layer": layer,
+            "materialized": materialized,
+            "description": str(node.get("description") or "").strip(),
+            "row_count": _query_row_count(conn, name),
+        }
+
+    for node_id, node in (manifest.get("nodes") or {}).items():
+        if node_id not in nodes_by_id:
+            continue
+        for dep_id in (node.get("depends_on") or {}).get("nodes") or []:
+            if dep_id in nodes_by_id:
+                edges_set.add((dep_id, node_id))
+
+    nodes = sorted(
+        nodes_by_id.values(),
+        key=lambda n: (_LAYER_ORDER.get(n["layer"], 99), n["name"]),
+    )
+    edges = [{"from": src, "to": dst} for src, dst in sorted(edges_set)]
+    return {"nodes": nodes, "edges": edges}
+
+
+def build_review_context(
+    db_path: Path,
+    days: int = 7,
+    dbt_dir: Path | None = None,
+) -> dict[str, Any]:
     """DuckDB から診断サマリ構造体を取得する。"""
     window_label = "7d" if days <= 7 else ("30d" if days <= 30 else "all")
+    target_dbt_dir = dbt_dir or DEFAULT_DBT_DIR
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
         signals = _fetch_dicts(
@@ -225,6 +318,7 @@ def build_review_context(db_path: Path, days: int = 7) -> dict[str, Any]:
             ORDER BY pass_date_utc ASC
             """,
         )
+        lineage_data = extract_dbt_lineage(target_dbt_dir, conn)
     finally:
         conn.close()
 
@@ -242,6 +336,7 @@ def build_review_context(db_path: Path, days: int = 7) -> dict[str, Any]:
         "galactic_snr": galactic_snr,
         "galactic_daily_trend": galactic_daily_trend,
         "pass_daily_trend": pass_daily_trend,
+        "dbt_lineage": lineage_data,
     }
 
 
@@ -443,7 +538,7 @@ def main() -> int:
     if args.run_dbt:
         run_dbt_build(args.dbt_dir, args.db, args.ontology_dir)
 
-    ctx = build_review_context(args.db, days=args.days)
+    ctx = build_review_context(args.db, days=args.days, dbt_dir=args.dbt_dir)
     if args.json_out is not None:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps(ctx, ensure_ascii=False, indent=2), encoding="utf-8")

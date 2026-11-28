@@ -206,6 +206,13 @@ def test_step2_dbt_build_and_diagnosis_e2e(tmp_path: Path) -> None:
     assert "generated_at_utc" in ctx
     assert len(ctx["galactic_daily_trend"]) >= 1
     assert len(ctx["pass_daily_trend"]) >= 1
+    lineage = ctx.get("dbt_lineage") or {}
+    lineage_names = {n["name"]: n for n in lineage.get("nodes") or []}
+    assert "raw_passes" in lineage_names
+    assert "fct_passes" in lineage_names
+    assert "ont_tuning_signals" in lineage_names
+    assert lineage_names["raw_passes"]["row_count"] == 5
+    assert len(lineage.get("edges") or []) >= 15
     assert "RF_DECODER_TUNING" in md
     assert "ML_MASK_DISTRIBUTION_SHIFT" in md
     assert "METEOR-M2-3" in md

@@ -166,7 +166,7 @@ flowchart TB
 | `apps/satellite-tracker-rs` | アンテナ側の追尾（Rust）。北向き見通し角と Pass Gating を判定し、衛星受信・21cm スキャン結果を Garage へアップロード |
 | `apps/satellite-analyzer` | Temporal の解析ワーカー（Python）。パケット・画像・生 IQ の復号およびスペクトログラム生成 |
 | `apps/satellite-viewer` | 観測結果ビューア（Python）。5 ワークスペース統合 UI（`ANALYTICS` グラフタブ含む）、AI 補完画像の Before/After 比較表示、未解析録音のワークフロー起動（NodePort 30088） |
-| `analytics/` | DuckDB + `dbt-duckdb` によるオントロジー定義・セマンティック層・日次診断スクリプト（S3 へ `analytics/latest_report.json` を出力） |
+| `analytics/` | DuckDB + `dbt-duckdb` によるオントロジー定義・セマンティック層・日次診断スクリプト（[analytics/README.md](analytics/README.md)） |
 | `apps/kubeedge-metrics-proxy` | アンテナ側コンテナのリソースメトリクスを Prometheus へ中継 |
 | `apps/satellite-tracker` | アンテナ側追尾のプロトタイプ実装（Python 版） |
 | `apps/ground-station` | Rust の地上局クレート（通過予測、SGP4 軌道計算、ドップラー計算、復調、`solar-station`） |
